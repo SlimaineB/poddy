@@ -1,3 +1,4 @@
+<!-- {% raw %} -->
 # Creating templates and images
 
 ## How templates work
@@ -424,3 +425,4 @@ To use it:
 ./poddy -templates-dir ./examples/templates ...
 ```
 Or push it as a labeled ConfigMap / add it to the `poddy-templates` chart.
+<!-- {% endraw %} -->

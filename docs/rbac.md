@@ -153,7 +153,7 @@ The chart adds the ConfigMap permissions to the portal Role. `helm upgrade` re-a
 
 ## Local demo
 
-See [oidc.md](oidc.md#local-demo-with-dex) and [`deploy/dex`](../deploy/dex). The script seeds:
+See [oidc.md](oidc.md#local-demo-with-dex) and the `deploy/dex` directory. The script seeds:
 
 - admins: `admin@example.com`, `ops@example.com`
 - teams: `backend` (`alice@example.com`, `bob@example.com`), `frontend` (`carol@example.com`)

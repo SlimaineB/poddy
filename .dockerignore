@@ -1,3 +1,7 @@
 .git
+.github
 poddy
 *.test
+_site
+.jekyll-cache
+.sass-cache

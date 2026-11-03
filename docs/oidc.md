@@ -8,7 +8,7 @@ poddy supports the OpenID Connect authorization code flow with PKCE. OIDC is opt
 
 ## Local demo with Dex
 
-A self-contained Dex setup lives in [`deploy/dex`](../deploy/dex). It creates eight users with groups and a demo RBAC document. It is meant for local testing only.
+A self-contained Dex setup lives in `deploy/dex`. It creates eight users with groups and a demo RBAC document. It is meant for local testing only.
 
 ### Quick start
 

@@ -212,11 +212,14 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 - Kubernetes RBAC: the portal's Role is scoped to the workspace namespace; it cannot touch cluster-wide resources.
 - Use HTTPS ingress in production; the cookie is `Secure` when TLS is detected.
 
-## Documentation and GitHub Pages
+## CI and documentation
 
-All documentation is plain Markdown under `docs/` and renders directly on GitHub. GitHub Pages is used only for this documentation site; the portal itself (Go server, WebSocket terminal, SSH bastion, Kubernetes API) stays on Kubernetes.
+GitHub Actions workflows live in `.github/workflows/`:
 
-When publishing, set the Pages source to `/docs`. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
+- **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
+- **Pages** builds the Markdown docs with Jekyll and deploys them to GitHub Pages.
+
+All documentation is plain Markdown under `docs/`. Start at [`docs/index.md`](docs/index.md). Set the repository's Pages source to **GitHub Actions**. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 
 ## License
 

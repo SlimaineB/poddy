@@ -1,0 +1,21 @@
+title: poddy
+description: Kubernetes development workspaces with a browser UI, SSH bastion, and VS Code Remote-SSH.
+
+theme: minima
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-default-layout
+  - jekyll-titles-from-headings
+
+optional_front_matter:
+  remove_originals: true
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: page

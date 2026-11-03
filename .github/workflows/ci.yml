@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "gofmt needed for:"
+            echo "$files"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: find web -name '*.js' -print0 | xargs -0 -n1 node --check
+
+  helm:
+    name: Helm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint charts
+        run: |
+          helm lint deploy/helm/poddy \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set ssh.publicHost=localhost \
+            --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid'
+          helm lint deploy/helm/poddy-templates
+      - name: Render charts
+        run: |
+          helm template poddy deploy/helm/poddy \
+            --namespace poddy-system \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set ssh.publicHost=localhost \
+            --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid' \
+            >/dev/null
+          helm template poddy-templates deploy/helm/poddy-templates \
+            --namespace poddy-workspaces \
+            >/dev/null
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build portal image
+        run: docker build -t poddy:ci .
+      - name: Build workspace images
+        run: |
+          docker build -f Dockerfile.workspace-base -t poddy/workspace-base:ci .
+          docker build -f Dockerfile.workspace \
+            --build-arg BASE_IMAGE=poddy/workspace-base:ci \
+            -t poddy/workspace:ci .
