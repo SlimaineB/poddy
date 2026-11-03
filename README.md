@@ -38,6 +38,11 @@ The portal is stateless; scale replicas behind a LoadBalancer. The bastion share
 - kubectl + k3s (running)
 - Windows VS Code with **Remote-SSH** extension
 
+Create the workspace namespace once:
+```bash
+kubectl --context local create namespace poddy
+```
+
 ### 1. Build workspace images
 ```bash
 docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
@@ -87,7 +92,6 @@ Local runs can use `-templates-dir ./my-templates`. In Kubernetes, apply a Confi
 A local Dex demo is included:
 
 ```bash
-kubectl --context local create namespace poddy   # once
 ./scripts/dev-oidc.sh
 ```
 
@@ -150,14 +154,20 @@ See [docs/templates.md](docs/templates.md) for:
 │   └── helm/
 │       ├── poddy/              # Portal chart
 │       └── poddy-templates/    # Independently managed template ConfigMaps
+├── mkdocs.yml                   # MkDocs Material site config
+├── requirements-docs.txt        # Docs build dependencies
 └── docs/
+    ├── index.md
+    ├── getting-started.md
     ├── deploy.md
     ├── k3s-test.md
+    ├── templates.md
     ├── external-auth.md
     ├── links.md
     ├── oidc.md
     ├── rbac.md
-    └── templates.md
+    ├── architecture.md
+    └── data-model.md
 ```
 
 ## Authentication
@@ -218,11 +228,11 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
 - **Publish images** builds and pushes the portal, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
-- **Pages** builds the Markdown docs with Jekyll and deploys them to GitHub Pages.
+- **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
 Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public or add an image pull secret.
 
-All documentation is plain Markdown under `docs/`. Start at [`docs/index.md`](docs/index.md). Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
+Documentation lives under `docs/` and is configured by `mkdocs.yml`. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 
 ## License
 

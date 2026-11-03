@@ -1,5 +1,3 @@
 /poddy
 *.test
-_site/
-.jekyll-cache/
-.sass-cache/
+/site/
