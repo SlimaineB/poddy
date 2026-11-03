@@ -1,0 +1,106 @@
+name: Publish images
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAGS: |
+    type=ref,event=branch
+    type=ref,event=tag
+    type=semver,pattern={{version}}
+    type=semver,pattern={{major}}.{{minor}}
+    type=sha,prefix=sha-
+    type=raw,value=latest,enable={{is_default_branch}}
+
+jobs:
+  publish:
+    name: Publish to GHCR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set lowercase image namespace
+        run: echo "IMAGE_NAMESPACE=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Portal metadata
+        id: meta_portal
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push portal
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta_portal.outputs.tags }}
+          labels: ${{ steps.meta_portal.outputs.labels }}
+          cache-from: type=gha,scope=portal
+          cache-to: type=gha,mode=max,scope=portal
+
+      - name: Workspace base metadata
+        id: meta_base
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy-workspace-base
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push workspace base
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.workspace-base
+          push: true
+          tags: ${{ steps.meta_base.outputs.tags }}
+          labels: ${{ steps.meta_base.outputs.labels }}
+          cache-from: type=gha,scope=workspace-base
+          cache-to: type=gha,mode=max,scope=workspace-base
+
+      - name: Resolve workspace base image
+        id: base_image
+        env:
+          BASE_TAGS: ${{ steps.meta_base.outputs.tags }}
+        run: echo "ref=$(printf '%s\n' "$BASE_TAGS" | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Workspace metadata
+        id: meta_workspace
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy-workspace
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push workspace
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.workspace
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ steps.base_image.outputs.ref }}
+          tags: ${{ steps.meta_workspace.outputs.tags }}
+          labels: ${{ steps.meta_workspace.outputs.labels }}
+          cache-from: type=gha,scope=workspace
+          cache-to: type=gha,mode=max,scope=workspace

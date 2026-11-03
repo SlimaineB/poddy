@@ -217,7 +217,10 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 GitHub Actions workflows live in `.github/workflows/`:
 
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
+- **Publish images** builds and pushes the portal, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
 - **Pages** builds the Markdown docs with Jekyll and deploys them to GitHub Pages.
+
+Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public or add an image pull secret.
 
 All documentation is plain Markdown under `docs/`. Start at [`docs/index.md`](docs/index.md). Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 
