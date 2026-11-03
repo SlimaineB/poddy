@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.http.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.http.service.port }}
+      {{- with .Values.http.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "poddy.selectorLabels" . | nindent 4 }}

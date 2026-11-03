@@ -1,0 +1,320 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "poddy Helm values",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string"
+        }
+      }
+    },
+    "oidc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "clientId": {
+          "type": "string"
+        },
+        "clientSecret": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "redirectUrl": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "string"
+        },
+        "allowedGroups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedUsers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sessionKey": {
+          "type": "string"
+        },
+        "sessionTtl": {
+          "type": "string"
+        }
+      }
+    },
+    "externalAuth": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "redirectBase": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "keyKey": {
+          "type": "string"
+        },
+        "tokenSecretName": {
+          "type": "string"
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "clientId"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
+              },
+              "type": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "displayIcon": {
+                "type": "string"
+              },
+              "clientId": {
+                "type": "string"
+              },
+              "clientSecret": {
+                "type": "string"
+              },
+              "existingSecret": {
+                "type": "string"
+              },
+              "clientSecretKey": {
+                "type": "string"
+              },
+              "authUrl": {
+                "type": "string"
+              },
+              "tokenUrl": {
+                "type": "string"
+              },
+              "validateUrl": {
+                "type": "string"
+              },
+              "revokeUrl": {
+                "type": "string"
+              },
+              "redirectUrl": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "regex": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "pkce": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "addr": {
+          "type": "string"
+        },
+        "publicHost": {
+          "type": "string"
+        },
+        "publicPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "authorizedKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "existingKeysSecret": {
+          "type": "string"
+        },
+        "existingHostKeySecret": {
+          "type": "string"
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "nodePort": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          }
+        },
+        "allowUnmappedKeys": {
+          "type": "boolean"
+        }
+      }
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "nodePort": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "configMapName": {
+          "type": "string"
+        },
+        "createConfigMap": {
+          "type": "boolean"
+        },
+        "admins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "teams": {
+          "type": "object"
+        },
+        "templates": {
+          "type": "object"
+        },
+        "extraRules": {
+          "type": "array"
+        }
+      }
+    },
+    "workspaceState": {
+      "type": "object",
+      "properties": {
+        "configMapName": {
+          "type": "string"
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "hosts": {
+          "type": "array"
+        },
+        "tls": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}

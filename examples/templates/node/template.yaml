@@ -1,0 +1,18 @@
+name: node
+displayName: Node.js
+description: Node.js workspace with SSH and a persistent home volume.
+image: ghcr.io/your-org/poddy-workspace-node:latest
+version: "1.0.0"
+parameters:
+  - name: cpu
+    description: CPU request
+    default: "1"
+  - name: memory
+    description: Memory request
+    default: 2Gi
+  - name: storage
+    description: Persistent volume size (empty for ephemeral storage)
+    default: 10Gi
+  - name: storageClass
+    description: StorageClass name (empty for the cluster default)
+    default: ""

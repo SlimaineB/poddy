@@ -1,0 +1,17 @@
+name: base
+displayName: Base
+description: Generic Linux workspace with SSH and a persistent home volume.
+image: poddy/workspace:latest
+parameters:
+  - name: cpu
+    description: CPU request
+    default: 500m
+  - name: memory
+    description: Memory request
+    default: 1Gi
+  - name: storage
+    description: Persistent volume size (empty for ephemeral storage)
+    default: 5Gi
+  - name: storageClass
+    description: StorageClass name (empty for the cluster default)
+    default: ""

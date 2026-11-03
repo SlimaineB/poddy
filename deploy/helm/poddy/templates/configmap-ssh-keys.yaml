@@ -1,0 +1,17 @@
+{{- if and .Values.ssh.enabled (not .Values.ssh.existingKeysSecret) }}
+{{- if not .Values.ssh.authorizedKeys }}
+{{- fail "ssh.authorizedKeys or ssh.existingKeysSecret is required when ssh.enabled=true" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "poddy.sshKeysName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+data:
+  {{ .Values.ssh.keysSecretKey }}: |
+    {{- range .Values.ssh.authorizedKeys }}
+    {{ . }}
+    {{- end }}
+{{- end }}

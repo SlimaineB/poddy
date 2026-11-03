@@ -1,0 +1,17 @@
+ARG BASE_IMAGE=poddy/workspace-base:latest
+FROM ${BASE_IMAGE}
+
+ARG GO_VERSION=1.25.5
+
+RUN arch="$(dpkg --print-architecture)" \
+ && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o /tmp/go.tgz \
+ && tar -C /usr/local -xzf /tmp/go.tgz \
+ && rm /tmp/go.tgz \
+ && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+ && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+ && printf 'export PATH=$PATH:/usr/local/go/bin:/home/dev/go/bin\n' >> /home/dev/.bashrc \
+ && printf 'export PATH=$PATH:/usr/local/go/bin:/home/dev/go/bin\n' > /etc/profile.d/golang.sh
+
+WORKDIR /workspace
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D", "-e"]

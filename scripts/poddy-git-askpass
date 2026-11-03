@@ -1,0 +1,19 @@
+#!/bin/sh
+# Git askpass helper for external auth. The portal refreshes the OAuth token
+# server-side, so Git keeps working after the original access token expires.
+set -eu
+
+prompt="${1:-}"
+portal="${PODDY_PORTAL_URL:-}"
+workspace="${PODDY_WORKSPACE_NAME:-}"
+token="${PODDY_WORKSPACE_TOKEN:-}"
+
+if [ -z "$portal" ] || [ -z "$workspace" ] || [ -z "$token" ]; then
+  echo "poddy-git-askpass: missing PODDY_PORTAL_URL, PODDY_WORKSPACE_NAME or PODDY_WORKSPACE_TOKEN" >&2
+  exit 1
+fi
+
+curl -fsS --get \
+  -H "X-Poddy-Workspace-Token: $token" \
+  --data-urlencode "prompt=$prompt" \
+  "${portal%/}/api/workspaces/${workspace}/git-askpass"

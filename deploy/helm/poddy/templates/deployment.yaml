@@ -1,0 +1,337 @@
+{{- if and .Values.ssh.enabled (gt (int .Values.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
+{{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and replicaCount > 1" }}
+{{- end }}
+{{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}
+{{- fail "oidc.issuer is required when oidc.enabled=true" }}
+{{- end }}
+{{- if and .Values.oidc.enabled (not .Values.oidc.clientId) }}
+{{- fail "oidc.clientId is required when oidc.enabled=true" }}
+{{- end }}
+{{- if and .Values.oidc.enabled (gt (int .Values.replicaCount) 1) (not .Values.oidc.sessionKey) (not .Values.oidc.existingSecret) }}
+{{- fail "oidc.sessionKey or oidc.existingSecret is required when oidc.enabled=true and replicaCount > 1" }}
+{{- end }}
+{{- if .Values.externalAuth.providers }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.externalAuth.key) (not .Values.externalAuth.existingSecret) }}
+{{- fail "externalAuth.key or externalAuth.existingSecret is required when externalAuth.providers is set and replicaCount > 1" }}
+{{- end }}
+{{- range $i, $provider := .Values.externalAuth.providers }}
+{{- if not $provider.id }}
+{{- fail (printf "externalAuth.providers[%d].id is required" $i) }}
+{{- end }}
+{{- if not $provider.clientId }}
+{{- fail (printf "externalAuth.providers[%d].clientId is required" $i) }}
+{{- end }}
+{{- if and (not $provider.clientSecret) (not $provider.existingSecret) (not $.Values.externalAuth.existingSecret) }}
+{{- fail (printf "externalAuth.providers[%d].clientSecret or existingSecret is required" $i) }}
+{{- end }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "poddy.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "poddy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "poddy.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/ssh-keys: {{ include (print $.Template.BasePath "/configmap-ssh-keys.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "poddy.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: portal
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -addr={{ .Values.portal.addr }}
+            - -namespace={{ include "poddy.workspaceNamespace" . }}
+            - -rbac-configmap={{ include "poddy.rbacConfigMapName" . }}
+            - -state-configmap={{ include "poddy.stateConfigMapName" . }}
+            - -template={{ .Values.defaultTemplate }}
+            - -editor=
+            {{- if .Values.ssh.enabled }}
+            - -ssh-addr={{ .Values.ssh.addr }}
+            - -ssh-public-host={{ required "ssh.publicHost is required when ssh.enabled=true" .Values.ssh.publicHost }}
+            - -ssh-public-port={{ .Values.ssh.publicPort }}
+            {{- else }}
+            - -ssh-addr=
+            {{- end }}
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- if or .Values.auth.existingSecret .Values.auth.token }}
+            - name: PODDY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.tokenSecretName" . }}
+                  key: {{ .Values.auth.secretKey }}
+            {{- end }}
+            {{- if .Values.oidc.enabled }}
+            - name: PODDY_OIDC_ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            {{- if .Values.oidc.existingSecret }}
+            - name: PODDY_OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: {{ .Values.oidc.clientIdKey }}
+            - name: PODDY_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: {{ .Values.oidc.clientSecretKey }}
+            - name: PODDY_OIDC_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: {{ .Values.oidc.sessionKeyKey }}
+            {{- else }}
+            - name: PODDY_OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            {{- with .Values.oidc.clientSecret }}
+            - name: PODDY_OIDC_CLIENT_SECRET
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.sessionKey }}
+            - name: PODDY_OIDC_SESSION_KEY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            - name: PODDY_OIDC_SCOPES
+              value: {{ .Values.oidc.scopes | quote }}
+            {{- with .Values.oidc.redirectUrl }}
+            - name: PODDY_OIDC_REDIRECT_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.allowedGroups }}
+            - name: PODDY_OIDC_ALLOWED_GROUPS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.allowedUsers }}
+            - name: PODDY_OIDC_ALLOWED_USERS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: PODDY_OIDC_USERNAME_CLAIM
+              value: {{ .Values.oidc.usernameClaim | quote }}
+            - name: PODDY_OIDC_EMAIL_CLAIM
+              value: {{ .Values.oidc.emailClaim | quote }}
+            - name: PODDY_OIDC_GROUPS_CLAIM
+              value: {{ .Values.oidc.groupsClaim | quote }}
+            - name: PODDY_OIDC_SESSION_TTL
+              value: {{ .Values.oidc.sessionTtl | quote }}
+            {{- end }}
+            {{- if .Values.externalAuth.providers }}
+            - name: PODDY_EXTERNAL_AUTH_SECRET
+              value: {{ include "poddy.externalAuthTokenSecretName" . | quote }}
+            {{- with .Values.externalAuth.url }}
+            - name: PODDY_EXTERNAL_AUTH_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.externalAuth.redirectBase }}
+            - name: PODDY_EXTERNAL_AUTH_REDIRECT_BASE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.externalAuth.existingSecret }}
+            - name: PODDY_EXTERNAL_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalAuth.existingSecret }}
+                  key: {{ .Values.externalAuth.keyKey }}
+            {{- else if .Values.externalAuth.key }}
+            - name: PODDY_EXTERNAL_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.externalAuthConfigSecretName" . }}
+                  key: {{ .Values.externalAuth.keyKey }}
+            {{- end }}
+            {{- range $i, $provider := .Values.externalAuth.providers }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_ID
+              value: {{ $provider.id | quote }}
+            {{- with $provider.type }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_TYPE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.displayName }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_DISPLAY_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.displayIcon }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_DISPLAY_ICON
+              value: {{ . | quote }}
+            {{- end }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_CLIENT_ID
+              value: {{ $provider.clientId | quote }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if $provider.existingSecret }}{{ $provider.existingSecret }}{{ else if $.Values.externalAuth.existingSecret }}{{ $.Values.externalAuth.existingSecret }}{{ else }}{{ include "poddy.externalAuthConfigSecretName" $ }}{{ end }}
+                  key: {{ $provider.clientSecretKey | default (printf "provider-%s-client-secret" $provider.id) }}
+            {{- with $provider.authUrl }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_AUTH_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.tokenUrl }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_TOKEN_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.validateUrl }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_VALIDATE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.revokeUrl }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_REVOKE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.redirectUrl }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_REDIRECT_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.scopes }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_SCOPES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with $provider.regex }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_REGEX
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.username }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_USERNAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $provider.env }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_ENV
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if hasKey $provider "pkce" }}
+            - name: PODDY_EXTERNAL_AUTH_{{ $i }}_PKCE
+              value: {{ $provider.pkce | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.ssh.enabled }}
+            - name: PODDY_SSH_KEYS_FILE
+              value: /etc/poddy/authorized_keys
+            {{- if .Values.ssh.existingHostKeySecret }}
+            - name: PODDY_SSH_HOST_KEY
+              value: /etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
+            {{- else }}
+            - name: PODDY_SSH_HOST_KEY
+              value: /tmp/poddy/ssh_host_ed25519_key
+            {{- end }}
+            - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
+              value: {{ .Values.ssh.allowUnmappedKeys | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            {{- if .Values.ssh.enabled }}
+            - name: ssh
+              containerPort: 2222
+              protocol: TCP
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.ssh.enabled }}
+            - name: ssh-keys
+              mountPath: /etc/poddy/authorized_keys
+              subPath: {{ .Values.ssh.keysSecretKey }}
+              readOnly: true
+            {{- if .Values.ssh.existingHostKeySecret }}
+            - name: ssh-host-key
+              mountPath: /etc/poddy/ssh
+              readOnly: true
+            {{- else }}
+            - name: ssh-host-key
+              mountPath: /tmp/poddy
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- if .Values.ssh.enabled }}
+        - name: ssh-keys
+          {{- if .Values.ssh.existingKeysSecret }}
+          secret:
+            secretName: {{ .Values.ssh.existingKeysSecret }}
+          {{- else }}
+          configMap:
+            name: {{ include "poddy.sshKeysName" . }}
+          {{- end }}
+        {{- if .Values.ssh.existingHostKeySecret }}
+        - name: ssh-host-key
+          secret:
+            secretName: {{ .Values.ssh.existingHostKeySecret }}
+            defaultMode: 0444
+        {{- else }}
+        - name: ssh-host-key
+          emptyDir: {}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

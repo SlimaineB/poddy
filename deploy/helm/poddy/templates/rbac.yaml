@@ -1,0 +1,53 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "poddy.fullname" . }}
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+rules:
+  # Workspace lifecycle: list, get, create and delete workspace pods.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # Browser terminal: exec into the workspace container.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  # SSH bastion and VS Code forwarding: open a port-forward to the pod.
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["get", "create"]
+  # Persistent workspace volumes.
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "delete"]
+  # RBAC document: global admins, teams and template assignments.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # External auth token store and workspace user directory.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  {{- with .Values.rbac.extraRules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "poddy.fullname" . }}
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "poddy.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "poddy.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

@@ -1,0 +1,245 @@
+# Quick-start single-namespace deployment.
+# For production, multi-team deployments and easy customization, use the Helm
+# chart in deploy/helm/poddy instead.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: poddy
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: poddy
+  namespace: poddy
+---
+# The portal only needs access to the workspace namespace. It can manage pods
+# and PVCs, exec into workspace containers for the browser terminal, and open
+# port-forwards for SSH/VS Code. It does not need cluster-wide permissions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: poddy
+  namespace: poddy
+rules:
+  # Workspace lifecycle.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # Browser terminal.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  # SSH bastion and VS Code forwarding.
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["get", "create"]
+  # Persistent workspace volumes.
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "delete"]
+  # RBAC document: global admins, teams and template assignments.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # External auth token store and OIDC user directory.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: poddy
+  namespace: poddy
+subjects:
+  - kind: ServiceAccount
+    name: poddy
+    namespace: poddy
+roleRef:
+  kind: Role
+  name: poddy
+  apiGroup: rbac.authorization.k8s.io
+---
+# Public keys allowed through the SSH bastion. Add one key per line.
+# The comment binds a key to an owner ("alice@example.com" or
+# "user:alice@example.com"; use "user:<identity>" for non-email identities).
+# Use "admin" or "*" for break-glass access.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: poddy-ssh-keys
+  namespace: poddy
+data:
+  authorized_keys: |
+    # Default token auth uses the owner identity "token":
+    # ssh-ed25519 AAAA... user:token
+    # Break-glass key for every workspace:
+    # ssh-ed25519 AAAA... admin
+---
+# RBAC seed. The portal updates this ConfigMap at runtime when admins manage
+# teams or template access from the UI.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: poddy-rbac
+  namespace: poddy
+data:
+  rbac.yaml: |
+    admins: []
+    teams: {}
+    templates: {}
+---
+# Quick-start shared token. Replace it before exposing the portal.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: poddy-token
+  namespace: poddy
+type: Opaque
+stringData:
+  token: change-me
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: poddy
+  namespace: poddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: poddy-portal
+  template:
+    metadata:
+      labels:
+        # Keep this label distinct from app.kubernetes.io/name=poddy, which
+        # identifies workspace pods.
+        app.kubernetes.io/name: poddy-portal
+    spec:
+      serviceAccountName: poddy
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: portal
+          image: poddy:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - -addr=:8080
+            - -namespace=poddy
+            - -rbac-configmap=poddy-rbac
+            - -state-configmap=poddy-state
+            - -template=base
+            - -editor=
+            - -ssh-addr=:2222
+            - -ssh-public-host=poddy.example.com
+            - -ssh-public-port=2222
+          env:
+            - name: PODDY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: poddy-token
+                  key: token
+            # OIDC (optional): enable SSO instead of / in addition to the token.
+            # - name: PODDY_OIDC_ISSUER
+            #   value: https://keycloak.example.com/realms/dev
+            # - name: PODDY_OIDC_CLIENT_ID
+            #   value: poddy
+            # - name: PODDY_OIDC_CLIENT_SECRET
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: poddy-oidc
+            #       key: oidc-client-secret
+            # - name: PODDY_OIDC_REDIRECT_URL
+            #   value: https://poddy.example.com/oidc/callback
+            # - name: PODDY_OIDC_SESSION_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: poddy-oidc
+            #       key: oidc-session-key
+            # External auth (optional): create a Secret named
+            # poddy-external-auth-config with external-auth-key and
+            # provider-<id>-client-secret, then uncomment these variables.
+            # The portal stores per-user tokens in poddy-external-auth.
+            # - name: PODDY_EXTERNAL_AUTH_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: poddy-external-auth-config
+            #       key: external-auth-key
+            # - name: PODDY_EXTERNAL_AUTH_URL
+            #   value: https://poddy.example.com
+            # - name: PODDY_EXTERNAL_AUTH_0_ID
+            #   value: github
+            # - name: PODDY_EXTERNAL_AUTH_0_TYPE
+            #   value: github
+            # - name: PODDY_EXTERNAL_AUTH_0_CLIENT_ID
+            #   value: Iv1.abc123
+            # - name: PODDY_EXTERNAL_AUTH_0_CLIENT_SECRET
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: poddy-external-auth-config
+            #       key: provider-github-client-secret
+            - name: PODDY_SSH_KEYS_FILE
+              value: /etc/poddy/authorized_keys
+            - name: PODDY_SSH_HOST_KEY
+              value: /tmp/poddy/ssh_host_ed25519_key
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: ssh
+              containerPort: 2222
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: ssh-keys
+              mountPath: /etc/poddy/authorized_keys
+              subPath: authorized_keys
+              readOnly: true
+            - name: ssh-host-key
+              mountPath: /tmp/poddy
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: ssh-keys
+          configMap:
+            name: poddy-ssh-keys
+        # Ephemeral SSH host key. For production, mount a Secret instead so the
+        # host key survives restarts and can be shared by multiple replicas.
+        - name: ssh-host-key
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: poddy
+  namespace: poddy
+spec:
+  selector:
+    app.kubernetes.io/name: poddy-portal
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: ssh
+      port: 2222
+      targetPort: ssh

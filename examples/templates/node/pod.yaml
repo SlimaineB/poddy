@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    poddy.io/template: node
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    fsGroup: 1000
+  containers:
+    - name: workspace
+      image: {{ .Image | quote }}
+      imagePullPolicy: IfNotPresent
+      command: [{{ .SSHCommand | quote }}]
+      env:
+        - name: SSH_AUTHORIZED_KEY
+          value: {{ .AuthorizedKeys | quote }}
+        - name: NODE_ENV
+          value: development
+      workingDir: {{ .WorkspacePath | quote }}
+      ports:
+        - name: ssh
+          containerPort: 22
+      resources:
+        requests:
+          cpu: {{ .Parameters.cpu | quote }}
+          memory: {{ .Parameters.memory | quote }}
+      volumeMounts:
+        - name: workspace
+          mountPath: {{ .WorkspacePath | quote }}
+  volumes:
+    - name: workspace
+      {{- if .Storage }}
+      persistentVolumeClaim:
+        claimName: {{ .PVCName | quote }}
+      {{- else }}
+      emptyDir: {}
+      {{- end }}

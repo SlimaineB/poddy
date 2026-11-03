@@ -1,0 +1,41 @@
+poddy is deployed.
+
+Web UI:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "poddy.fullname" . }} 8080:{{ .Values.http.service.port }}
+  Then open http://127.0.0.1:8080
+{{- end }}
+
+{{- if or .Values.auth.existingSecret .Values.auth.token }}
+Access token:
+{{- if .Values.auth.existingSecret }}
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.auth.existingSecret }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "poddy.tokenSecretName" . }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d
+{{- end }}
+{{- end }}
+{{- if .Values.oidc.enabled }}
+SSO issuer: {{ .Values.oidc.issuer }}
+{{- if not .Values.oidc.redirectUrl }}
+Make sure the provider callback is set to https://<your-host>/oidc/callback
+{{- end }}
+{{- end }}
+
+Workspace namespace: {{ include "poddy.workspaceNamespace" . }}
+Workspace lifecycle: stop/start/restart from the UI (stopped specs are kept in the {{ include "poddy.stateConfigMapName" . }} ConfigMap).
+
+{{- if .Values.ssh.enabled }}
+SSH endpoint: {{ .Values.ssh.publicHost }}:{{ .Values.ssh.publicPort }}
+Use the "SSH" button in the UI to copy the ProxyJump configuration.
+{{- if not .Values.ssh.existingHostKeySecret }}
+
+WARNING: the SSH host key is ephemeral (stored in an emptyDir). Create a host
+key Secret and set ssh.existingHostKeySecret before scaling above one replica.
+{{- end }}
+{{- else }}
+SSH bastion is disabled.
+{{- end }}

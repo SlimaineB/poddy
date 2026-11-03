@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>poddy</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="icon-box" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="icon-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+    <symbol id="icon-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="icon-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="icon-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="icon-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+    <symbol id="icon-vscode" viewBox="0 0 24 24"><path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/></symbol>
+    <symbol id="icon-jetbrains" viewBox="0 0 24 24"><text x="12" y="16.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="currentColor" stroke="none">JB</text></symbol>
+    <symbol id="icon-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="icon-arrow-left" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="icon"><use href="#icon-box"></use></svg></span>
+        <span>poddy</span>
+      </a>
+      <div class="topbar-actions">
+        <span id="ssh-endpoint" class="pill" hidden></span>
+        <span id="user-chip" class="user-chip" hidden>
+          <span id="user-avatar" class="user-avatar"></span>
+          <span id="user-name" class="user-name"></span>
+          <span id="user-role" class="user-role" hidden></span>
+        </span>
+        <form id="logout-form" class="logout-form" method="post" action="/logout" hidden>
+          <button class="icon-button" type="submit" title="Sign out" aria-label="Sign out">
+            <svg class="icon"><use href="#icon-logout"></use></svg>
+          </button>
+        </form>
+        <button id="manage-workspaces" class="button ghost small active" type="button">Workspaces</button>
+        <button id="manage-connections" class="button ghost small" type="button" hidden>Connections</button>
+        <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
+        <button id="manage-teams" class="button ghost small" type="button" hidden>Teams</button>
+        <button id="manage-templates" class="button ghost small" type="button" hidden>Templates</button>
+        <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
+          <svg class="icon"><use href="#icon-refresh"></use></svg>
+        </button>
+        <button id="new-workspace" class="button primary" type="button">
+          <svg class="icon"><use href="#icon-plus"></use></svg>
+          New workspace
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="workspaces-view" class="page">
+    <section class="page-header">
+      <div>
+        <h1>Workspaces</h1>
+        <p>Development environments running on Kubernetes.</p>
+      </div>
+      <span id="count" class="count"></span>
+    </section>
+
+    <div class="workspace-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="workspace-search" type="search" placeholder="Search workspaces by name, template, owner, or status" autocomplete="off">
+      </div>
+      <div class="view-toggle" role="group" aria-label="Workspace view">
+        <button id="workspace-view-cards" class="button ghost small active" type="button" aria-pressed="true">Cards</button>
+        <button id="workspace-view-list" class="button ghost small" type="button" aria-pressed="false">List</button>
+      </div>
+    </div>
+
+    <section id="loading" class="loading">
+      <span class="spinner"></span>
+      <span>Loading workspaces</span>
+    </section>
+
+    <section id="empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-box"></use></svg></span>
+      <h2 id="empty-title">No workspaces yet</h2>
+      <p id="empty-text">Create your first development environment from a template.</p>
+      <button class="button primary" type="button" data-create>
+        <svg class="icon"><use href="#icon-plus"></use></svg>
+        New workspace
+      </button>
+    </section>
+
+    <section id="grid" class="grid" hidden></section>
+    <section id="workspace-list-wrap" class="workspace-list-wrap" hidden>
+      <table class="workspace-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Template</th>
+            <th>Owner</th>
+            <th>Created</th>
+            <th class="workspace-table-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="workspace-list"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <section id="templates-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="templates-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Templates</h1>
+        <p>Search templates and choose who can use each one.</p>
+      </div>
+      <span id="templates-count" class="count"></span>
+    </header>
+    <div class="search-box">
+      <svg class="icon"><use href="#icon-search"></use></svg>
+      <input id="templates-search" type="search" placeholder="Search templates by name, description, or image" autocomplete="off">
+    </div>
+    <div id="templates-page-list" class="template-page-list"></div>
+  </section>
+
+  <section id="template-detail-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="template-detail-back" class="button ghost small" type="button">← Templates</button>
+        <h1 id="template-detail-title">Template</h1>
+        <p id="template-detail-description"></p>
+      </div>
+    </header>
+    <form id="template-access-form" class="panel template-access-form">
+      <div class="field">
+        <label for="access-owners">Owners</label>
+        <div id="access-owners" class="entry-list"></div>
+        <p class="hint">Only global admins can edit this list.</p>
+      </div>
+      <div class="field">
+        <label for="access-users">Users</label>
+        <div id="access-users" class="entry-list"></div>
+        <p class="hint">Use <code>*</code> to allow every authenticated user.</p>
+      </div>
+      <div class="field">
+        <label>Teams</label>
+        <div id="access-teams" class="team-checks"></div>
+        <p class="hint">Members of the selected teams can use this template.</p>
+      </div>
+      <div class="form-actions">
+        <button id="access-save" class="button primary" type="submit">Save access</button>
+      </div>
+    </form>
+  </section>
+
+
+  <section id="users-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="users-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Users</h1>
+        <p>Known identities and groups, with their team memberships.</p>
+      </div>
+      <span id="users-count" class="count"></span>
+    </header>
+    <div class="search-box">
+      <svg class="icon"><use href="#icon-search"></use></svg>
+      <input id="users-search" type="search" placeholder="Search users or groups" autocomplete="off">
+    </div>
+    <div class="users-layout">
+      <section class="panel directory-panel">
+        <div class="panel-header"><h2>Users</h2></div>
+        <div id="users-list" class="user-list"></div>
+      </section>
+      <section class="panel directory-panel">
+        <div class="panel-header"><h2>Groups</h2></div>
+        <div id="groups-list" class="user-list"></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="teams-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="teams-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Teams</h1>
+        <p>Group users, then assign teams to templates.</p>
+      </div>
+      <div class="view-actions">
+        <span id="teams-count" class="count"></span>
+        <button id="team-new" class="button primary small" type="button">New team</button>
+      </div>
+    </header>
+    <div class="teams-layout">
+      <section class="panel directory-panel">
+        <div class="panel-header"><h2>All teams</h2></div>
+        <div id="teams-list" class="team-list"></div>
+      </section>
+      <form id="team-form" class="panel team-form">
+        <div class="panel-header"><h2 id="team-form-title">New team</h2></div>
+        <div class="field">
+          <label for="team-name">Team name</label>
+          <input id="team-name" name="name" placeholder="backend" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" autocomplete="off" spellcheck="false">
+          <p class="hint">Letters, numbers, dots, dashes, and underscores.</p>
+        </div>
+        <div class="field">
+          <label for="team-members">Members</label>
+          <div id="team-members" class="entry-list"></div>
+          <p class="hint">Add known users from the list or type an email, <code>user:</code> or <code>group:</code> entry.</p>
+        </div>
+        <div class="form-actions">
+          <button id="team-save" class="button primary" type="submit">Save team</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="connections-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="connections-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Connections</h1>
+        <p>Connect external accounts so workspaces can use them automatically.</p>
+      </div>
+      <span id="connections-count" class="count"></span>
+    </header>
+    <div id="connections-list" class="connections-list"></div>
+  </section>
+
+  <dialog id="create-dialog" class="dialog">
+    <form id="create-form">
+      <header class="dialog-header">
+        <div>
+          <h2>New workspace</h2>
+          <p>Launch a development environment from a template.</p>
+        </div>
+        <button class="icon-button" type="button" data-close aria-label="Close">
+          <svg class="icon"><use href="#icon-x"></use></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <div class="field">
+          <label for="workspace-name">Name</label>
+          <input id="workspace-name" name="name" placeholder="my-workspace" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" autocomplete="off" spellcheck="false">
+          <p class="hint">Lowercase letters, numbers, and dashes.</p>
+        </div>
+        <div class="field">
+          <label for="template-select">Template</label>
+          <select id="template-select" name="template"></select>
+          <p id="template-description" class="hint"></p>
+        </div>
+        <div id="external-auth-notice" class="external-auth-notice" hidden></div>
+        <div class="field">
+          <label>Resources</label>
+          <div id="params" class="params"></div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button ghost" type="button" data-close>Cancel</button>
+        <button id="create-submit" class="button primary" type="submit">Create workspace</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="ssh-dialog" class="dialog">
+    <header class="dialog-header">
+      <div>
+        <h2>Connect via SSH</h2>
+        <p>Add this config once, then use <strong>Open VS Code</strong> or the VS Code button on any workspace.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <div class="field">
+        <label>SSH config</label>
+        <pre class="code-block"><code id="ssh-config"></code></pre>
+      </div>
+      <p id="ssh-note" class="hint"></p>
+    </div>
+    <footer class="dialog-footer">
+      <button id="copy-ssh" class="button ghost" type="button">
+        <svg class="icon"><use href="#icon-copy"></use></svg>
+        Copy config
+      </button>
+      <button id="open-vscode" class="button primary" type="button">
+        <svg class="icon"><use href="#icon-external"></use></svg>
+        Open VS Code
+      </button>
+    </footer>
+  </dialog>
+
+
+  <dialog id="detail-dialog" class="dialog">
+    <header class="dialog-header">
+      <div>
+        <h2 id="detail-title">Workspace details</h2>
+        <p>Image and metadata for this workspace.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <dl id="detail-list" class="detail-list"></dl>
+    </div>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="dialog dialog-small">
+    <header class="dialog-header">
+      <div>
+        <h2>Delete workspace</h2>
+        <p id="confirm-text"></p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Cancel</button>
+      <button id="confirm-delete" class="button danger" type="button">Delete workspace</button>
+    </footer>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="/static/core.js"></script>
+  <script src="/static/workspaces.js"></script>
+  <script src="/static/templates.js"></script>
+  <script src="/static/teams.js"></script>
+  <script src="/static/users.js"></script>
+  <script src="/static/connections.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

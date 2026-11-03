@@ -1,0 +1,8 @@
+{{- if and .Values.createWorkspaceNamespace .Values.workspaceNamespace (ne .Values.workspaceNamespace .Release.Namespace) }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.workspaceNamespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+{{- end }}

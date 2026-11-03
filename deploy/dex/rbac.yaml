@@ -1,0 +1,27 @@
+# Demo RBAC seed. The portal writes runtime changes back to this ConfigMap.
+# Applying this file overwrites an existing poddy-rbac ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: poddy-rbac
+  namespace: poddy
+data:
+  rbac.yaml: |
+    admins:
+      - admin@example.com
+      - ops@example.com
+    teams:
+      backend:
+        members:
+          - alice@example.com
+          - bob@example.com
+      frontend:
+        members:
+          - carol@example.com
+    templates:
+      go:
+        owners:
+          - dev@example.com
+        users:
+          - dave@example.com
+        teams: []

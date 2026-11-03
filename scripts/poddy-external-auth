@@ -1,0 +1,40 @@
+#!/bin/sh
+# Access a refreshed external auth token inside a poddy workspace.
+# Usage: poddy-external-auth token <provider-id>
+set -eu
+
+if [ "${1:-}" != "token" ] || [ -z "${2:-}" ]; then
+  echo "usage: poddy-external-auth token <provider-id>" >&2
+  exit 2
+fi
+
+portal="${PODDY_PORTAL_URL:-}"
+workspace="${PODDY_WORKSPACE_NAME:-}"
+token="${PODDY_WORKSPACE_TOKEN:-}"
+provider="$2"
+
+case "$provider" in
+  *[!A-Za-z0-9._-]*)
+    echo "poddy-external-auth: invalid provider id: $provider" >&2
+    exit 2
+    ;;
+esac
+
+if [ -z "$portal" ] || [ -z "$workspace" ] || [ -z "$token" ]; then
+  echo "poddy-external-auth: missing PODDY_PORTAL_URL, PODDY_WORKSPACE_NAME or PODDY_WORKSPACE_TOKEN" >&2
+  exit 1
+fi
+
+response=$(curl -fsS \
+  -H "X-Poddy-Workspace-Token: $token" \
+  "${portal%/}/api/workspaces/${workspace}/external-auth/${provider}/token")
+
+access_token=$(printf '%s\n' "$response" |
+  sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\([^"\\]*\)".*/\1/p')
+
+if [ -z "$access_token" ]; then
+  echo "poddy-external-auth: portal response has no accessToken" >&2
+  exit 1
+fi
+
+printf '%s\n' "$access_token"

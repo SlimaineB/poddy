@@ -1,0 +1,57 @@
+nameOverride: ""
+fullnameOverride: ""
+
+# One ConfigMap is created per template version. The map key is the template
+# name and must match name in template.yaml. The portal discovers these
+# ConfigMaps through the poddy.io/template=true label, so they can be applied at
+# any time.
+#
+# Versioned template (multiple versions kept for rollback):
+# templates:
+#   node:
+#     active: "2.0.0"
+#     versions:
+#       "1.0.0":
+#         template: |
+#           name: node
+#           displayName: Node.js
+#           image: ghcr.io/your-org/poddy-workspace-node:1
+#           parameters:
+#             - name: cpu
+#               default: "1"
+#         pod: |
+#           apiVersion: v1
+#           kind: Pod
+#           spec:
+#             containers:
+#               - name: workspace
+#                 image: {{ .Image | quote }}
+#                 command: [{{ .SSHCommand | quote }}]
+#                 env:
+#                   - name: SSH_AUTHORIZED_KEY
+#                     value: {{ .AuthorizedKeys | quote }}
+#                 # ...
+#       "2.0.0":
+#         template: |
+#           name: node
+#           displayName: Node.js
+#           image: ghcr.io/your-org/poddy-workspace-node:2
+#         pod: |
+#           apiVersion: v1
+#           kind: Pod
+#           spec:
+#             containers:
+#               - name: workspace
+#                 image: {{ .Image | quote }}
+#                 command: [{{ .SSHCommand | quote }}]
+#
+# Unversioned template (backward compatible, one ConfigMap):
+# templates:
+#   node:
+#     template: |
+#       name: node
+#       image: ghcr.io/your-org/poddy-workspace-node:latest
+#     pod: |
+#       apiVersion: v1
+#       kind: Pod
+templates: {}

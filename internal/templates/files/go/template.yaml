@@ -1,0 +1,17 @@
+name: go
+displayName: Go
+description: Go 1.25 workspace with SSH and a larger persistent volume.
+image: poddy/workspace:latest
+parameters:
+  - name: cpu
+    description: CPU request
+    default: "1"
+  - name: memory
+    description: Memory request
+    default: 2Gi
+  - name: storage
+    description: Persistent volume size (empty for ephemeral storage)
+    default: 10Gi
+  - name: storageClass
+    description: StorageClass name (empty for the cluster default)
+    default: ""

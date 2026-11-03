@@ -1,0 +1,30 @@
+{{- $root := . -}}
+{{- range $name, $tpl := .Values.templates }}
+{{- $versions := $tpl.versions -}}
+{{- if $versions }}
+  {{- $active := $tpl.active | default "" | toString -}}
+  {{- if not $active }}
+    {{- fail (printf "templates.%s.active is required when templates.%s.versions is set" $name $name) -}}
+  {{- end -}}
+  {{- if not (hasKey $versions $active) }}
+    {{- fail (printf "templates.%s.active %q is not present in templates.%s.versions" $name $active $name) -}}
+  {{- end -}}
+  {{- range $version, $versionTpl := $versions }}
+    {{- if not $versionTpl.template }}
+      {{- fail (printf "templates.%s.versions.%s.template is required" $name $version) -}}
+    {{- end -}}
+    {{- if not $versionTpl.pod }}
+      {{- fail (printf "templates.%s.versions.%s.pod is required" $name $version) -}}
+    {{- end -}}
+    {{- include "poddy-templates.configmap" (dict "root" $root "name" $name "version" $version "active" (eq $version $active) "template" $versionTpl.template "pod" $versionTpl.pod) }}
+  {{- end }}
+{{- else }}
+  {{- if not $tpl.template }}
+    {{- fail (printf "templates.%s.template is required" $name) -}}
+  {{- end -}}
+  {{- if not $tpl.pod }}
+    {{- fail (printf "templates.%s.pod is required" $name) -}}
+  {{- end -}}
+  {{- include "poddy-templates.configmap" (dict "root" $root "name" $name "version" ($tpl.version | default "" | toString) "active" (eq ($tpl.active | default false | toString) "true") "template" $tpl.template "pod" $tpl.pod) }}
+{{- end }}
+{{- end }}

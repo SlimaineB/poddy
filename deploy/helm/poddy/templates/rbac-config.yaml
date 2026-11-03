@@ -1,0 +1,39 @@
+{{- if and .Values.rbac.create .Values.rbac.createConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "poddy.rbacConfigMapName" . }}
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+data:
+  rbac.yaml: |
+    admins:
+    {{- range .Values.rbac.admins }}
+      - {{ . | quote }}
+    {{- end }}
+    teams:
+    {{- range $name, $team := .Values.rbac.teams }}
+      {{ $name }}:
+        members:
+        {{- range $team.members }}
+          - {{ . | quote }}
+        {{- end }}
+    {{- end }}
+    templates:
+    {{- range $name, $access := .Values.rbac.templates }}
+      {{ $name }}:
+        owners:
+        {{- range $access.owners }}
+          - {{ . | quote }}
+        {{- end }}
+        users:
+        {{- range $access.users }}
+          - {{ . | quote }}
+        {{- end }}
+        teams:
+        {{- range $access.teams }}
+          - {{ . | quote }}
+        {{- end }}
+    {{- end }}
+{{- end }}

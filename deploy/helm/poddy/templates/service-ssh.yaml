@@ -1,0 +1,31 @@
+{{- if .Values.ssh.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}-ssh
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+  {{- with .Values.ssh.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.ssh.service.type }}
+  {{- with .Values.ssh.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with .Values.ssh.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
+  ports:
+    - name: ssh
+      port: {{ .Values.ssh.service.port }}
+      {{- with .Values.ssh.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+      targetPort: ssh
+      protocol: TCP
+  selector:
+    {{- include "poddy.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,81 @@
+# Local-only Dex instance for trying the poddy OIDC + RBAC flow.
+# Storage is in memory: all data is lost when the container stops.
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # Keep the demo short: no consent screen.
+  skipApprovalScreen: true
+
+staticClients:
+  - id: poddy
+    name: poddy
+    secret: poddy-secret
+    redirectURIs:
+      - http://127.0.0.1:8090/oidc/callback
+
+enablePasswordDB: true
+staticPasswords:
+  # admin@example.com / admin
+  - email: admin@example.com
+    hash: "$2a$10$RBpPsn8KzP/6uhNTwpv6gus..i.XfWcIGPBVAevVm/2hudgopagfe"
+    username: admin
+    userID: "1"
+    groups:
+      - admins
+  # dev@example.com / poddy
+  - email: dev@example.com
+    hash: "$2b$10$rH1sxs27TIKlMeahhen49u8S6uEHekvqn3teWj36qfPcJsy0.kK1q"
+    username: dev
+    userID: "2"
+    groups:
+      - backend
+      - go-users
+  # alice@example.com / alice
+  - email: alice@example.com
+    hash: "$2a$10$w7g/EnCwjrqc/a12/4bmvey5Xo60qJ4aUkNEFXT1IujhgLMHcpHTK"
+    username: alice
+    userID: "3"
+    groups:
+      - backend
+      - go-users
+  # ops@example.com / ops
+  - email: ops@example.com
+    hash: "$2a$10$rTym/jEvRLBx.OerWgkX8O3hwYPcn2J3rjkTaXa6XroO8ByU9MYIO"
+    username: ops
+    userID: "4"
+    groups:
+      - admins
+  # bob@example.com / bob
+  - email: bob@example.com
+    hash: "$2a$10$9qjPSqNbzr9t0IMCLwInb.4oqtKF.1GlPWBOv5nyBt.fAGrM8BwGW"
+    username: bob
+    userID: "5"
+    groups:
+      - backend
+      - go-users
+  # carol@example.com / carol
+  - email: carol@example.com
+    hash: "$2a$10$9J3ggArqVCKRcpV8BWQSKeQyL5YyLv7tvuSp6ajCq1GhOz.6goFqu"
+    username: carol
+    userID: "6"
+    groups:
+      - frontend
+  # dave@example.com / dave
+  - email: dave@example.com
+    hash: "$2a$10$Q1cTQglnj42fVSuzADuAdeM7BKqsCN6OE9PcmKEbC/sRaukysms46"
+    username: dave
+    userID: "7"
+    groups:
+      - go-users
+  # erin@example.com / erin
+  - email: erin@example.com
+    hash: "$2a$10$7ahB6rNCMOurEr4m6Iss7e1iBFEIZtgGxbQrrG3TSr9fInORzQG1G"
+    username: erin
+    userID: "8"
+

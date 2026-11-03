@@ -1,0 +1,245 @@
+# Number of portal replicas. The portal is stateless, but the SSH bastion must
+# share the same host key across replicas. Set ssh.existingHostKeySecret before
+# scaling above 1.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/your-org/poddy
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Namespace-scoped permissions for workspace pods, exec, port-forward and PVCs.
+# The Role is created in workspaceNamespace, not necessarily in the release
+# namespace.
+rbac:
+  create: true
+  # ConfigMap used for global admins, teams and template assignments.
+  # Defaults to "<fullname>-rbac".
+  configMapName: ""
+  # Seed the ConfigMap on install. The portal writes runtime changes to it, so
+  # either manage access only through the UI or set createConfigMap=false after
+  # the initial install to avoid helm upgrade overwriting assignments.
+  createConfigMap: true
+  admins: []
+  # teams:
+  #   backend:
+  #     members:
+  #       - alice@example.com
+  #       - group:backend
+  teams: {}
+  # templates:
+  #   go:
+  #     owners:
+  #       - dev@example.com
+  #     users:
+  #       - alice@example.com
+  #     teams:
+  #       - backend
+  templates: {}
+  extraRules: []
+
+# Namespace where workspace pods and PVCs are created. Defaults to the Helm
+# release namespace. Set this to a dedicated team namespace to isolate teams.
+workspaceNamespace: ""
+createWorkspaceNamespace: false
+
+# ConfigMap used to remember stopped workspace specs (stop/start). The portal
+# creates it on first use. Defaults to "<fullname>-state".
+workspaceState:
+  configMapName: ""
+
+
+# runtime changes to the ConfigMap, so manage them from the UI or seed them here.
+auth:
+  # Shared access token. Optional when oidc.enabled=true.
+  token: ""
+  # Use an existing Secret instead of creating one. The Secret must live in the
+  # release namespace and contain auth.secretKey.
+  existingSecret: ""
+  secretKey: token
+
+# OpenID Connect login. When enabled, users sign in through the provider and
+# the shared token (if set) remains available for API automation.
+oidc:
+  enabled: false
+  issuer: ""
+  clientId: ""
+  clientSecret: ""
+  # Use an existing Secret in the release namespace instead of putting secrets
+  # in values. It must contain oidc.clientIdKey, oidc.clientSecretKey and
+  # oidc.sessionKeyKey.
+  existingSecret: ""
+  clientIdKey: oidc-client-id
+  clientSecretKey: oidc-client-secret
+  sessionKeyKey: oidc-session-key
+  # Callback URL. Required behind an ingress unless X-Forwarded-Proto/Host are
+  # set; e.g. https://poddy.example.com/oidc/callback.
+  redirectUrl: ""
+  scopes: "openid,profile,email,groups"
+  # Restrict access to these groups/users. Empty allows any authenticated user.
+  allowedGroups: []
+  allowedUsers: []
+  usernameClaim: preferred_username
+  emailClaim: email
+  groupsClaim: groups
+  # Random key used to sign sessions. Set a stable value (or existingSecret)
+  # when running more than one replica.
+  sessionKey: ""
+  sessionTtl: 12h
+
+# External OAuth2 providers for Git and other workspace credentials. The
+# portal injects access tokens into matching workspace templates and refreshes
+# them server-side. Tokens are stored in a Secret, encrypted with key.
+externalAuth:
+  # Public portal URL reachable from workspace pods. When empty, the URL is
+  # captured when the workspace is created.
+  url: ""
+  # Public base URL for OAuth callbacks behind a proxy. When empty, it is
+  # derived from the request (honours X-Forwarded-Proto/Host).
+  redirectBase: ""
+  # Encrypts stored tokens and signs workspace tokens. Set a stable random
+  # value, or use existingSecret. Required for replicaCount > 1.
+  key: ""
+  # Existing Secret containing keyKey. Provider client secrets can use the same
+  # Secret with key "provider-<id>-client-secret" unless overridden per provider.
+  existingSecret: ""
+  keyKey: external-auth-key
+  # Secret where per-user tokens are stored. Defaults to "<fullname>-external-auth".
+  # The portal creates it on first use; it must not be the same Secret as the
+  # configuration Secret above.
+  tokenSecretName: ""
+  # Example:
+  # providers:
+  #   - id: github
+  #     type: github
+  #     displayName: GitHub
+  #     clientId: Iv1.abc123
+  #     clientSecret: ""          # prefer existingSecret
+  #     existingSecret: ""        # defaults to externalAuth.existingSecret
+  #     clientSecretKey: ""       # defaults to provider-<id>-client-secret
+  #     scopes: [repo, read:user, user:email]
+  providers: []
+
+ssh:
+  enabled: true
+  addr: ":2222"
+  # Hostname or IP users connect to. Required when ssh.enabled=true.
+  publicHost: ""
+  publicPort: 2222
+  # List of SSH public keys authorized to open workspaces through the bastion.
+  # The key comment binds a key to its owner: "alice@example.com" or
+  # "user:alice@example.com". For non-email identities use "user:<identity>"
+  # (for example "user:token"). Use "admin" or "*" for break-glass keys that
+  # may access every workspace. Unmapped keys are denied.
+  authorizedKeys: []
+  # Legacy escape hatch: allow keys without an owner comment to access every
+  # workspace. Keep false in production.
+  allowUnmappedKeys: false
+  # Use an existing Secret instead of creating a ConfigMap. The Secret must be
+  # in the release namespace and contain ssh.keysSecretKey.
+  existingKeysSecret: ""
+  keysSecretKey: authorized_keys
+  # Recommended for production. The Secret must contain a private host key at
+  # ssh.hostKeySecretKey. Required when replicaCount > 1.
+  existingHostKeySecret: ""
+  hostKeySecretKey: ssh_host_ed25519_key
+  service:
+    type: LoadBalancer
+    port: 2222
+    # Optional fixed NodePort (30000-32767). Useful when LoadBalancer is not
+    # available or when the node already uses 2222.
+    nodePort: 0
+    annotations: {}
+    loadBalancerIP: ""
+    externalTrafficPolicy: ""
+
+http:
+  service:
+    type: ClusterIP
+    port: 80
+    # Optional fixed NodePort (30000-32767); only for type NodePort/LoadBalancer.
+    nodePort: 0
+
+portal:
+  addr: ":8080"
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: poddy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Template used when the UI does not specify one. Must exist in the embedded
+# templates or in a template ConfigMap watched by the portal.
+defaultTemplate: base
+
+# Workspace templates are managed outside this chart: use the separate
+# poddy-templates chart, or apply labeled ConfigMaps with
+# poddy.io/template=true. The portal watches them and reloads without restart.
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  readiness:
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+extraEnv: []
+extraArgs: []
+extraVolumes: []
+extraVolumeMounts: []

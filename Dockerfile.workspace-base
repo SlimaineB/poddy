@@ -1,0 +1,20 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssh-server sudo git curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -m -s /bin/bash dev \
+ && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev \
+ && mkdir -p /run/sshd /home/dev/.ssh /workspace \
+ && chown -R dev:dev /home/dev /workspace \
+ && chmod 700 /home/dev/.ssh \
+ && printf 'PasswordAuthentication no\nPermitRootLogin no\nUsePAM no\n' >> /etc/ssh/sshd_config
+
+COPY scripts/poddy-ssh-start /usr/local/bin/poddy-ssh-start
+COPY scripts/poddy-git-askpass /usr/local/bin/poddy-git-askpass
+COPY scripts/poddy-external-auth /usr/local/bin/poddy-external-auth
+RUN chmod 0755 /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth
+
+WORKDIR /workspace
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D", "-e"]
