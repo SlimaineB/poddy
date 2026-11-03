@@ -1,5 +1,9 @@
 # Production deployment
 
+!!! tip "New to poddy?"
+    Start with [Getting started](getting-started.md) for the shortest local
+    test, then come back here for production.
+
 > For a local k3s test deployment with separate namespaces, see
 > [k3s-test.md](k3s-test.md). This page focuses on production.
 
@@ -11,14 +15,26 @@ The Helm charts in `deploy/helm/poddy` (portal) and `deploy/helm/poddy-templates
 - Kubernetes 1.28+
 - Helm 3.13+
 - Default StorageClass for workspace PVCs
-- Container registry for portal and workspace images
+- Container registry access for custom images (published GHCR images are available)
 - Ingress controller (nginx, traefik, etc.) for HTTPS
 - Optional: LoadBalancer for SSH (or use Ingress TCP)
 
-### 1. Build & push portal image
+### 1. Use the published image (or build your own)
+
+The repository publishes the portal image to GHCR on `main` and `v*` tags:
+
+```yaml
+image:
+  repository: ghcr.io/slimaineb/poddy
+  tag: "latest"   # or a v* release tag
+```
+
+If the GHCR package is private, create an image pull secret and reference it in
+the chart values. To build your own image instead:
+
 ```bash
-docker build -t ghcr.io/your-org/poddy:0.1.0 .
-docker push ghcr.io/your-org/poddy:0.1.0
+docker build -t ghcr.io/slimaineb/poddy:dev .
+docker push ghcr.io/slimaineb/poddy:dev
 ```
 
 ### 2. Prepare secrets
@@ -70,8 +86,8 @@ ssh:
 ### 3. Minimal values.yaml
 ```yaml
 image:
-  repository: ghcr.io/your-org/poddy
-  tag: "0.1.0"
+  repository: ghcr.io/slimaineb/poddy
+  tag: "latest"
 
 auth:
   existingSecret: poddy-auth
@@ -383,12 +399,16 @@ The chart applies:
 
 ## Workspace images
 
-The portal does not build workspace images. You must push them to a registry accessible by the cluster.
-- Base: `ghcr.io/your-org/poddy-workspace-base:1`
-- Go: `ghcr.io/your-org/poddy-workspace:1` (includes Go 1.25)
+The portal does not build workspace images. The publish workflow pushes the
+base and Go workspace images to GHCR:
+- Base: `ghcr.io/slimaineb/poddy-workspace-base:latest`
+- Go: `ghcr.io/slimaineb/poddy-workspace:latest` (includes Go 1.25)
 - Custom: build on `poddy-workspace-base` (see [templates.md](templates.md#building-custom-workspace-images)).
 
-Update `template.yaml` `image` fields accordingly. If using a private registry, add `imagePullSecrets` to the pod template.
+The built-in templates still use `poddy/workspace:latest` for local k3s
+imports. For a cluster, update the `template.yaml` `image` field to the GHCR
+image or your own registry. If using a private registry, add
+`imagePullSecrets` to the pod template.
 
 ## Quick-start manifest (no Helm)
 

@@ -1,0 +1,34 @@
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.md-typeset .hero {
+  margin: 1.5rem 0 2rem;
+}
+
+.md-typeset .hero > p:first-of-type {
+  color: var(--md-default-fg-color--light);
+  font-size: 1.05rem;
+  max-width: 48rem;
+}
+
+.md-typeset .hero .md-button {
+  margin-bottom: 0.4rem;
+  margin-right: 0.4rem;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: 0.7rem;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0.4rem 1.2rem rgb(0 0 0 / 12%);
+  transform: translateY(-2px);
+}
+
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}

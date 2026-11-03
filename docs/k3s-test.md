@@ -1,5 +1,10 @@
 # Clean k3s test deployment
 
+!!! tip "Want the shortest path?"
+    See [Getting started](getting-started.md) if you just want a workspace
+    running quickly. This page is the fuller local deployment with separate
+    namespaces.
+
 This guide installs a test deployment with the control plane and workspaces in
 **separate namespaces**. It uses the shared token for login (no OIDC), a stable
 SSH host key, and NodePort services so it works on a local k3s cluster without

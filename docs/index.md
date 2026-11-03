@@ -1,15 +1,89 @@
 # poddy
 
-Kubernetes development workspaces with a browser UI, an SSH bastion, and VS Code Remote-SSH.
+<div class="hero" markdown>
 
-## Documentation
+**Kubernetes development workspaces without the Kubernetes homework.**
+Create a workspace, open a browser terminal, or connect VS Code over SSH. Users
+never need a kubeconfig.
 
-- [Deployment](deploy.md) — production Helm deployment, secrets, ingress, and HA.
-- [Clean k3s test deployment](k3s-test.md) — end-to-end local k3s setup.
-- [OIDC](oidc.md) — SSO login and the local Dex demo.
-- [RBAC and ownership](rbac.md) — admins, teams, template access, and SSH ownership.
-- [Workspace templates](templates.md) — template schema, pod contract, images, and versioning.
-- [External authentication](external-auth.md) — GitHub/GitLab tokens inside workspaces.
-- [Workspace links](links.md) — extra actions on workspace cards.
+[Get started locally](getting-started.md){ .md-button .md-button--primary }
+[Deploy with Helm](deploy.md){ .md-button }
+[View on GitHub](https://github.com/SlimaineB/poddy){ .md-button }
 
-The portal UI itself is embedded in the Go binary and served by the poddy deployment. This Pages site only documents it.
+</div>
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch:{ .lg .middle } **Getting started**
+
+    ---
+
+    Go from zero to a running workspace on local k3s.
+
+    [:octicons-arrow-right-24: Quick start](getting-started.md)
+
+-   :material-kubernetes:{ .lg .middle } **Deploy**
+
+    ---
+
+    Production Helm charts, TLS, SSH, scaling, and secrets.
+
+    [:octicons-arrow-right-24: Kubernetes deployment](deploy.md)
+
+-   :material-puzzle:{ .lg .middle } **Workspace templates**
+
+    ---
+
+    Define images, parameters, and actions in plain YAML.
+
+    [:octicons-arrow-right-24: Template reference](templates.md)
+
+-   :material-shield-lock:{ .lg .middle } **Access control**
+
+    ---
+
+    OIDC, shared tokens, teams, and owner-scoped SSH.
+
+    [:octicons-arrow-right-24: OIDC and RBAC](oidc.md)
+
+</div>
+
+## What you get
+
+- **One entry point.** A browser portal to create, stop, start, restart, and
+  delete workspaces.
+- **Three ways to work.** Browser terminal, SSH through a bastion, or VS Code
+  Remote-SSH.
+- **Real dev containers.** Persistent volumes, custom images, and templates that
+  declare CPU, memory, storage, and links.
+- **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
+  per-template access.
+- **No database.** Kubernetes ConfigMaps and Secrets are the source of truth.
+- **No cluster credentials for users.** The portal talks to the Kubernetes API;
+  users only need a browser or an SSH key.
+
+## How it works
+
+```text
+Browser ─────────► Portal (:8080) ─────────► Kubernetes API
+   │                  ▲
+   │           SSH bastion (:2222)
+   │                  ▲
+VS Code / ssh ◄── ProxyJump ◄── Port-forward ◄── Workspace pod :22
+```
+
+The portal is stateless and can be scaled behind a LoadBalancer. The SSH
+bastion shares a host key across replicas. See
+[Architecture](architecture.md) for the full request flow and
+[Data model](data-model.md) for the Kubernetes objects involved.
+
+## Common paths
+
+| I want to… | Start here |
+|------------|------------|
+| Try it locally in a few minutes | [Getting started](getting-started.md) |
+| Run it in production | [Kubernetes deployment](deploy.md) |
+| Add my own workspace image | [Workspace templates](templates.md) |
+| Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |
+| Configure SSO | [OIDC / SSO](oidc.md) |
+| Understand who can see what | [RBAC and ownership](rbac.md) |
