@@ -219,7 +219,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
 - **Pages** builds the Markdown docs with Jekyll and deploys them to GitHub Pages.
 
-All documentation is plain Markdown under `docs/`. Start at [`docs/index.md`](docs/index.md). Set the repository's Pages source to **GitHub Actions**. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
+All documentation is plain Markdown under `docs/`. Start at [`docs/index.md`](docs/index.md). Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 
 ## License
 
