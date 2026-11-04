@@ -4,12 +4,29 @@ Workspace templates for the poddy portal, managed as a separate Helm release. Ea
 
 ## Install
 
-Install this chart in the same namespace the portal uses for templates (`workspaceNamespace`, usually the portal release namespace):
+The chart is published as an OCI artifact in GHCR. Install it in the same
+namespace the portal uses for templates (`workspaceNamespace`, usually the
+portal release namespace):
+
+```bash
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  -n poddy-system --version 0.1.0 -f templates-values.yaml
+```
+
+If the GHCR package is private, authenticate first:
+
+```bash
+helm registry login ghcr.io
+```
+
+Or install from a source checkout:
 
 ```bash
 helm upgrade --install poddy-templates deploy/helm/poddy-templates \
   -n poddy-system -f templates-values.yaml
 ```
+
+Replace `0.1.0` with the published chart version when a new release is cut.
 
 The portal discovers ConfigMaps with:
 

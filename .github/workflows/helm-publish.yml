@@ -1,0 +1,81 @@
+name: Publish Helm charts
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "deploy/helm/**"
+      - ".github/workflows/helm-publish.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: helm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish charts to GHCR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.4
+
+      - name: Set lowercase chart namespace
+        run: echo "CHART_NAMESPACE=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Resolve chart version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(helm show chart deploy/helm/poddy | awk '$1 == "version:" { print $2; exit }')"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "could not resolve chart version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Lint charts
+        run: |
+          helm lint deploy/helm/poddy \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set ssh.publicHost=localhost \
+            --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid'
+          helm lint deploy/helm/poddy-templates
+
+      - name: Package charts
+        run: |
+          mkdir -p .helm-packages
+          helm package deploy/helm/poddy \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --destination .helm-packages
+          helm package deploy/helm/poddy-templates \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --destination .helm-packages
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Push charts
+        run: |
+          for chart in poddy poddy-templates; do
+            helm push ".helm-packages/${chart}-${{ steps.version.outputs.version }}.tgz" \
+              "oci://ghcr.io/${CHART_NAMESPACE}/charts"
+          done

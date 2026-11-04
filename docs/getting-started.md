@@ -24,11 +24,11 @@ The commands below use your current kubeconfig context. Check it first:
 kubectl config current-context
 ```
 
-Clone the repository so Helm can use the chart:
+The portal chart is published as an OCI artifact in GHCR, so no repository
+checkout is required. If the package is private, authenticate first:
 
 ```bash
-git clone https://github.com/SlimaineB/poddy.git
-cd poddy
+helm registry login ghcr.io
 ```
 
 ## 1. Create the namespace and secrets
@@ -61,7 +61,8 @@ GHCR. This example exposes the web UI and SSH through `kubectl port-forward`, so
 it works without a LoadBalancer or ingress:
 
 ```bash
-helm upgrade --install poddy ./deploy/helm/poddy \
+helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
+  --version 0.1.0 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -82,9 +83,10 @@ kubectl -n poddy-system rollout status deploy/poddy
 kubectl -n poddy-system rollout status deploy/poddy-bastion
 ```
 
-If the GHCR packages are private, make them public for this quick start. The
-chart's `imagePullSecrets` only covers the portal and bastion; workspace
-templates need their own `imagePullSecrets` in the pod spec.
+If the GHCR packages are private, make the image and chart packages public or
+authenticate with `helm registry login ghcr.io`. The chart's `imagePullSecrets`
+only covers the portal and bastion; workspace templates need their own
+`imagePullSecrets` in the pod spec.
 
 ## 3. Start the local port-forwards
 

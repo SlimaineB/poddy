@@ -9,7 +9,7 @@
 
 ## Helm chart
 
-The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as separate Deployments. The `deploy/helm/poddy-templates` chart installs workspace templates as a separate release; templates hot-reload without restarting the portal.
+The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as separate Deployments. The `deploy/helm/poddy-templates` chart installs workspace templates as a separate release; templates hot-reload without restarting the portal. Both charts are published as OCI artifacts at `oci://ghcr.io/slimaineb/charts/poddy` and `oci://ghcr.io/slimaineb/charts/poddy-templates`.
 
 ### Prerequisites
 - Kubernetes 1.28+
@@ -151,12 +151,14 @@ ingress:
 
 ### 4. Install
 ```bash
-helm upgrade --install poddy deploy/helm/poddy \
-  -n poddy-system --create-namespace -f values.yaml
+helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
+  -n poddy-system --create-namespace --version 0.1.0 -f values.yaml
 
-helm upgrade --install poddy-templates deploy/helm/poddy-templates \
-  -n poddy-workspaces -f templates-values.yaml
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  -n poddy-workspaces --version 0.1.0 -f templates-values.yaml
 ```
+If the GHCR chart package is private, run `helm registry login ghcr.io` first. From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.0` with the published chart version when a new release is cut.
+
 The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#pushing-templates-to-kubernetes).
 
 ### 5. Access
@@ -187,7 +189,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and usage reporting. PostgreSQL is a mirror, not a read path; it does not remove the ConfigMap size limit by itself.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and usage reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace or RBAC decisions; it does not remove the ConfigMap size limit by itself.
 
 ### Replicas and namespaces
 
@@ -542,10 +544,19 @@ helm test poddy -n poddy-system
 
 The test pod calls `/healthz` through the HTTP Service.
 
+## Chart publishing
+
+The `Publish Helm charts` workflow pushes both charts to
+`oci://ghcr.io/<owner>/charts` when chart files change on `main` or a `v*` tag
+is pushed. On branches the chart version comes from `Chart.yaml`; on tags the
+tag name without the leading `v` is used. Make the GHCR chart packages public
+if unauthenticated users should install them.
+
 ## Upgrading
 
 ```bash
-helm upgrade poddy deploy/helm/poddy -n poddy-system -f values.yaml
+helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
+  -n poddy-system --version 0.1.0 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.

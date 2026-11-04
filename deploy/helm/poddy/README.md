@@ -6,12 +6,22 @@ image.
 
 ## Install
 
+The charts are published as OCI artifacts in GHCR. Install the portal chart
+directly from the registry:
+
 ```bash
-helm repo add poddy https://your-helm-repo  # or use local path
-helm upgrade --install poddy poddy/poddy -n poddy-system --create-namespace -f values.yaml
+helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
+  -n poddy-system --create-namespace --version 0.1.0 -f values.yaml
 ```
 
-Or from source:
+If the GHCR package is private, authenticate first:
+
+```bash
+helm registry login ghcr.io
+```
+
+Or install from a source checkout:
+
 ```bash
 helm upgrade --install poddy deploy/helm/poddy -n poddy-system --create-namespace -f values.yaml
 ```
@@ -19,10 +29,20 @@ helm upgrade --install poddy deploy/helm/poddy -n poddy-system --create-namespac
 Workspace templates are a separate release:
 
 ```bash
-helm upgrade --install poddy-templates deploy/helm/poddy-templates -n poddy-system -f templates-values.yaml
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  -n poddy-system --version 0.1.0 -f templates-values.yaml
 ```
 
+Replace `0.1.0` with the published chart version when a new release is cut.
+
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
+
+## Publishing
+
+The `Publish Helm charts` workflow packages and pushes both charts to
+`oci://ghcr.io/<owner>/charts` when chart files change on `main` or when a `v*`
+tag is pushed. On branches the version comes from `Chart.yaml`; on tags the tag
+name (without the leading `v`) is used.
 
 ## Required configuration
 
@@ -335,7 +355,8 @@ The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` 
 ## Upgrading
 
 ```bash
-helm upgrade poddy deploy/helm/poddy -n poddy-system -f values.yaml
+helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
+  -n poddy-system --version 0.1.0 -f values.yaml
 ```
 
 ## Uninstalling

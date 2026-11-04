@@ -61,8 +61,12 @@ kubectl -n poddy-system create secret generic poddy-host-key \
 ```
 
 ### 2. Install poddy
+The portal chart is published to GHCR as an OCI artifact. If the package is
+private, run `helm registry login ghcr.io` first.
+
 ```bash
-helm upgrade --install poddy ./deploy/helm/poddy \
+helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
+  --version 0.1.0 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -130,7 +134,7 @@ The demo ships a default user set: `admin`/`ops` (global admins), `dev` (owner o
 
 Building the portal and workspace images is only needed for contributors. See
 [docs/development.md](docs/development.md) for Go, Docker, and local image
-instructions. The publish workflow builds and pushes the GHCR images; manual
+instructions. The publish workflows build and push the GHCR images and Helm charts; manual
 `docker push` is not part of the setup flow.
 
 ## Production deployment
