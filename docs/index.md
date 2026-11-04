@@ -46,6 +46,14 @@ never need a kubeconfig.
 
     [:octicons-arrow-right-24: OIDC and RBAC](oidc.md)
 
+-   :material-sitemap:{ .lg .middle } **Architecture**
+
+    ---
+
+    Request flows, components, and why Kubernetes stays the source of truth.
+
+    [:octicons-arrow-right-24: Architecture](architecture.md)
+
 </div>
 
 ## What you get
@@ -62,7 +70,8 @@ never need a kubeconfig.
   per-template access.
 - **No database required.** Kubernetes ConfigMaps and Secrets are the source of
   truth. An optional PostgreSQL mirror adds metadata durability, an audit log,
-  and disaster-recovery snapshots without becoming a read path.
+  and disaster-recovery snapshots without becoming the source of truth for
+  workspace or RBAC decisions.
 - **No cluster credentials for users.** The portal talks to the Kubernetes API;
   users only need a browser or an SSH key.
 
@@ -95,3 +104,5 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 | Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |
 | Configure SSO | [OIDC / SSO](oidc.md) |
 | Understand who can see what | [RBAC and ownership](rbac.md) |
+| Understand the request flow and components | [Architecture](architecture.md) |
+| Inspect the Kubernetes and PostgreSQL objects | [Data model](data-model.md) |

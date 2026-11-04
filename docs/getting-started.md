@@ -76,6 +76,10 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set createWorkspaceNamespace=true
 ```
 
+`--version 0.1.0` pins the published chart. Omit it to use the latest chart
+version, or run `helm show chart oci://ghcr.io/slimaineb/charts/poddy` to see
+what is available.
+
 Wait for the portal and bastion:
 
 ```bash

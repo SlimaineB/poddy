@@ -16,7 +16,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap.
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, and security context.
-- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used as a read path.
+- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace or RBAC decisions; only the admin audit screen reads it.
 
 ## Architecture
 
@@ -35,8 +35,8 @@ the portal for HTTP/API load and the bastion for SSH connections. In local mode,
 
 ## Quick start (Helm + published images)
 
-No Go or Docker build is required. The portal, bastion, and built-in workspace
-images are published to GHCR.
+No Go or Docker build is required. The portal, bastion, Helm charts, and built-in
+workspace images are published to GHCR.
 
 ### Prerequisites
 - Kubernetes or k3s (running)
