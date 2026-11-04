@@ -30,11 +30,13 @@ Workspace lifecycle: stop/start/restart from the UI (stopped specs are kept in t
 
 {{- if .Values.ssh.enabled }}
 SSH endpoint: {{ .Values.ssh.publicHost }}:{{ .Values.ssh.publicPort }}
+SSH bastion Deployment: {{ include "poddy.fullname" . }}-bastion
 Use the "SSH" button in the UI to copy the ProxyJump configuration.
 {{- if not .Values.ssh.existingHostKeySecret }}
 
 WARNING: the SSH host key is ephemeral (stored in an emptyDir). Create a host
-key Secret and set ssh.existingHostKeySecret before scaling above one replica.
+key Secret and set ssh.existingHostKeySecret before scaling
+bastion.replicaCount above one.
 {{- end }}
 {{- else }}
 SSH bastion is disabled.

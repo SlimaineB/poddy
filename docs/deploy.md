@@ -9,7 +9,7 @@
 
 ## Helm chart
 
-The Helm charts in `deploy/helm/poddy` (portal) and `deploy/helm/poddy-templates` (workspace templates) are the recommended way to run poddy in a cluster. Templates are a separate release and hot-reload without restarting the portal.
+The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as separate Deployments. The `deploy/helm/poddy-templates` chart installs workspace templates as a separate release; templates hot-reload without restarting the portal.
 
 ### Prerequisites
 - Kubernetes 1.28+
@@ -21,7 +21,7 @@ The Helm charts in `deploy/helm/poddy` (portal) and `deploy/helm/poddy-templates
 
 ### 1. Use the published image (or build your own)
 
-The repository publishes the portal image to GHCR on `main` and `v*` tags:
+The repository publishes the portal/bastion image to GHCR on `main` and `v*` tags:
 
 ```yaml
 image:
@@ -46,7 +46,7 @@ kubectl create secret generic poddy-auth \
   -n poddy-system
 ```
 
-**SSH host key** (required for `replicaCount > 1`, recommended always):
+**SSH host key** (required for `bastion.replicaCount > 1`, recommended always):
 ```bash
 ssh-keygen -t ed25519 -N '' -f poddy_host_ed25519
 kubectl create secret generic poddy-host-key \
@@ -101,6 +101,10 @@ ssh:
   allowUnmappedKeys: false
   existingHostKeySecret: poddy-host-key
 
+bastion:
+  enabled: true
+  replicaCount: 1
+
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: true
 
@@ -136,6 +140,15 @@ The templates release creates labeled ConfigMaps in its namespace, so install it
   ```
 - **SSH**: Users connect to `ssh.dev.example.com:2222`. The UI's **SSH** button gives a ready-to-use config with `ProxyJump`.
 
+With SSH enabled, the release creates two Deployments:
+
+```bash
+kubectl -n poddy-system get deploy
+# NAME            READY   ...
+# poddy           1/1     portal
+# poddy-bastion   1/1     SSH bastion
+```
+
 ## Scaling & multi-team
 
 ### Capacity guidance
@@ -144,34 +157,45 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
 - **ConfigMap size**: stopped workspace specs and RBAC/users data live in ConfigMaps (1 MiB limit per ConfigMap). Thousands of stopped workspaces with large rendered specs will hit this limit.
-- **Bastion connections**: each SSH session opens a port-forward through the portal pod. Size the portal's CPU/memory and connection limits for concurrent SSH sessions.
-- **HA**: replicas are stateless except for the shared host key and OIDC session key. Both must be stable Secrets when `replicaCount > 1`.
+- **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
+- **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica.
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and a database for audit/quotas.
 
 ### Replicas and namespaces
 
-- **Replicas**: Set `replicaCount > 1`. **Must** provide `ssh.existingHostKeySecret` so all replicas share the same host key.
+- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. The portal is stateless; use a stable OIDC session key when OIDC is enabled.
+- **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
 - **Workspace namespace**: `workspaceNamespace` defaults to the release namespace. Set it to a dedicated namespace (e.g., `team-a`) to isolate teams.
   - `createWorkspaceNamespace: true` creates the namespace. **Warning**: `helm uninstall` will delete that namespace and all workspaces inside it. For production, create the namespace yourself (`kubectl create ns team-a`) and set `createWorkspaceNamespace: false`.
-  - The Role/RoleBinding live in `workspaceNamespace`; the ServiceAccount lives in the release namespace. The RoleBinding's subject references the SA across namespaces.
+  - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
 ## RBAC details
 
-The chart creates:
+The chart creates two least-privilege identities:
+
+**Portal**
 - **ServiceAccount** `poddy` (or custom name) in the release namespace.
 - **Role** in `workspaceNamespace` with rules:
   - `pods` (get, list, watch, create, delete) — workspace lifecycle.
   - `pods/exec` (get, create) — browser terminal.
-  - `pods/portforward` (get, create) — SSH bastion & VS Code forwarding.
+  - `pods/portforward` (get, create) — local editor and VS Code helpers.
   - `persistentvolumeclaims` (get, list, create, delete) — persistent volumes.
   - `configmaps` (get, list, watch, create, update, patch) — template ConfigMaps, the RBAC document, user directory, and stopped specs.
   - `secrets` (get, list, watch, create, update, patch) — external-auth token store.
 - **RoleBinding** in `workspaceNamespace` binding the Role to the ServiceAccount (cross-namespace).
 - Extra rules can be added via `rbac.extraRules` in values.
 
-The portal **cannot** access other namespaces or cluster-scoped resources.
+**Bastion**
+- **ServiceAccount** `poddy-bastion` (or custom name) in the release namespace.
+- **Role** in `workspaceNamespace` with only:
+  - `pods` (get, list, watch) — resolve the target workspace.
+  - `pods/portforward` (get, create) — open the SSH tunnel.
+- **RoleBinding** in `workspaceNamespace` binding the bastion Role to the bastion ServiceAccount.
+- The bastion has **no** ConfigMap or Secret access through the API and cannot create or delete pods.
+
+Neither the portal nor the bastion can access other namespaces or cluster-scoped resources.
 
 ### Workspace lifecycle
 
@@ -208,30 +232,39 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 
 | Value | Description |
 |-------|-------------|
-| `ssh.enabled` | Enable bastion (default true). |
-| `ssh.addr` | Listen address inside the pod (default `:2222`). |
+| `ssh.enabled` | Enable the bastion and the UI SSH metadata (default true). |
+| `bastion.enabled` | Deploy the bastion as a separate Deployment (default true). Required when `ssh.enabled=true`. |
+| `bastion.replicaCount` | Bastion replicas (default 1). >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.resources` | Resource requests/limits for the bastion pod. |
+| `ssh.addr` | Listen address inside the bastion pod (default `:2222`). |
 | `ssh.publicHost` | **Required** when enabled. Hostname/IP users connect to. |
 | `ssh.publicPort` | Port users connect to (default `2222`). |
 | `ssh.authorizedKeys` | List of public keys. The key comment binds it to an owner (`user:alice@example.com`) or marks it admin (`admin`, `*`). Used to create a ConfigMap. |
 | `ssh.allowUnmappedKeys` | Allow keys without an owner comment to access every workspace (legacy, insecure; default `false`). |
 | `ssh.existingKeysSecret` | Use an existing Secret instead of ConfigMap. |
-| `ssh.existingHostKeySecret` | **Required for `replicaCount > 1`**. Secret with private host key at `ssh.hostKeySecretKey`. |
+| `ssh.existingHostKeySecret` | **Required for `bastion.replicaCount > 1`**. Secret with private host key at `ssh.hostKeySecretKey`. |
 | `ssh.service.type` | Service type for SSH (default `LoadBalancer`). |
 | `ssh.service.port` | Service port (default `2222`). |
 
-**How it works**: The bastion runs **inside the portal pod** on `:2222`; no separate EC2 bastion host or kubeconfig is required. It accepts SSH connections, verifies the public key, reads the target host from the `direct-tcpip` request (`poddy-ssh-<name>` or `poddy-<name>`), looks up the workspace pod and its `poddy.io/owner` annotation, authorizes the key for that owner, then opens a port-forward to pod port 22 and bridges the connection.
+**How it works**: The bastion runs as a separate `poddy-bastion` Deployment on
+`:2222`; in local mode it runs inside the portal process. No separate EC2
+bastion host or kubeconfig is required. It accepts SSH connections, verifies the
+public key, reads the target host from the `direct-tcpip` request
+(`poddy-ssh-<name>` or `poddy-<name>`), looks up the workspace pod and its
+`poddy.io/owner` annotation, authorizes the key for that owner, then opens a
+port-forward to pod port 22 and bridges the connection.
 
 A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@example.com`; the channel is rejected with `not authorized for this workspace`. Admin keys (`admin` or `*`) can reach every workspace for break-glass access.
 
 **Exposing SSH**:
 - Use `LoadBalancer` service type (default). The LB IP/DNS becomes `ssh.publicHost`. This is an L4 TCP load balancer, not an HTTP Ingress.
-- Or use an Ingress TCP service (nginx stream, Traefik TCP) pointing to the `poddy-ssh` Service. Set `ssh.service.type: ClusterIP` and configure your LB/Ingress accordingly.
+- Or use an Ingress TCP service (nginx stream, Traefik TCP) pointing to the `poddy-ssh` Service, which selects the bastion pods. Set `ssh.service.type: ClusterIP` and configure your LB/Ingress accordingly.
 - For local clusters, a NodePort works (`ssh.service.type: NodePort`); users connect to `<node-ip>:<nodePort>`.
-- Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling replicas.
+- Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 
 **VS Code from Windows**: Windows VS Code uses Windows OpenSSH, not WSL. Save the config from the **SSH** dialog in `C:\Users\<you>\.ssh\config`, copy your private key to `C:\Users\<you>\.ssh\`, and make sure the `IdentityFile` points to that key. The generated config uses `Host poddy-ssh-*`, so it covers all workspaces and only needs to be added once. The **VS Code** button then opens Remote-SSH through the `poddy-ssh-<name>` alias. A config saved only in WSL is not visible to Windows VS Code and produces `Could not resolve hostname poddy-ssh-<name>`. The generated config accepts the bastion host key on first use (`accept-new`) and disables host-key checking for workspace pods because their host keys are ephemeral.
 
-**Changing keys**: the portal loads `authorized_keys` at startup. If you use `ssh.existingKeysSecret`, update the Secret and run `kubectl rollout restart deployment/poddy -n poddy-system`. Existing workspace pods keep their old `SSH_AUTHORIZED_KEY` until they are restarted (stop/start or delete/recreate). The ConfigMap path already triggers a rollout through the chart checksum.
+**Changing keys**: the bastion loads `authorized_keys` at startup. If you use `ssh.existingKeysSecret`, update the Secret and run `kubectl rollout restart deployment/poddy-bastion -n poddy-system`. Existing workspace pods keep their old `SSH_AUTHORIZED_KEY` until they are restarted (stop/start or delete/recreate). The ConfigMap path already triggers a bastion rollout through the chart checksum.
 
 ## Ingress & TLS
 
@@ -412,7 +445,8 @@ image or your own registry. If using a private registry, add
 
 ## Quick-start manifest (no Helm)
 
-`deploy/poddy.yaml` is a single-file manifest for local testing. It creates:
+`deploy/poddy.yaml` is a single-file manifest for local testing. It runs the
+portal and bastion in one Deployment; the Helm chart splits them. It creates:
 - Namespace `poddy`
 - ServiceAccount, Role, RoleBinding
 - ConfigMap `poddy-ssh-keys` (add your keys; with the default token auth comment them `user:token`, or use `admin`)

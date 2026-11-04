@@ -1,0 +1,14 @@
+{{- if and .Values.ssh.enabled .Values.bastion.enabled .Values.bastion.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "poddy.fullname" . }}-bastion
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.bastion.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.bastion.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "poddy.bastion.selectorLabels" . | nindent 6 }}
+{{- end }}

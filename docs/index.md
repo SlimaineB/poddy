@@ -50,8 +50,10 @@ never need a kubeconfig.
 
 ## What you get
 
-- **One entry point.** A browser portal to create, stop, start, restart, and
+- **One control plane.** A browser portal to create, stop, start, restart, and
   delete workspaces.
+- **Scale what you need.** The portal and SSH bastion run as separate
+  Deployments, so HTTP/API and SSH capacity scale independently.
 - **Three ways to work.** Browser terminal, SSH through a bastion, or VS Code
   Remote-SSH.
 - **Real dev containers.** Persistent volumes, custom images, and templates that
@@ -66,16 +68,18 @@ never need a kubeconfig.
 
 ```text
 Browser ─────────► Portal (:8080) ─────────► Kubernetes API
-   │                  ▲
-   │           SSH bastion (:2222)
-   │                  ▲
-VS Code / ssh ◄── ProxyJump ◄── Port-forward ◄── Workspace pod :22
+                                             (workspace lifecycle)
+
+VS Code / ssh ───► Bastion (:2222) ────────► Kubernetes API
+                                             (pods/portforward)
+                           │
+                           └── ProxyJump / port-forward ──► Workspace pod :22
 ```
 
-The portal is stateless and can be scaled behind a LoadBalancer. The SSH
-bastion shares a host key across replicas. See
-[Architecture](architecture.md) for the full request flow and
-[Data model](data-model.md) for the Kubernetes objects involved.
+The portal and bastion are separate Deployments built from the same image. The
+portal is stateless and scales behind a LoadBalancer; the bastion shares a host
+key across replicas. See [Architecture](architecture.md) for the full request
+flow and [Data model](data-model.md) for the Kubernetes objects involved.
 
 ## Common paths
 

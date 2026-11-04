@@ -94,6 +94,23 @@ jobs:
           helm template poddy-templates deploy/helm/poddy-templates \
             --namespace poddy-workspaces \
             >/dev/null
+      - name: Render split variants
+        run: |
+          helm template poddy deploy/helm/poddy \
+            --namespace poddy-system \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set ssh.enabled=false \
+            >/dev/null
+          helm template poddy deploy/helm/poddy \
+            --namespace poddy-system \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set ssh.publicHost=localhost \
+            --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid' \
+            --set ssh.existingHostKeySecret=poddy-host-key \
+            --set bastion.replicaCount=2 \
+            >/dev/null
 
   docker:
     name: Docker
@@ -101,11 +118,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Build portal image
+      - name: Build portal/bastion image
         run: docker build -t poddy:ci .
       - name: Build workspace images
         run: |
           docker build -f Dockerfile.workspace-base -t poddy/workspace-base:ci .
-          docker build -f Dockerfile.workspace \
+          docker build -f Dockerfile.workspace-go \
             --build-arg BASE_IMAGE=poddy/workspace-base:ci \
             -t poddy/workspace:ci .

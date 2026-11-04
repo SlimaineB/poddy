@@ -29,7 +29,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["get", "create"]
-  # SSH bastion and VS Code forwarding.
+  # Local editor and VS Code helpers.
   - apiGroups: [""]
     resources: ["pods/portforward"]
     verbs: ["get", "create"]

@@ -9,26 +9,27 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **RBAC**: global admins, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, and templates each have a dedicated page; data is stored in a ConfigMap.
 - **Extensible templates**: YAML templates define pod specs, parameters, and images. Built-in `base` and `go` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
-- **SSH bastion**: Single entry point (`poddy-ssh-*` via ProxyJump) port-forwards to workspace pods. Keys are bound to workspace owners; users only need an SSH key.
+- **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Keys are bound to workspace owners; users only need an SSH key.
 - **VS Code launch**: One-click opens Remote-SSH (`vscode://`) from the workspace card. In local editor mode the portal can also launch Windows VS Code directly, write `~/.ssh/config`, and copy the portal key.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap.
-- **RBAC-scoped**: Portal runs as a non-root ServiceAccount with a Role in the workspace namespace (pods, exec, port-forward, PVCs, ConfigMaps, Secrets).
-- **Helm charts**: Separate portal and templates releases, with TLS ingress, LoadBalancer SSH, shared host key, PDB, resource limits, and security context.
+- **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
+- **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, and security context.
 - **No database**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps.
 
 ## Architecture
 
 ```
-Browser ──────────► Portal (:8080) ──────────► Kubernetes API (workspace namespace)
+Browser ──────────► Portal (:8080) ──────────► Kubernetes API (workspace lifecycle)
      │                     ▲
      │                     │
-     │              SSH bastion (:2222)
-     │                     ▲
-     │                     │
-VS Code / ssh ◄──── ProxyJump ◄─── Port-forward ◄─── Workspace pod :22
+VS Code / ssh ────► Bastion (:2222) ─────────► Kubernetes API (pods/portforward)
+                           │
+                           └── ProxyJump / port-forward ──► Workspace pod :22
 ```
 
-The portal is stateless; scale replicas behind a LoadBalancer. The bastion shares a host key across replicas.
+The portal and bastion are separate Deployments built from the same image. Scale
+the portal for HTTP/API load and the bastion for SSH connections. In local mode,
+`poddy` starts both processes together; Helm runs them independently.
 
 ## Quick start (local k3s + WSL)
 
@@ -46,7 +47,7 @@ kubectl --context local create namespace poddy
 ### 1. Build workspace images
 ```bash
 docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
-docker build -f Dockerfile.workspace -t poddy/workspace:latest .
+docker build -f Dockerfile.workspace-go -t poddy/workspace:latest .
 ```
 Import them into k3s containerd:
 ```bash
@@ -57,8 +58,10 @@ docker save poddy/workspace-base:latest poddy/workspace:latest | sudo k3s ctr im
 ```bash
 go build -o poddy .
 ```
+This builds the portal binary with the in-process bastion used by local mode.
+The standalone cluster bastion is built from `cmd/poddy-bastion`.
 
-### 3. Run the portal (WSL)
+### 3. Run the portal and bastion (WSL)
 ```bash
 ./poddy -context local -namespace poddy -token=secret \
   -ssh-addr=127.0.0.1:2222 -ssh-public-host=127.0.0.1 -ssh-public-port=2222
@@ -66,7 +69,7 @@ go build -o poddy .
 - `-context local` uses the `local` kubeconfig context (your k3s).
 - `-namespace poddy` is the workspace namespace.
 - `-token=secret` is the shared access token (use a strong random string in prod).
-- The SSH bastion listens on `127.0.0.1:2222`; `-ssh-public-host/port` is what users connect to.
+- The local process starts the portal and the SSH bastion together; the bastion listens on `127.0.0.1:2222`, and `-ssh-public-host/port` is what users connect to.
 - In local editor mode, the portal marks the SSH keys it manages as admin keys, so the **SSH** and **VS Code** buttons keep working with token or OIDC login. Additional keys passed with `-ssh-keys` / `PODDY_SSH_KEYS` must be commented `user:<identity>` or `admin`.
 
 ### 4. Open the UI
@@ -100,8 +103,8 @@ The demo ships a default user set: `admin`/`ops` (global admins), `dev` (owner o
 ## Production deployment
 
 Use the Helm charts for anything beyond a quick test. See [docs/deploy.md](docs/deploy.md) for:
-- Installing the portal and templates charts with TLS, LoadBalancer SSH, and a stable host key.
-- Scaling replicas, multi-team namespaces, RBAC, SSH keys, image pull secrets.
+- Installing the portal chart (portal + bastion Deployments) and templates chart with TLS, LoadBalancer SSH, and a stable host key.
+- Scaling the portal and bastion independently, multi-team namespaces, RBAC, SSH keys, image pull secrets.
 - Why there is no Postgres and when you might add one.
 
 For a clean local k3s deployment with separate control-plane and workspace
@@ -121,7 +124,8 @@ See [docs/templates.md](docs/templates.md) for:
 ## Repository layout
 
 ```
-├── main.go                      # Entry point, config, wiring
+├── main.go                      # Portal entry point, config, wiring
+├── cmd/poddy-bastion/           # Standalone SSH bastion entry point
 ├── internal/
 │   ├── config/                  # Flags & env
 │   ├── k8s/                     # Workspace manager, template ConfigMap watcher, PVC, port-forward
@@ -142,17 +146,17 @@ See [docs/templates.md](docs/templates.md) for:
 │   ├── poddy-external-auth      # Print a refreshed external auth token in a workspace
 │   ├── poddy-git-askpass        # Git askpass helper using the portal
 │   └── dev-oidc.sh              # Local Dex + OIDC + RBAC demo
-├── Dockerfile                   # Portal distroless build
+├── Dockerfile                   # Portal + bastion distroless build
 ├── Dockerfile.workspace-base    # Reusable SSH + dev user base image
-├── Dockerfile.workspace         # Go toolchain on top of base
+├── Dockerfile.workspace-go      # Go toolchain on top of base
 ├── examples/
 │   ├── templates/node/          # Custom template example
 │   └── workspaces/node/         # Custom image example
 ├── deploy/
-│   ├── poddy.yaml              # Quick-start single-namespace manifest
+│   ├── poddy.yaml              # Quick-start combined manifest (local only)
 │   ├── dex/                     # Local Dex demo (config, compose, RBAC seed)
 │   └── helm/
-│       ├── poddy/              # Portal chart
+│       ├── poddy/              # Portal + bastion chart
 │       └── poddy-templates/    # Independently managed template ConfigMaps
 ├── mkdocs.yml                   # MkDocs Material site config
 ├── requirements-docs.txt        # Docs build dependencies
@@ -219,7 +223,7 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 - Template access limits who can create workspaces from a template, not who can SSH into an existing workspace. SSH owner checks cover that separately.
 - For hard tenant isolation, use separate namespaces/releases. The SSH check prevents cross-owner access inside one portal, but pods in a shared namespace still share network and storage classes.
 - Workspace containers run `sshd` as root (required to bind port 22 and switch to `dev`). The portal itself runs non-root (UID 65532), read-only rootfs, dropped capabilities.
-- Kubernetes RBAC: the portal's Role is scoped to the workspace namespace; it cannot touch cluster-wide resources.
+- Kubernetes RBAC: the portal's Role is scoped to the workspace namespace; it cannot touch cluster-wide resources. The bastion has a separate ServiceAccount with only pod read access and port-forward.
 - Use HTTPS ingress in production; the cookie is `Secure` when TLS is detected.
 
 ## CI and documentation
@@ -227,7 +231,7 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 GitHub Actions workflows live in `.github/workflows/`:
 
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
-- **Publish images** builds and pushes the portal, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
+- **Publish images** builds and pushes the portal/bastion image, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
 Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public or add an image pull secret.

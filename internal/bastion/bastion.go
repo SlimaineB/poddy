@@ -59,15 +59,26 @@ func New(addr string, manager *k8s.Manager, keys *sshkeys.Set, hostKeyPath strin
 	return &Bastion{Addr: addr, Manager: manager, keys: keys, config: config}, nil
 }
 
-func (b *Bastion) Serve() error {
+// Listen binds the bastion address. Serve reuses an existing listener.
+func (b *Bastion) Listen() error {
+	if b.listener != nil {
+		return nil
+	}
 	listener, err := net.Listen("tcp", b.Addr)
 	if err != nil {
 		return err
 	}
 	b.listener = listener
+	return nil
+}
+
+func (b *Bastion) Serve() error {
+	if err := b.Listen(); err != nil {
+		return err
+	}
 
 	for {
-		conn, err := listener.Accept()
+		conn, err := b.listener.Accept()
 		if err != nil {
 			return err
 		}

@@ -6,34 +6,33 @@ no database: Kubernetes is the control plane and the source of truth.
 ## High-level view
 
 ```text
-                         ┌──────────────────────────────┐
-                         │           Browser            │
-                         └──────────────┬───────────────┘
-                                        │ HTTPS
-                         ┌──────────────▼───────────────┐
-                         │        poddy portal          │
-                         │  HTTP API + embedded web UI  │
-                         └───────┬──────────────┬───────┘
-                                 │              │
-                    Kubernetes API              │ SSH bastion
-                                 │              │
-              ┌──────────────────▼───┐   ┌──────▼─────────────┐
-              │ Workspace namespace  │   │ ProxyJump / TCP    │
-              │ pods, PVCs, ConfigMaps│  │ port-forward       │
-              └──────────────────────┘   └──────┬─────────────┘
-                                                │
-                                      ┌─────────▼─────────┐
-                                      │ Workspace pod :22 │
-                                      │ sshd + dev user   │
-                                      └───────────────────┘
+┌──────────┐   HTTPS   ┌──────────────────────────┐
+│ Browser  │──────────►│        poddy portal      │
+└──────────┘           │  HTTP API + embedded UI  │
+                       └────────────┬─────────────┘
+                                    │ Kubernetes API
+                                    ▼
+                       ┌──────────────────────────┐
+                       │    workspace namespace   │
+                       │ pods, PVCs, ConfigMaps   │
+                       └────────────▲─────────────┘
+                                    │ port-forward
+┌───────────────┐   SSH   ┌─────────┴─────────────┐
+│ VS Code / ssh │────────►│     poddy-bastion     │
+└───────────────┘         │  SSH :2222, ProxyJump │
+                          └───────────────────────┘
 ```
+
+The portal and bastion are separate Deployments built from the same container
+image. The portal never listens for SSH in cluster mode; the bastion has no HTTP
+API and only needs pod read access plus port-forward.
 
 ## Components
 
 | Component | Responsibility | Where it runs |
 |-----------|----------------|---------------|
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
-| SSH bastion | Accepts user SSH connections and port-forwards to workspace pods | Same process as the portal |
+| SSH bastion | Accepts user SSH connections and port-forwards to workspace pods | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
 | Workspace pods | `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, and template access | ConfigMap |
@@ -61,19 +60,27 @@ no database: Kubernetes is the control plane and the source of truth.
 
 ### SSH and VS Code
 
-1. The user connects to the bastion with an SSH key.
+1. The user connects to the `poddy-bastion` Service with an SSH key.
 2. The key comment maps the key to an owner (`alice@example.com` or
    `user:alice`).
 3. The bastion checks that the owner matches the target workspace.
 4. It port-forwards to the pod's port 22 through the Kubernetes API.
 5. VS Code connects through `ProxyJump` using the same bastion.
 
+In local mode, the portal process can start the same bastion in-process on
+`-ssh-addr`. Helm deployments run it as a separate Deployment.
+
 Keys commented `admin` or `*` are break-glass keys. Unmapped keys are denied by
 default.
 
-## Portal internals
+## Portal and bastion internals
 
-The portal is a single Go binary with an embedded web UI:
+poddy ships two Go binaries from one module:
+
+- `poddy` (`main.go`) runs the portal and embeds the web UI. In local mode it can
+  also start the bastion in-process when `-ssh-addr` is set.
+- `poddy-bastion` (`cmd/poddy-bastion`) runs only the SSH bastion for cluster
+  deployments.
 
 | Package | Role |
 |---------|------|
@@ -88,6 +95,7 @@ The portal is a single Go binary with an embedded web UI:
 | `internal/bastion` | SSH bastion and owner checks |
 | `internal/sshkeys` | `authorized_keys` parsing and key-to-owner mapping |
 | `internal/links` | Template link validation |
+| `cmd/poddy-bastion` | Standalone bastion entry point |
 
 ## State and storage
 
@@ -107,17 +115,27 @@ See [Data model](data-model.md) for the object-level details.
 
 ## Scaling and availability
 
-The portal is stateless, so it can run multiple replicas behind a Service or
-LoadBalancer. Session cookies are signed, and the SSH bastion uses a shared
-host key so connections work across replicas.
+The portal and bastion scale independently:
+
+- **Portal** (`replicaCount`) is stateless and can run multiple replicas behind a
+  Service or LoadBalancer. Session cookies are signed.
+- **Bastion** (`bastion.replicaCount`) scales on SSH connections. It uses a shared
+  host key so clients see the same host key across replicas. Set
+  `ssh.existingHostKeySecret` when running more than one bastion replica.
+- **Local mode** runs both processes in one binary, which is convenient for
+  development but not how Helm deploys them.
 
 Workspace pods are independent. The portal's Kubernetes Role is scoped to the
-workspace namespace; it cannot manage cluster-wide resources.
+workspace namespace; the bastion's Role is narrower still and only grants pod
+read access plus port-forward.
 
 ## Security boundaries
 
-- The portal runs as non-root with a read-only root filesystem and dropped
-  capabilities.
+- Both portal and bastion run as non-root with a read-only root filesystem and
+  dropped capabilities.
+- The portal and bastion use separate ServiceAccounts. The bastion's Role cannot
+  read ConfigMaps or Secrets through the API and cannot manage workspace
+  lifecycle.
 - Workspace containers run `sshd` as root only to bind port 22 and switch to the
   `dev` user.
 - SSH keys are scoped to workspace owners. Template access controls who can

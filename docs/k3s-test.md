@@ -14,12 +14,12 @@ a cloud load balancer. The example also enables an optional Traefik ingress.
 
 | Component | Namespace | Notes |
 |-----------|-----------|-------|
-| Portal + SSH bastion | `poddy-system` | Helm release `poddy` |
+| Portal and bastion Deployments | `poddy-system` | Helm release `poddy` |
 | Workspace pods + PVCs | `poddy-workspaces` | Dedicated namespace |
 | Templates | `poddy-workspaces` | Built-in `base`/`go` templates, or the `poddy-templates` chart |
 
-The portal's Kubernetes Role is created in `poddy-workspaces`; the
-ServiceAccount stays in `poddy-system`. The portal cannot access other
+The portal and bastion Roles/RoleBindings are created in `poddy-workspaces`;
+both ServiceAccounts stay in `poddy-system`. Neither can access other
 namespaces.
 
 ## 1. Build and import the portal image
@@ -85,6 +85,10 @@ Save as `k3s-test-values.yaml` and replace `<NODE_IP>` with the k3s node IP
 ```yaml
 fullnameOverride: poddy
 replicaCount: 1
+
+bastion:
+  enabled: true
+  replicaCount: 1
 
 image:
   repository: poddy
@@ -193,14 +197,14 @@ kubectl -n poddy-workspaces exec poddy-demo -- \
 ```
 
 The key comment should be `user:token`; the pod should not contain other users'
-keys. If you change the key comment later, update the Secret, restart the portal
-(`kubectl -n poddy-system rollout restart deployment/poddy`), then stop/start
-existing workspaces to refresh their injected keys.
+keys. If you change the key comment later, update the Secret, restart the bastion
+(`kubectl -n poddy-system rollout restart deployment/poddy-bastion`), then
+stop/start existing workspaces to refresh their injected keys.
 
 ## 8. SSH into the workspace
 
-The bastion listens on `30223`. The target host is the workspace name with the
-`poddy-` prefix:
+The `poddy-bastion` Deployment listens on `30223`. The target host is the
+workspace name with the `poddy-` prefix:
 
 ```bash
 ssh -i ~/.ssh/poddy-clean \
@@ -233,7 +237,7 @@ Upgrade after changing the image or values:
 ```bash
 docker build -t poddy:clean .
 docker save poddy:clean | sudo k3s ctr images import -
-kubectl -n poddy-system rollout restart deployment/poddy
+kubectl -n poddy-system rollout restart deployment/poddy deployment/poddy-bastion
 ```
 
 Remove the test deployment and its data:

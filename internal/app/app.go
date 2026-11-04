@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -47,8 +48,6 @@ func Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("kubernetes: %w", err)
 	}
 
-	editor := newEditor(cfg)
-
 	catalog, err := templates.Load(cfg.TemplatesDir)
 	if err != nil {
 		return fmt.Errorf("templates: %w", err)
@@ -64,14 +63,10 @@ func Run(ctx context.Context, args []string) error {
 	log.Printf("watching template ConfigMaps in namespace %s", cfg.Namespace)
 	go k8s.WatchTemplates(ctx, client, cfg.Namespace, catalog)
 
-	keys, err := collectKeys(editor, cfg.SSHKeys, cfg.SSHKeysFile)
-	if err != nil {
-		return fmt.Errorf("ssh keys: %w", err)
-	}
 	allowUnmapped := cfg.SSHAllowUnmappedKeys || (cfg.Token == "" && cfg.OIDCIssuer == "")
-	keyring, err := sshkeys.Parse(keys, allowUnmapped)
+	keys, keyring, editor, err := loadSSHKeys(cfg, allowUnmapped)
 	if err != nil {
-		return fmt.Errorf("ssh keys: %w", err)
+		return err
 	}
 
 	externalAuth, err := newExternalAuth(cfg, client)
@@ -135,7 +130,7 @@ func Run(ctx context.Context, args []string) error {
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
-		SSHEnabled:        sshBastion != nil,
+		SSHEnabled:        cfg.SSHEnabled && (cfg.SSHAddr == "" || sshBastion != nil),
 		OIDC:              oidcAuth,
 		OIDCRedirectURL:   cfg.OIDCRedirectURL,
 
@@ -197,6 +192,83 @@ func newExternalAuth(cfg config.Config, client kubernetes.Interface) (*externala
 	return externalauth.NewManager(providers, store, secret), nil
 }
 
+// RunBastion starts only the SSH bastion. It is intended for deployments that
+// scale the portal and bastion independently.
+func RunBastion(ctx context.Context, args []string) error {
+	cfg, err := config.Load(args)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if cfg.SSHAddr == "" {
+		return fmt.Errorf("ssh bastion: -ssh-addr is required")
+	}
+
+	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
+	if err != nil {
+		return fmt.Errorf("kubernetes: %w", err)
+	}
+
+	keys, keyring, _, err := loadSSHKeys(cfg, cfg.SSHAllowUnmappedKeys)
+	if err != nil {
+		return err
+	}
+	if keyring.Len() == 0 {
+		return fmt.Errorf("ssh bastion: no authorized keys configured")
+	}
+
+	manager := &k8s.Manager{
+		Client:         client,
+		Rest:           restConfig,
+		Namespace:      cfg.Namespace,
+		AuthorizedKeys: keys,
+		SSHKeys:        keyring,
+	}
+
+	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keyring, cfg.SSHHostKey)
+	if err != nil {
+		return fmt.Errorf("ssh bastion: %w", err)
+	}
+	if err := sshBastion.Listen(); err != nil {
+		return fmt.Errorf("ssh bastion: %w", err)
+	}
+	defer sshBastion.Close()
+
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Printf("ssh bastion listening on %s (namespace %s)", cfg.SSHAddr, cfg.Namespace)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- sshBastion.Serve()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		if errors.Is(err, net.ErrClosed) {
+			return nil
+		}
+		return err
+	}
+}
+
+func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Set, *local.Local, error) {
+	editor := newEditor(cfg)
+	keys, err := collectKeys(editor, cfg.SSHKeys, cfg.SSHKeysFile)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("ssh keys: %w", err)
+	}
+	keyring, err := sshkeys.Parse(keys, allowUnmapped)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("ssh keys: %w", err)
+	}
+	return keys, keyring, editor, nil
+}
+
 func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
@@ -210,9 +282,12 @@ func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set) (*
 	if err != nil {
 		return nil, fmt.Errorf("ssh bastion: %w", err)
 	}
+	if err := sshBastion.Listen(); err != nil {
+		return nil, fmt.Errorf("ssh bastion: %w", err)
+	}
 	go func() {
 		log.Printf("ssh bastion listening on %s", cfg.SSHAddr)
-		if err := sshBastion.Serve(); err != nil {
+		if err := sshBastion.Serve(); err != nil && !errors.Is(err, net.ErrClosed) {
 			log.Printf("ssh bastion: %v", err)
 		}
 	}()

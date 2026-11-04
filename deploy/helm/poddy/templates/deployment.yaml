@@ -1,5 +1,8 @@
-{{- if and .Values.ssh.enabled (gt (int .Values.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
-{{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and replicaCount > 1" }}
+{{- if and .Values.ssh.enabled (not .Values.bastion.enabled) }}
+{{- fail "bastion.enabled must be true when ssh.enabled=true" }}
+{{- end }}
+{{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
+{{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and bastion.replicaCount > 1" }}
 {{- end }}
 {{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}
 {{- fail "oidc.issuer is required when oidc.enabled=true" }}
@@ -79,12 +82,11 @@ spec:
             - -state-configmap={{ include "poddy.stateConfigMapName" . }}
             - -template={{ .Values.defaultTemplate }}
             - -editor=
+            - -ssh-addr=
+            - -ssh-enabled={{ .Values.ssh.enabled }}
             {{- if .Values.ssh.enabled }}
-            - -ssh-addr={{ .Values.ssh.addr }}
             - -ssh-public-host={{ required "ssh.publicHost is required when ssh.enabled=true" .Values.ssh.publicHost }}
             - -ssh-public-port={{ .Values.ssh.publicPort }}
-            {{- else }}
-            - -ssh-addr=
             {{- end }}
             {{- with .Values.extraArgs }}
             {{- toYaml . | nindent 12 }}
@@ -242,13 +244,6 @@ spec:
             {{- if .Values.ssh.enabled }}
             - name: PODDY_SSH_KEYS_FILE
               value: /etc/poddy/authorized_keys
-            {{- if .Values.ssh.existingHostKeySecret }}
-            - name: PODDY_SSH_HOST_KEY
-              value: /etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
-            {{- else }}
-            - name: PODDY_SSH_HOST_KEY
-              value: /tmp/poddy/ssh_host_ed25519_key
-            {{- end }}
             - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
@@ -259,11 +254,6 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-            {{- if .Values.ssh.enabled }}
-            - name: ssh
-              containerPort: 2222
-              protocol: TCP
-            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           readinessProbe:
@@ -284,14 +274,6 @@ spec:
               mountPath: /etc/poddy/authorized_keys
               subPath: {{ .Values.ssh.keysSecretKey }}
               readOnly: true
-            {{- if .Values.ssh.existingHostKeySecret }}
-            - name: ssh-host-key
-              mountPath: /etc/poddy/ssh
-              readOnly: true
-            {{- else }}
-            - name: ssh-host-key
-              mountPath: /tmp/poddy
-            {{- end }}
             {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -306,15 +288,6 @@ spec:
           configMap:
             name: {{ include "poddy.sshKeysName" . }}
           {{- end }}
-        {{- if .Values.ssh.existingHostKeySecret }}
-        - name: ssh-host-key
-          secret:
-            secretName: {{ .Values.ssh.existingHostKeySecret }}
-            defaultMode: 0444
-        {{- else }}
-        - name: ssh-host-key
-          emptyDir: {}
-        {{- end }}
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

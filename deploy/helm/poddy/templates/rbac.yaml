@@ -15,7 +15,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["get", "create"]
-  # SSH bastion and VS Code forwarding: open a port-forward to the pod.
+  # Local editor and VS Code helpers: open a port-forward to the pod.
   - apiGroups: [""]
     resources: ["pods/portforward"]
     verbs: ["get", "create"]

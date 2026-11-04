@@ -25,6 +25,7 @@ type Config struct {
 	Context                  string
 	Editor                   string
 
+	SSHEnabled           bool
 	SSHAddr              string
 	SSHHostKey           string
 	SSHKeys              string
@@ -64,6 +65,7 @@ func Load(args []string) (Config, error) {
 		Kubeconfig:               os.Getenv("KUBECONFIG"),
 		Editor:                   env("PODDY_EDITOR", "code"),
 
+		SSHEnabled:           envBool("PODDY_SSH_ENABLED", true),
 		SSHAddr:              env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
 		SSHHostKey:           os.Getenv("PODDY_SSH_HOST_KEY"),
 		SSHKeys:              os.Getenv("PODDY_SSH_KEYS"),
@@ -101,7 +103,8 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "path to kubeconfig")
 	fs.StringVar(&cfg.Context, "context", cfg.Context, "kubeconfig context")
 	fs.StringVar(&cfg.Editor, "editor", cfg.Editor, "editor command used to open VS Code (empty disables local launch)")
-	fs.StringVar(&cfg.SSHAddr, "ssh-addr", cfg.SSHAddr, "SSH bastion listen address, empty disables it")
+	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
+	fs.StringVar(&cfg.SSHAddr, "ssh-addr", cfg.SSHAddr, "SSH bastion listen address, empty disables the local bastion")
 	fs.StringVar(&cfg.SSHHostKey, "ssh-host-key", cfg.SSHHostKey, "SSH bastion host key path")
 	fs.StringVar(&cfg.SSHKeys, "ssh-keys", cfg.SSHKeys, "comma-separated SSH public keys authorized for workspaces")
 	fs.StringVar(&cfg.SSHKeysFile, "ssh-keys-file", cfg.SSHKeysFile, "authorized_keys file for workspaces")

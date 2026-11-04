@@ -50,7 +50,7 @@ jobs:
           images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy
           tags: ${{ env.IMAGE_TAGS }}
 
-      - name: Build and push portal
+      - name: Build and push portal/bastion image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -85,18 +85,18 @@ jobs:
           BASE_TAGS: ${{ steps.meta_base.outputs.tags }}
         run: echo "ref=$(printf '%s\n' "$BASE_TAGS" | head -n1)" >> "$GITHUB_OUTPUT"
 
-      - name: Workspace metadata
+      - name: Go workspace metadata
         id: meta_workspace
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy-workspace
           tags: ${{ env.IMAGE_TAGS }}
 
-      - name: Build and push workspace
+      - name: Build and push Go workspace
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile.workspace
+          file: ./Dockerfile.workspace-go
           push: true
           build-args: |
             BASE_IMAGE=${{ steps.base_image.outputs.ref }}

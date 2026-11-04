@@ -5,7 +5,7 @@ metadata:
   name: {{ include "poddy.fullname" . }}-ssh
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "poddy.labels" . | nindent 4 }}
+    {{- include "poddy.bastion.labels" . | nindent 4 }}
   {{- with .Values.ssh.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -27,5 +27,5 @@ spec:
       targetPort: ssh
       protocol: TCP
   selector:
-    {{- include "poddy.selectorLabels" . | nindent 4 }}
+    {{- include "poddy.bastion.selectorLabels" . | nindent 4 }}
 {{- end }}

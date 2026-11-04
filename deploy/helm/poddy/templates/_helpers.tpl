@@ -31,11 +31,31 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
+{{- define "poddy.bastion.selectorLabels" -}}
+app.kubernetes.io/name: {{ printf "%s-bastion" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "poddy.bastion.labels" -}}
+helm.sh/chart: {{ include "poddy.chart" . }}
+{{ include "poddy.bastion.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
 {{- define "poddy.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "poddy.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- required "serviceAccount.name is required when serviceAccount.create=false" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "poddy.bastion.serviceAccountName" -}}
+{{- if .Values.bastion.serviceAccount.create -}}
+{{- default (printf "%s-bastion" (include "poddy.fullname" .)) .Values.bastion.serviceAccount.name -}}
+{{- else -}}
+{{- required "bastion.serviceAccount.name is required when bastion.serviceAccount.create=false" .Values.bastion.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 

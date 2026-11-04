@@ -1,6 +1,8 @@
 # poddy Helm chart
 
-Production-ready Helm chart for the poddy Kubernetes development portal.
+Production-ready Helm chart for the poddy Kubernetes development portal. The
+chart runs the portal and SSH bastion as separate Deployments from the same
+image.
 
 ## Install
 
@@ -27,19 +29,23 @@ Install the templates release in `workspaceNamespace` (the release namespace abo
 | Parameter | Description |
 |-----------|-------------|
 | `auth.token` or `auth.existingSecret` or `oidc.enabled` | Authentication is required (token and/or OIDC). |
-| `ssh.enabled` | Enable SSH bastion (default `true`). |
+| `ssh.enabled` | Enable the bastion and UI SSH metadata (default `true`). |
 | `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
 | `ssh.authorizedKeys` or `ssh.existingKeysSecret` | **Required** when SSH enabled. Public keys allowed through the bastion. The key comment binds it to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token` for non-email identities) or marks it admin (`admin`, `*`). |
-| `ssh.existingHostKeySecret` | **Required** when `replicaCount > 1`. Secret with private host key. |
+| `ssh.existingHostKeySecret` | **Required** when `bastion.replicaCount > 1`. Secret with private host key. |
 
 ## Key values
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `replicaCount` | `1` | Portal replicas. >1 requires `ssh.existingHostKeySecret`. |
-| `image.repository` | `ghcr.io/your-org/poddy` | Portal image repository. |
-| `image.tag` | `latest` | Portal image tag. |
-| `imagePullSecrets` | `[]` | Secrets for portal image (not workspaces). |
+| `replicaCount` | `1` | Portal replicas. Scales independently from the bastion. |
+| `bastion.enabled` | `true` | Deploy the SSH bastion as a separate Deployment. |
+| `bastion.replicaCount` | `1` | Bastion replicas. >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.resources` | `{}` | Bastion resource requests/limits. |
+| `bastion.podDisruptionBudget.enabled` | `false` | Create a PDB for the bastion. |
+| `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |
+| `image.tag` | `latest` | Portal and bastion image tag. |
+| `imagePullSecrets` | `[]` | Secrets for portal/bastion images (not workspaces). |
 | `ssh.allowUnmappedKeys` | `false` | Legacy: allow keys without an owner comment to reach every workspace. Insecure. |
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
@@ -208,12 +214,38 @@ Then set:
 ssh:
   existingHostKeySecret: poddy-host-key
   hostKeySecretKey: ssh_host_ed25519_key
-replicaCount: 3
+bastion:
+  replicaCount: 3
 ```
+
+## Scaling portal and bastion independently
+
+The portal and bastion use the same image but run as separate Deployments:
+
+```yaml
+replicaCount: 3
+
+bastion:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+```
+
+The portal scales on HTTP load. The bastion scales on SSH connections. The
+bastion uses `ssh.existingHostKeySecret`, so SSH clients see a stable host key
+across replicas.
 
 ## RBAC
 
-The chart creates a Role in `workspaceNamespace` with:
+The portal gets a Role in `workspaceNamespace` with:
 - `pods` (get, list, watch, create, delete)
 - `pods/exec` (get, create)
 - `pods/portforward` (get, create)
@@ -222,6 +254,8 @@ The chart creates a Role in `workspaceNamespace` with:
 - `secrets` (get, list, watch, create, update, patch) for external auth tokens
 
 Add extra rules via `rbac.extraRules`.
+
+The bastion has its own ServiceAccount and Role with only `pods` read access and `pods/portforward`. It has no ConfigMap or Secret permissions through the API.
 
 ### Workspace lifecycle
 

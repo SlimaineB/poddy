@@ -32,12 +32,12 @@ If the namespace already exists, skip this step.
 
 ## 2. Build and import the workspace images
 
-The portal runs on your machine, but workspace pods run inside k3s. Import the
-images into k3s so the pods do not need a registry:
+The portal and bastion run on your machine, but workspace pods run inside k3s.
+Import the images into k3s so the pods do not need a registry:
 
 ```bash
 docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
-docker build -f Dockerfile.workspace -t poddy/workspace:latest .
+docker build -f Dockerfile.workspace-go -t poddy/workspace:latest .
 
 docker save poddy/workspace-base:latest poddy/workspace:latest \
   | sudo k3s ctr images import -
@@ -48,6 +48,10 @@ docker save poddy/workspace-base:latest poddy/workspace:latest \
 ```bash
 go build -o poddy .
 ```
+
+This binary runs the portal and can start the SSH bastion in-process. Cluster
+deployments use the same image but run `cmd/poddy-bastion` as a separate
+Deployment.
 
 ## 4. Start the portal
 
@@ -72,6 +76,11 @@ What these flags do:
 | `-token` | shared login token; anyone with it is a global admin |
 | `-ssh-addr` | local address for the SSH bastion |
 | `-ssh-public-host` / `-ssh-public-port` | address shown to users in SSH and VS Code instructions |
+
+!!! note "Local mode runs both processes"
+    With `-ssh-addr` set, this one process starts the portal and the SSH
+    bastion. Helm deployments split them into separate Deployments so they can
+    scale independently.
 
 !!! warning "The shared token is admin access"
     `-token` is fine for a local test. For a team deployment, use

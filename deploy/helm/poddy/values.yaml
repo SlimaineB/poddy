@@ -1,7 +1,45 @@
-# Number of portal replicas. The portal is stateless, but the SSH bastion must
-# share the same host key across replicas. Set ssh.existingHostKeySecret before
-# scaling above 1.
+# Number of portal replicas. The portal is stateless and can be scaled
+# independently from the SSH bastion.
 replicaCount: 1
+
+# SSH bastion. Runs as its own Deployment and Service so it can scale on
+# connection load without scaling the portal. Set ssh.existingHostKeySecret
+# before scaling above 1 replica.
+bastion:
+  enabled: true
+  replicaCount: 1
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  # Namespace-scoped Role with only pod read and port-forward access.
+  rbac:
+    create: true
+  resources: {}
+  priorityClassName: ""
+  podAnnotations: {}
+  podLabels: {}
+  extraArgs: []
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  probes:
+    readiness:
+      initialDelaySeconds: 2
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 6
+    liveness:
+      initialDelaySeconds: 10
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
 
 image:
   repository: ghcr.io/your-org/poddy
@@ -17,9 +55,9 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Namespace-scoped permissions for workspace pods, exec, port-forward and PVCs.
-# The Role is created in workspaceNamespace, not necessarily in the release
-# namespace.
+# Namespace-scoped permissions for the portal: workspace pods, exec,
+# port-forward, PVCs, ConfigMaps and Secrets. The Role is created in
+# workspaceNamespace, not necessarily in the release namespace.
 rbac:
   create: true
   # ConfigMap used for global admins, teams and template assignments.
@@ -130,7 +168,9 @@ externalAuth:
   providers: []
 
 ssh:
+  # Enables the bastion Deployment and the SSH/VS Code options in the UI.
   enabled: true
+  # Listen address inside the bastion container.
   addr: ":2222"
   # Hostname or IP users connect to. Required when ssh.enabled=true.
   publicHost: ""
@@ -149,7 +189,7 @@ ssh:
   existingKeysSecret: ""
   keysSecretKey: authorized_keys
   # Recommended for production. The Secret must contain a private host key at
-  # ssh.hostKeySecretKey. Required when replicaCount > 1.
+  # ssh.hostKeySecretKey. Required when bastion.replicaCount > 1.
   existingHostKeySecret: ""
   hostKeySecretKey: ssh_host_ed25519_key
   service:

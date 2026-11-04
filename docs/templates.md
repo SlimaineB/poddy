@@ -331,7 +331,7 @@ The portal picks up the change through the watch. Old ConfigMaps can stay for hi
    ```
 4. Open **Templates** in the portal, search for the new name, and set access if needed. A template with no RBAC entry is public.
 
-No portal restart or `helm upgrade` of the portal is required. If the workspace image is private, add `imagePullSecrets` inside the template's `pod` spec; the portal chart's top-level `imagePullSecrets` only applies to the portal pod.
+No portal restart or `helm upgrade` of the portal is required. If the workspace image is private, add `imagePullSecrets` inside the template's `pod` spec; the portal chart's top-level `imagePullSecrets` only applies to the portal and bastion pods.
 
 **ConfigMap size limit**: 1 MiB per ConfigMap. Templates are small; split large templates into separate ConfigMaps or bake them into a custom portal image.
 
@@ -347,6 +347,14 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
 
 The pod template uses `command: [{{ .SSHCommand | quote }}]` to run the entrypoint.
+
+The repository uses these Dockerfiles:
+
+| Image | Dockerfile |
+|-------|------------|
+| Portal | `Dockerfile` |
+| Workspace base | `Dockerfile.workspace-base` |
+| Go workspace | `Dockerfile.workspace-go` |
 
 ### Dockerfile pattern
 
@@ -396,7 +404,7 @@ spec:
   containers:
     ...
 ```
-The Helm chart's `imagePullSecrets` applies only to the portal pod, not workspaces.
+The Helm chart's `imagePullSecrets` applies only to the portal and bastion pods, not workspaces.
 
 ## Parameter handling details
 

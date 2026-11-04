@@ -1,0 +1,132 @@
+{{- if and .Values.ssh.enabled .Values.bastion.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "poddy.fullname" . }}-bastion
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.bastion.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.bastion.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "poddy.bastion.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "poddy.bastion.labels" . | nindent 8 }}
+        {{- with .Values.bastion.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/ssh-keys: {{ include (print $.Template.BasePath "/configmap-ssh-keys.yaml") . | sha256sum }}
+        {{- with .Values.bastion.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "poddy.bastion.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bastion.priorityClassName | default .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: bastion
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/poddy-bastion"]
+          args:
+            - -ssh-addr={{ .Values.ssh.addr }}
+            - -namespace={{ include "poddy.workspaceNamespace" . }}
+            - -editor=
+            - -ssh-keys-file=/etc/poddy/authorized_keys
+            - -ssh-allow-unmapped-keys={{ .Values.ssh.allowUnmappedKeys }}
+            {{- if .Values.ssh.existingHostKeySecret }}
+            - -ssh-host-key=/etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
+            {{- else }}
+            - -ssh-host-key=/tmp/poddy/ssh_host_ed25519_key
+            {{- end }}
+            {{- with .Values.bastion.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.bastion.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: ssh
+              containerPort: 2222
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: ssh
+            {{- toYaml .Values.bastion.probes.readiness | nindent 12 }}
+          livenessProbe:
+            tcpSocket:
+              port: ssh
+            {{- toYaml .Values.bastion.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.bastion.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: ssh-keys
+              mountPath: /etc/poddy/authorized_keys
+              subPath: {{ .Values.ssh.keysSecretKey }}
+              readOnly: true
+            {{- if .Values.ssh.existingHostKeySecret }}
+            - name: ssh-host-key
+              mountPath: /etc/poddy/ssh
+              readOnly: true
+            {{- else }}
+            - name: ssh-host-key
+              mountPath: /tmp/poddy
+            {{- end }}
+            {{- with .Values.bastion.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: ssh-keys
+          {{- if .Values.ssh.existingKeysSecret }}
+          secret:
+            secretName: {{ .Values.ssh.existingKeysSecret }}
+          {{- else }}
+          configMap:
+            name: {{ include "poddy.sshKeysName" . }}
+          {{- end }}
+        {{- if .Values.ssh.existingHostKeySecret }}
+        - name: ssh-host-key
+          secret:
+            secretName: {{ .Values.ssh.existingHostKeySecret }}
+            defaultMode: 0444
+        {{- else }}
+        - name: ssh-host-key
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.bastion.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.bastion.nodeSelector | default .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bastion.tolerations | default .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bastion.affinity | default .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
