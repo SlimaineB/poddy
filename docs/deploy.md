@@ -455,7 +455,7 @@ The chart applies:
 - **OIDC**: Prefer OIDC over the shared token for human access. Set `allowedGroups`/`allowedUsers` to restrict sign-in, and use a stable `oidc.sessionKey` for HA.
 - **Namespace isolation**: For hard tenant isolation, deploy one release per team/namespace. SSH isolation prevents cross-owner access inside one portal, but a shared namespace still shares network and storage classes.
 - **Local editor keys**: In local editor mode the portal marks keys it manages as admin keys, which is intended for a single operator workstation. Cluster deployments use `-editor=` and do not add local keys.
-- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
+- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, external auth). Global admins can inspect them from the **Audit** screen or `GET /api/audit`. Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
 
 ## Workspace images
 
@@ -510,7 +510,7 @@ Set `database.url` or `database.existingSecret` in the Helm chart, or
 `PODDY_DATABASE_URL` outside Helm. The portal mirrors RBAC, users, templates,
 and workspaces, and records audit events; the bastion records SSH audit events.
 Kubernetes remains authoritative and PostgreSQL is never read for access
-decisions. If PostgreSQL is configured but unavailable at startup, the process
+decisions; only the admin audit screen reads it. If PostgreSQL is configured but unavailable at startup, the process
 exits; if it fails later, sync/audit errors are logged and workspace operations
 continue. Back up PVCs separately with volume snapshots. See
 [PostgreSQL schema](postgres-schema.md) for migrations, tables, and restore
@@ -526,7 +526,7 @@ guidance.
 | SSH "unknown public key" | The key is not in `ssh.authorizedKeys` / the keys Secret. |
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
-| No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
+| No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). The admin **Audit** screen calls `GET /api/audit`. |
 | VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://`; the server-side launch endpoint is only available in local editor mode. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
 | PVC not created | `storage` parameter empty or not declared in template. |

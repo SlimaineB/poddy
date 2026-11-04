@@ -123,8 +123,9 @@ truth:
 An optional PostgreSQL mirror stores RBAC, OIDC users, templates, workspaces,
 and audit events. When `PODDY_DATABASE_URL` is set, the portal syncs the mirror
 at startup and after writes; the bastion writes `ssh.connect` audit events.
-Kubernetes remains authoritative and PostgreSQL is never read for access
-decisions. It stores control-plane metadata only; PVC contents still need volume
+Global admins can read recent events through the **Audit** screen and
+`GET /api/audit`. Kubernetes remains authoritative and PostgreSQL is never read
+for access decisions. It stores control-plane metadata only; PVC contents still need volume
 snapshots. See [PostgreSQL schema](postgres-schema.md) and
 [Data model](data-model.md) for the object-level details.
 

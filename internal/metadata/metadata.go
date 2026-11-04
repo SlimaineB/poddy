@@ -34,6 +34,38 @@ type Event struct {
 	Details         map[string]any
 }
 
+// AuditEntry is one audit event returned by the read API.
+type AuditEntry struct {
+	ID              int64          `json:"id"`
+	Namespace       string         `json:"namespace,omitempty"`
+	OccurredAt      time.Time      `json:"occurredAt"`
+	Actor           string         `json:"actor,omitempty"`
+	ActorType       string         `json:"actorType,omitempty"`
+	Action          string         `json:"action"`
+	Outcome         string         `json:"outcome"`
+	TargetType      string         `json:"targetType,omitempty"`
+	TargetName      string         `json:"targetName,omitempty"`
+	TargetNamespace string         `json:"targetNamespace,omitempty"`
+	Workspace       string         `json:"workspace,omitempty"`
+	SourceIP        string         `json:"sourceIP,omitempty"`
+	UserAgent       string         `json:"userAgent,omitempty"`
+	RequestID       string         `json:"requestId,omitempty"`
+	DurationMs      int            `json:"durationMs,omitempty"`
+	Error           string         `json:"error,omitempty"`
+	Details         map[string]any `json:"details,omitempty"`
+}
+
+// AuditFilter selects audit entries for the read API.
+type AuditFilter struct {
+	Namespace string
+	Action    string
+	Outcome   string
+	Workspace string
+	Actor     string
+	BeforeID  int64
+	Limit     int
+}
+
 // Auditor records audit events. The SSH bastion only needs this subset.
 type Auditor interface {
 	RecordAudit(ctx context.Context, event Event) error
@@ -42,6 +74,7 @@ type Auditor interface {
 // Store mirrors Kubernetes metadata and records audit events.
 type Store interface {
 	Auditor
+	ListAudit(ctx context.Context, filter AuditFilter) ([]AuditEntry, error)
 	SyncRBAC(ctx context.Context, namespace string, cfg rbac.Config) error
 	SyncTemplates(ctx context.Context, namespace string, catalog *templates.Catalog, cfg rbac.Config) error
 	SyncUser(ctx context.Context, namespace string, user userstore.User) error
@@ -55,6 +88,10 @@ type Store interface {
 type Nop struct{}
 
 func (Nop) RecordAudit(context.Context, Event) error { return nil }
+
+func (Nop) ListAudit(context.Context, AuditFilter) ([]AuditEntry, error) {
+	return []AuditEntry{}, nil
+}
 
 func (Nop) SyncRBAC(context.Context, string, rbac.Config) error { return nil }
 

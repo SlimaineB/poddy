@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /api/me", s.me)
 	mux.HandleFunc("GET /api/config", s.config)
+	mux.HandleFunc("GET /api/audit", s.auditLog)
 	mux.HandleFunc("GET /api/templates", s.templates)
 	mux.HandleFunc("GET /api/templates/{name}/access", s.templateAccess)
 	mux.HandleFunc("PUT /api/templates/{name}/access", s.updateTemplateAccess)
@@ -102,6 +103,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"windows":           s.Windows,
 		"windowsSSHKeyPath": s.WindowsSSHKeyPath,
 		"localVSCode":       s.Local != nil,
+		"audit":             s.Metadata != nil,
 	})
 }
 

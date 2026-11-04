@@ -19,6 +19,10 @@ const state = {
   })(),
   templateQuery: "",
   userQuery: "",
+  auditQuery: "",
+  auditOutcome: "",
+  auditLimit: 100,
+  audit: [],
   loaded: false,
   pollError: false,
   sshWorkspace: null,
@@ -73,6 +77,7 @@ const els = {
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
   manageTemplates: document.getElementById("manage-templates"),
+  manageAudit: document.getElementById("manage-audit"),
   userRole: document.getElementById("user-role"),
   workspacesView: document.getElementById("workspaces-view"),
   usersView: document.getElementById("users-view"),
@@ -86,6 +91,14 @@ const els = {
   connectionsCount: document.getElementById("connections-count"),
   connectionsList: document.getElementById("connections-list"),
   externalAuthNotice: document.getElementById("external-auth-notice"),
+  auditView: document.getElementById("audit-view"),
+  auditBack: document.getElementById("audit-back"),
+  auditRefresh: document.getElementById("audit-refresh"),
+  auditSearch: document.getElementById("audit-search"),
+  auditOutcome: document.getElementById("audit-outcome"),
+  auditLimit: document.getElementById("audit-limit"),
+  auditCount: document.getElementById("audit-count"),
+  auditList: document.getElementById("audit-list"),
   teamsView: document.getElementById("teams-view"),
   teamsBack: document.getElementById("teams-back"),
   teamsCount: document.getElementById("teams-count"),
@@ -215,7 +228,12 @@ Host poddy-portal
     LogLevel ERROR
 `;
 }
+function syncAuditButton() {
+  if (!els.manageAudit) return;
+  els.manageAudit.hidden = !(state.me.isAdmin && state.config.audit);
+}
 function renderConfig() {
+  syncAuditButton();
   if (!state.config.ssh) return;
   els.sshEndpoint.hidden = false;
   els.sshEndpoint.textContent = `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
@@ -490,6 +508,7 @@ async function loadMe() {
       els.manageUsers.hidden = false;
       els.manageTemplates.hidden = false;
     }
+    syncAuditButton();
   } catch {
     // The server redirects unauthenticated page loads to the login page.
   }
@@ -499,15 +518,17 @@ function showView(name) {
   els.connectionsView.hidden = name !== "connections";
   els.usersView.hidden = name !== "users";
   els.teamsView.hidden = name !== "teams";
+  els.auditView.hidden = name !== "audit";
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
   const active = name === "workspaces" ? els.manageWorkspaces
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams
+    : name === "audit" ? els.manageAudit
     : (name === "templates" || name === "template") ? els.manageTemplates
     : null;
-  for (const button of [els.manageWorkspaces, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates]) {
+  for (const button of [els.manageWorkspaces, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageAudit]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

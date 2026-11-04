@@ -25,6 +25,7 @@
     <symbol id="icon-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
     <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+    <symbol id="icon-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
     <symbol id="icon-vscode" viewBox="0 0 24 24"><path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/></symbol>
     <symbol id="icon-jetbrains" viewBox="0 0 24 24"><text x="12" y="16.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="currentColor" stroke="none">JB</text></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
@@ -56,6 +57,7 @@
         <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
         <button id="manage-teams" class="button ghost small" type="button" hidden>Teams</button>
         <button id="manage-templates" class="button ghost small" type="button" hidden>Templates</button>
+        <button id="manage-audit" class="button ghost small" type="button" hidden>Audit</button>
         <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
           <svg class="icon"><use href="#icon-refresh"></use></svg>
         </button>
@@ -240,6 +242,56 @@
     <div id="connections-list" class="connections-list"></div>
   </section>
 
+  <section id="audit-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="audit-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Audit log</h1>
+        <p>Control-plane events recorded in PostgreSQL.</p>
+      </div>
+      <div class="view-actions">
+        <span id="audit-count" class="count"></span>
+        <button id="audit-refresh" class="button ghost small" type="button">
+          <svg class="icon"><use href="#icon-refresh"></use></svg>
+          Refresh
+        </button>
+      </div>
+    </header>
+    <div class="audit-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="audit-search" type="search" placeholder="Search by actor, action, target, workspace, or details" autocomplete="off">
+      </div>
+      <select id="audit-outcome" class="audit-select" aria-label="Outcome">
+        <option value="">All outcomes</option>
+        <option value="success">Success</option>
+        <option value="denied">Denied</option>
+        <option value="error">Error</option>
+      </select>
+      <select id="audit-limit" class="audit-select" aria-label="Number of events">
+        <option value="50">Last 50</option>
+        <option value="100" selected>Last 100</option>
+        <option value="250">Last 250</option>
+      </select>
+    </div>
+    <div class="workspace-list-wrap">
+      <table class="workspace-table audit-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Outcome</th>
+            <th>Target</th>
+            <th>Source</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="audit-list"></tbody>
+      </table>
+    </div>
+  </section>
+
   <dialog id="create-dialog" class="dialog">
     <form id="create-form">
       <header class="dialog-header">
@@ -347,6 +399,7 @@
   <script src="/static/teams.js"></script>
   <script src="/static/users.js"></script>
   <script src="/static/connections.js"></script>
+  <script src="/static/audit.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -9,13 +9,21 @@ import (
 	"sync"
 	"testing"
 
+	"poddy/internal/auth"
 	"poddy/internal/metadata"
 )
 
 type recordingMetadata struct {
 	metadata.Nop
-	mu     sync.Mutex
-	events []metadata.Event
+	mu      sync.Mutex
+	events  []metadata.Event
+	entries []metadata.AuditEntry
+}
+
+func (r *recordingMetadata) ListAudit(_ context.Context, _ metadata.AuditFilter) ([]metadata.AuditEntry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]metadata.AuditEntry(nil), r.entries...), nil
 }
 
 func (r *recordingMetadata) RecordAudit(_ context.Context, event metadata.Event) error {
@@ -118,4 +126,53 @@ func doRequest(s *Server, req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func TestAuditLogRead(t *testing.T) {
+	s := newTestServer("")
+	s.Metadata = &recordingMetadata{entries: []metadata.AuditEntry{{
+		ID:      7,
+		Action:  "workspace.create",
+		Outcome: "success",
+	}}}
+
+	rec := request(t, s, http.MethodGet, "/api/audit?limit=10", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("audit status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Events []metadata.AuditEntry `json:"events"`
+		Limit  int                   `json:"limit"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Limit != 10 || len(body.Events) != 1 || body.Events[0].ID != 7 {
+		t.Fatalf("audit body = %+v", body)
+	}
+}
+
+func TestAuditLogDisabled(t *testing.T) {
+	s := newTestServer("")
+	rec := request(t, s, http.MethodGet, "/api/audit", nil)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("audit disabled status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuditLogRequiresAdmin(t *testing.T) {
+	s := newRBACServer(t, rbacTestConfig())
+	s.Metadata = &recordingMetadata{}
+
+	dev := sessionFor(t, s, auth.User{Username: "dev", Email: "dev@example.com"})
+	rec := requestAs(t, s, dev, http.MethodGet, "/api/audit", nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin audit status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})
+	rec = requestAs(t, s, admin, http.MethodGet, "/api/audit", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin audit status = %d, body = %s", rec.Code, rec.Body.String())
+	}
 }

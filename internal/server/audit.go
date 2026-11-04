@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,6 +147,68 @@ func (s *Server) auditEvent(r *http.Request, event metadata.Event) {
 	if err := s.Metadata.RecordAudit(ctx, event); err != nil {
 		log.Printf("audit: %s: %v", event.Action, err)
 	}
+}
+
+func (s *Server) auditLog(w http.ResponseWriter, r *http.Request) {
+	if s.Metadata == nil {
+		http.Error(w, "audit log is not enabled", http.StatusNotImplemented)
+		return
+	}
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !s.isAdmin(id, cfg) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	limit := 100
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	var beforeID int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("before")); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			beforeID = parsed
+		}
+	}
+
+	namespace := ""
+	if s.Workspaces != nil {
+		namespace = s.Workspaces.Namespace
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), metadataTimeout)
+	defer cancel()
+	entries, err := s.Metadata.ListAudit(ctx, metadata.AuditFilter{
+		Namespace: namespace,
+		Action:    r.URL.Query().Get("action"),
+		Outcome:   r.URL.Query().Get("outcome"),
+		Workspace: r.URL.Query().Get("workspace"),
+		Actor:     r.URL.Query().Get("actor"),
+		BeforeID:  beforeID,
+		Limit:     limit,
+	})
+	if err != nil {
+		log.Printf("audit: list: %v", err)
+		http.Error(w, "failed to read audit log", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"events": entries,
+		"limit":  limit,
+	})
 }
 
 func (s *Server) auditActor(r *http.Request) (string, string) {

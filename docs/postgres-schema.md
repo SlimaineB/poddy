@@ -166,6 +166,18 @@ The mirror is refreshed at startup and after writes:
 - **Forward-only migrations.** Add new files as `migrations/0002_*.sql`; do not
   edit an applied migration.
 
+## Audit log UI
+
+Global admins see an **Audit** button in the portal when PostgreSQL is enabled.
+The screen reads the latest events from `GET /api/audit` and supports a
+free-text search, outcome filter, and a 50/100/250 event limit. Query parameters
+`action`, `outcome`, `workspace`, `actor`, `before` (event ID), and `limit` are
+also available for automation.
+
+This is the only PostgreSQL read path used by the portal. Workspace state, RBAC,
+and template access decisions still come from Kubernetes. If PostgreSQL is not
+configured, the endpoint returns `501` and the Audit button stays hidden.
+
 ## Audit actions
 
 `audit_events` is append-only. The portal and bastion currently record:

@@ -172,7 +172,8 @@ When `PODDY_DATABASE_URL` is set, the portal mirrors the same metadata into
 PostgreSQL: tenants, users, teams, RBAC, templates, template versions,
 workspaces, and audit events. The bastion also writes SSH audit events. The
 portal syncs at startup and after writes; it does not read PostgreSQL for RBAC
-or workspace decisions.
+or workspace decisions. Global admins can browse recent audit events in the
+**Audit** screen, which reads `GET /api/audit`.
 
 The `external_auth_tokens` table is reserved for a future encrypted mirror;
 tokens currently remain in the Kubernetes Secret. PostgreSQL never stores PVC

@@ -110,6 +110,24 @@ func TestPostgresStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	entries, err := store.ListAudit(ctx, AuditFilter{Namespace: namespace, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Action != "workspace.create" || entries[0].Workspace != "demo" || entries[0].SourceIP != "203.0.113.7" || entries[0].DurationMs != 42 {
+		t.Fatalf("audit entries = %+v", entries)
+	}
+	if entries[0].Details["template"] != "base" {
+		t.Fatalf("audit details = %+v", entries[0].Details)
+	}
+	filtered, err := store.ListAudit(ctx, AuditFilter{Namespace: namespace, Outcome: "denied", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 0 {
+		t.Fatalf("filtered audit entries = %+v", filtered)
+	}
+
 	var admins, teams, members, templateVersions int
 	if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.global_admins WHERE namespace = $1", namespace).Scan(&admins); err != nil {
 		t.Fatal(err)

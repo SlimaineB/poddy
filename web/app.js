@@ -111,6 +111,34 @@ els.connectionsBack.addEventListener("click", () => showView("workspaces"));
 els.manageUsers.addEventListener("click", openUsers);
 els.manageTeams.addEventListener("click", openTeams);
 els.manageTemplates.addEventListener("click", openTemplates);
+els.manageAudit.addEventListener("click", openAudit);
+els.auditBack.addEventListener("click", () => showView("workspaces"));
+els.auditRefresh.addEventListener("click", async () => {
+  els.auditRefresh.classList.add("spinning");
+  try {
+    await loadAudit();
+  } catch (err) {
+    toast(err.message || "Failed to load audit log.");
+  } finally {
+    els.auditRefresh.classList.remove("spinning");
+  }
+});
+els.auditSearch.addEventListener("input", () => {
+  state.auditQuery = els.auditSearch.value;
+  renderAudit();
+});
+els.auditOutcome.addEventListener("change", () => {
+  state.auditOutcome = els.auditOutcome.value;
+  renderAudit();
+});
+els.auditLimit.addEventListener("change", async () => {
+  state.auditLimit = Number(els.auditLimit.value) || 100;
+  try {
+    await loadAudit();
+  } catch (err) {
+    toast(err.message || "Failed to load audit log.");
+  }
+});
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
 els.usersBack.addEventListener("click", () => showView("workspaces"));

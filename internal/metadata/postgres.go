@@ -123,6 +123,67 @@ func (p *Postgres) RecordAudit(ctx context.Context, event Event) error {
 	return tx.Commit(ctx)
 }
 
+func (p *Postgres) ListAudit(ctx context.Context, filter AuditFilter) ([]AuditEntry, error) {
+	namespace := strings.TrimSpace(filter.Namespace)
+	if namespace == "" {
+		return nil, fmt.Errorf("audit namespace is required")
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, COALESCE(namespace, ''), occurred_at, actor, actor_type,
+		       action, outcome, target_type, target_name,
+		       COALESCE(target_namespace, ''), workspace_name,
+		       COALESCE(host(source_ip), ''), user_agent, request_id,
+		       COALESCE(duration_ms, 0), error, details
+		FROM poddy.audit_events
+		WHERE namespace = $1
+		  AND ($2 = '' OR action = $2)
+		  AND ($3 = '' OR outcome = $3)
+		  AND ($4 = '' OR workspace_name = $4)
+		  AND ($5 = '' OR actor = $5)
+		  AND ($6 = 0 OR id < $6)
+		ORDER BY id DESC
+		LIMIT $7`,
+		namespace, strings.TrimSpace(filter.Action), strings.TrimSpace(filter.Outcome),
+		strings.TrimSpace(filter.Workspace), strings.TrimSpace(filter.Actor), filter.BeforeID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list audit events: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]AuditEntry, 0, limit)
+	for rows.Next() {
+		var entry AuditEntry
+		var details []byte
+		if err := rows.Scan(
+			&entry.ID, &entry.Namespace, &entry.OccurredAt, &entry.Actor, &entry.ActorType,
+			&entry.Action, &entry.Outcome, &entry.TargetType, &entry.TargetName,
+			&entry.TargetNamespace, &entry.Workspace, &entry.SourceIP, &entry.UserAgent,
+			&entry.RequestID, &entry.DurationMs, &entry.Error, &details,
+		); err != nil {
+			return nil, fmt.Errorf("scan audit event: %w", err)
+		}
+		if len(details) > 0 {
+			if err := json.Unmarshal(details, &entry.Details); err != nil {
+				return nil, fmt.Errorf("decode audit details: %w", err)
+			}
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list audit events: %w", err)
+	}
+	return entries, nil
+}
+
 func (p *Postgres) SyncRBAC(ctx context.Context, namespace string, cfg rbac.Config) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
