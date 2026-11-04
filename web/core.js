@@ -54,6 +54,7 @@ const els = {
   createForm: document.getElementById("create-form"),
   createSubmit: document.getElementById("create-submit"),
   nameInput: document.getElementById("workspace-name"),
+  nameHint: document.getElementById("workspace-name-hint"),
   templateSelect: document.getElementById("template-select"),
   templateDescription: document.getElementById("template-description"),
   createError: document.getElementById("create-error"),

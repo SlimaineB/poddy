@@ -311,6 +311,25 @@ async function load({ silent = false } = {}) {
     }
   }
 }
+function workspaceNamePrefix() {
+  if (!state.me || state.me.method === "none") return "";
+  let raw = state.me.username || "";
+  if (!raw && state.me.email) raw = state.me.email.split("@")[0];
+  raw = String(raw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/g, "");
+  return raw || "user";
+}
+
+function renderWorkspaceNameHint() {
+  const prefix = workspaceNamePrefix();
+  if (!prefix) {
+    els.nameInput.placeholder = "my-workspace";
+    els.nameHint.textContent = "Lowercase letters, numbers, and dashes.";
+    return;
+  }
+  els.nameInput.placeholder = `${prefix}-my-workspace`;
+  els.nameHint.textContent = `Lowercase letters, numbers, and dashes. Your username is added automatically: ${prefix}-my-workspace.`;
+}
+
 async function openCreate() {
   if (!state.templates.length) {
     toast("No templates are available. Check the portal configuration.");
@@ -318,6 +337,7 @@ async function openCreate() {
   }
   els.createForm.reset();
   setFormError(els.createError, "");
+  renderWorkspaceNameHint();
   els.params.replaceChildren();
   if (!els.templateSelect.value) {
     els.templateSelect.value = state.templates[0].name;

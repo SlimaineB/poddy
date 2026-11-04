@@ -125,7 +125,7 @@ The shared token and trusted local mode (no token, no OIDC) act as global admins
 | `PUT /api/teams/{name}` | admin | body `{"members":[]}` |
 | `DELETE /api/teams/{name}` | admin | delete and detach from templates |
 
-`GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access and records the owner. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local VS Code launch endpoint require ownership or admin.
+`GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local VS Code launch endpoint require ownership or admin.
 
 ## Helm
 

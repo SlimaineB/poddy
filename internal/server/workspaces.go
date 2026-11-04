@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -113,6 +115,43 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var workspacePrefixCleaner = regexp.MustCompile(`[^a-z0-9]+`)
+
+func workspaceNamePrefix(id *identity) string {
+	if id == nil {
+		return ""
+	}
+	raw := id.User.Username
+	if raw == "" && id.User.Email != "" {
+		raw = strings.SplitN(id.User.Email, "@", 2)[0]
+	}
+	if raw == "" {
+		raw = id.User.Subject
+	}
+	raw = strings.ToLower(raw)
+	raw = workspacePrefixCleaner.ReplaceAllString(raw, "-")
+	raw = strings.Trim(raw, "-")
+	if len(raw) > 32 {
+		raw = strings.TrimRight(raw[:32], "-")
+	}
+	if raw == "" {
+		raw = "user"
+	}
+	return raw
+}
+
+func workspaceNameFor(id *identity, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || id == nil || id.Method == "none" {
+		return name
+	}
+	prefix := workspaceNamePrefix(id)
+	if prefix == "" || name == prefix || strings.HasPrefix(name, prefix+"-") {
+		return name
+	}
+	return prefix + "-" + name
+}
+
 func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.currentIdentity(r)
 	if !ok {
@@ -131,6 +170,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	req.Name = workspaceNameFor(id, req.Name)
 	setAuditTarget(r, req.Name)
 
 	templateName := req.Template

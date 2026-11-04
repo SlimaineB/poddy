@@ -20,7 +20,7 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 	s, provider := newExternalAuthTestServer(t)
 	session := sessionFor(t, s, auth.User{Subject: "sub-1", Username: "alice", Email: "alice@example.com"})
 
-	rec := requestAs(t, s, session, http.MethodPost, "/api/workspaces", map[string]string{"name": "extws", "template": "ext"})
+	rec := requestAs(t, s, session, http.MethodPost, "/api/workspaces", map[string]string{"name": "alice-extws", "template": "ext"})
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("create without connection: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -83,12 +83,12 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 		t.Fatalf("expected connected provider: %s", rec.Body.String())
 	}
 
-	rec = requestAs(t, s, session, http.MethodPost, "/api/workspaces", map[string]string{"name": "extws", "template": "ext"})
+	rec = requestAs(t, s, session, http.MethodPost, "/api/workspaces", map[string]string{"name": "alice-extws", "template": "ext"})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create after connection: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
-	pod, err := s.Workspaces.Get(context.Background(), "extws")
+	pod, err := s.Workspaces.Get(context.Background(), "alice-extws")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 	if env["MOCK_TOKEN"] != "ext-access" || env["PODDY_EXTERNAL_AUTH_MOCK_TOKEN"] != "ext-access" {
 		t.Fatalf("external auth env = %+v", env)
 	}
-	if env["PODDY_PORTAL_URL"] != "http://portal.example" || env["PODDY_WORKSPACE_NAME"] != "extws" {
+	if env["PODDY_PORTAL_URL"] != "http://portal.example" || env["PODDY_WORKSPACE_NAME"] != "alice-extws" {
 		t.Fatalf("workspace env = %+v", env)
 	}
 	if env["GIT_ASKPASS"] != "/usr/local/bin/poddy-git-askpass" || env["GIT_TERMINAL_PROMPT"] != "0" {
@@ -107,7 +107,7 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 		t.Fatalf("workspace token is empty: %+v", env)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/extws/external-auth/mock/token", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/alice-extws/external-auth/mock/token", nil)
 	req.Header.Set(workspaceAuthHeader, workspaceToken)
 	tokenRec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(tokenRec, req)
@@ -128,7 +128,7 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 		"Username for 'https://git.example.com':": "oauth2\n",
 		"Password for 'https://git.example.com':": "ext-access\n",
 	} {
-		req := httptest.NewRequest(http.MethodGet, "/api/workspaces/extws/git-askpass?prompt="+url.QueryEscape(prompt), nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/workspaces/alice-extws/git-askpass?prompt="+url.QueryEscape(prompt), nil)
 		req.Header.Set(workspaceAuthHeader, workspaceToken)
 		rec := httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)

@@ -48,7 +48,8 @@ API and only needs pod read access plus port-forward.
 ### Create a workspace
 
 1. The browser calls `POST /api/workspaces` on the portal.
-2. The portal authenticates the request and checks template access.
+2. The portal authenticates the request, checks template access, and prefixes
+   the name with the authenticated username when authentication is enabled.
 3. It renders the template's `pod.yaml` with the chosen parameters.
 4. It creates the pod and, when requested, a PVC in the workspace namespace.
 5. The owner is written to the `poddy.io/owner` annotation.

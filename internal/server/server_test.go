@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 
+	"poddy/internal/auth"
 	"poddy/internal/k8s"
 	"poddy/internal/templates"
 	"poddy/web"
@@ -73,6 +74,58 @@ func TestCreateAndList(t *testing.T) {
 	}
 	if len(list) != 1 || list[0].Name != "app" {
 		t.Fatalf("list = %+v", list)
+	}
+}
+
+func TestCreatePrefixesWorkspaceName(t *testing.T) {
+	s := newRBACServer(t, rbacTestConfig())
+	alice := sessionFor(t, s, auth.User{Username: "Alice Smith", Email: "alice@example.com"})
+
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "app", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var ws k8s.Workspace
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+	if ws.Name != "alice-smith-app" {
+		t.Fatalf("workspace name = %q", ws.Name)
+	}
+
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-smith-other", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("prefixed create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+	if ws.Name != "alice-smith-other" {
+		t.Fatalf("prefixed workspace name = %q", ws.Name)
+	}
+
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "app", "template": "base"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreatePrefixesTokenWorkspaceName(t *testing.T) {
+	s := newTestServer("secret")
+	req := httptest.NewRequest(http.MethodPost, "/api/workspaces", strings.NewReader(`{"name":"app"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var ws k8s.Workspace
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+	if ws.Name != "token-app" {
+		t.Fatalf("workspace name = %q", ws.Name)
 	}
 }
 
