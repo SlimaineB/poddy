@@ -317,6 +317,7 @@ async function openCreate() {
     return;
   }
   els.createForm.reset();
+  setFormError(els.createError, "");
   els.params.replaceChildren();
   if (!els.templateSelect.value) {
     els.templateSelect.value = state.templates[0].name;

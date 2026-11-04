@@ -232,7 +232,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 	if err := validateName(req.Name); err != nil {
 		return Workspace{}, err
 	}
-	if _, err := m.Get(ctx, req.Name); err == nil {
+	if _, err := m.GetWorkspace(ctx, req.Name); err == nil {
 		return Workspace{}, fmt.Errorf("workspace %q already exists", req.Name)
 	} else if !apierrors.IsNotFound(err) {
 		return Workspace{}, err

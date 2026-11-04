@@ -924,6 +924,16 @@ select {
   gap: 7px;
 }
 
+.form-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 38, 38, 0.24);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: #b91c1c;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .field > label {
   color: var(--text-muted);
   font-size: 11.5px;

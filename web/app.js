@@ -48,6 +48,7 @@ els.refresh.addEventListener("click", async () => {
 });
 
 els.templateSelect.addEventListener("change", renderParams);
+els.createForm.addEventListener("input", () => setFormError(els.createError, ""));
 
 els.createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -70,6 +71,7 @@ els.createForm.addEventListener("submit", async (event) => {
   };
 
   const original = els.createSubmit.innerHTML;
+  setFormError(els.createError, "");
   els.createSubmit.disabled = true;
   els.createSubmit.innerHTML = `<span class="spinner small"></span>Creating`;
 
@@ -80,10 +82,11 @@ els.createForm.addEventListener("submit", async (event) => {
     });
     els.createDialog.close();
     els.createForm.reset();
+    setFormError(els.createError, "");
     toast(`Workspace ${workspace.name} is being created.`, "success");
     await load();
   } catch (err) {
-    toast(err.message || "Failed to create workspace.");
+    setFormError(els.createError, err.message || "Failed to create workspace.");
     if (String(err.message || "").includes("external auth")) {
       await loadExternalAuth();
       renderExternalAuthNotice();

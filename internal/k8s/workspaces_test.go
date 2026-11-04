@@ -141,6 +141,27 @@ func TestCreateRejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestCreateRejectsDuplicateStopped(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Stop(ctx, "app"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err == nil {
+		t.Fatal("expected duplicate error for stopped workspace")
+	}
+	if _, err := m.Get(ctx, "app"); !apierrors.IsNotFound(err) {
+		t.Fatalf("stopped workspace was recreated: %v", err)
+	}
+	if _, err := m.State(ctx, "app"); err != nil {
+		t.Fatalf("stopped state was removed: %v", err)
+	}
+}
+
 func TestDeleteWorkspace(t *testing.T) {
 	m := newTestManager()
 	ctx := context.Background()

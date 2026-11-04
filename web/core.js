@@ -56,6 +56,7 @@ const els = {
   nameInput: document.getElementById("workspace-name"),
   templateSelect: document.getElementById("template-select"),
   templateDescription: document.getElementById("template-description"),
+  createError: document.getElementById("create-error"),
   params: document.getElementById("params"),
   sshDialog: document.getElementById("ssh-dialog"),
   sshConfig: document.getElementById("ssh-config"),
@@ -270,6 +271,11 @@ function renderParams() {
 }
 function closeDialog(button) {
   button.closest("dialog")?.close();
+}
+function setFormError(element, message) {
+  if (!element) return;
+  element.textContent = message || "";
+  element.hidden = !message;
 }
 function emptyInline(message) {
   const node = document.createElement("div");
