@@ -1,20 +1,22 @@
 # Getting started
 
-This is the shortest path to a running workspace on a local k3s cluster. It
-takes a few minutes and needs no cloud account, ingress, or OIDC provider.
+This is the shortest path to a running workspace on a local Kubernetes or k3s
+cluster. It uses the published GHCR images and Helm, so you do **not** need Go,
+Docker, or a local image build.
 
 !!! tip "Just want the production path?"
-    See [Kubernetes deployment](deploy.md) for Helm, TLS, a stable SSH host
-    key, and multiple replicas.
+    See [Kubernetes deployment](deploy.md) for TLS, a LoadBalancer, multiple
+    replicas, and a stable SSH host key.
 
 ## Before you start
 
 You need:
 
-- Go 1.26+
-- Docker
+- A running Kubernetes or k3s cluster
 - `kubectl`
-- A running k3s cluster
+- Helm 3.13+
+- `ssh-keygen` and `openssl`
+- Optional: VS Code with the **Remote-SSH** extension
 
 The commands below use your current kubeconfig context. Check it first:
 
@@ -22,75 +24,92 @@ The commands below use your current kubeconfig context. Check it first:
 kubectl config current-context
 ```
 
-## 1. Create the workspace namespace
+Clone the repository so Helm can use the chart:
 
 ```bash
-kubectl create namespace poddy
+git clone https://github.com/SlimaineB/poddy.git
+cd poddy
 ```
 
-If the namespace already exists, skip this step.
-
-## 2. Build and import the workspace images
-
-The portal and bastion run on your machine, but workspace pods run inside k3s.
-Import the images into k3s so the pods do not need a registry:
+## 1. Create the namespace and secrets
 
 ```bash
-docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
-docker build -f Dockerfile.workspace-go -t poddy/workspace:latest .
+kubectl create namespace poddy-system --dry-run=client -o yaml | kubectl apply -f -
 
-docker save poddy/workspace-base:latest poddy/workspace:latest \
-  | sudo k3s ctr images import -
+TOKEN="$(openssl rand -hex 32)"
+kubectl -n poddy-system create secret generic poddy-auth \
+  --from-literal=token="$TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-## 3. Build the portal
+Generate an SSH key for the bastion. The `user:token` comment binds the key to
+the token identity used by this local setup:
 
 ```bash
-go build -o poddy .
+ssh-keygen -t ed25519 -N '' -C 'user:token' -f ./poddy_key
+ssh-keygen -t ed25519 -N '' -f ./poddy_host_ed25519
+
+kubectl -n poddy-system create secret generic poddy-host-key \
+  --from-file=ssh_host_ed25519_key=./poddy_host_ed25519 \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-This binary runs the portal and can start the SSH bastion in-process. Cluster
-deployments use the same image but run `cmd/poddy-bastion` as a separate
-Deployment.
+## 2. Install poddy
 
-## 4. Start the portal
+The chart pulls the portal/bastion image and the built-in workspace images from
+GHCR. This example exposes the web UI and SSH through `kubectl port-forward`, so
+it works without a LoadBalancer or ingress:
 
 ```bash
-export KUBE_CONTEXT="$(kubectl config current-context)"
-
-./poddy \
-  -context "$KUBE_CONTEXT" \
-  -namespace poddy \
-  -token=dev-token \
-  -ssh-addr=127.0.0.1:2222 \
-  -ssh-public-host=127.0.0.1 \
-  -ssh-public-port=2222
+helm upgrade --install poddy ./deploy/helm/poddy \
+  --namespace poddy-system \
+  --set image.repository=ghcr.io/slimaineb/poddy \
+  --set image.tag=latest \
+  --set auth.existingSecret=poddy-auth \
+  --set ssh.service.type=ClusterIP \
+  --set ssh.publicHost=127.0.0.1 \
+  --set ssh.publicPort=2222 \
+  --set-string ssh.authorizedKeys[0]="$(cat ./poddy_key.pub)" \
+  --set ssh.existingHostKeySecret=poddy-host-key \
+  --set workspaceNamespace=poddy-workspaces \
+  --set createWorkspaceNamespace=true
 ```
 
-What these flags do:
+Wait for the portal and bastion:
 
-| Flag | Purpose |
-|------|---------|
-| `-context` | kubeconfig context the portal uses |
-| `-namespace` | namespace where workspace pods and PVCs are created |
-| `-token` | shared login token; anyone with it is a global admin |
-| `-ssh-addr` | local address for the SSH bastion |
-| `-ssh-public-host` / `-ssh-public-port` | address shown to users in SSH and VS Code instructions |
+```bash
+kubectl -n poddy-system rollout status deploy/poddy
+kubectl -n poddy-system rollout status deploy/poddy-bastion
+```
 
-!!! note "Local mode runs both processes"
-    With `-ssh-addr` set, this one process starts the portal and the SSH
-    bastion. Helm deployments split them into separate Deployments so they can
-    scale independently.
+If the GHCR packages are private, make them public for this quick start. The
+chart's `imagePullSecrets` only covers the portal and bastion; workspace
+templates need their own `imagePullSecrets` in the pod spec.
 
-!!! warning "The shared token is admin access"
-    `-token` is fine for a local test. For a team deployment, use
-    [OIDC / SSO](oidc.md) and keep the token only for automation.
+## 3. Start the local port-forwards
 
-## 5. Open the portal
+Keep each command running in its own terminal:
 
-Go to <http://127.0.0.1:8090> and enter `dev-token`.
+```bash
+kubectl -n poddy-system port-forward svc/poddy 8080:80
+```
 
-## 6. Create your first workspace
+```bash
+kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222
+```
+
+## 4. Open the portal
+
+Read the generated token:
+
+```bash
+kubectl -n poddy-system get secret poddy-auth \
+  -o jsonpath='{.data.token}' | base64 -d
+```
+
+Open <http://127.0.0.1:8080> and sign in with that token.
+
+## 5. Create your first workspace
 
 1. Click **New workspace**.
 2. Pick **Base** or **Go**.
@@ -98,15 +117,20 @@ Go to <http://127.0.0.1:8090> and enter `dev-token`.
 4. Click **Create**.
 5. Wait for the workspace to reach **Running**.
 
-## 7. Connect
+## 6. Connect
 
 Use the buttons on the workspace card:
 
 - **Terminal** opens a browser shell.
 - **SSH** copies a ready-to-use SSH config. It uses the bastion as a
   `ProxyJump`, so you do not need direct access to the pod.
-- **VS Code** opens Remote-SSH on `/home/dev`. In cluster mode, save the SSH
-  config once; it covers every workspace.
+- **VS Code** opens Remote-SSH on `/home/dev`.
+
+For the SSH/VS Code path, load the private key once:
+
+```bash
+ssh-add ./poddy_key
+```
 
 ## What to try next
 
@@ -116,14 +140,17 @@ Use the buttons on the workspace card:
   GitLab token into workspaces.
 - [OIDC / SSO](oidc.md): replace the shared token with your identity provider.
 - [RBAC and ownership](rbac.md): add admins, teams, and per-template access.
-- [Kubernetes deployment](deploy.md): run the portal in the cluster with Helm.
+- [Kubernetes deployment](deploy.md): run the portal with TLS and multiple
+  replicas.
+- [Development](development.md): build the portal and workspace images from
+  source.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Workspace stays in `ImagePullBackOff` | Workspace image is not in k3s containerd | Re-run the image import command from step 2 |
-| `pods is forbidden` or namespace errors | Portal points at the wrong context or namespace | Check `kubectl config current-context` and the `-context` / `-namespace` flags |
-| SSH connection refused | Bastion is not listening | Check the portal output and the `-ssh-addr` port |
-| VS Code cannot connect | SSH config was not saved | Use the **SSH** button and save the generated config under `~/.ssh/config` |
-| Login fails | Wrong token | Use the value passed to `-token` |
+| Workspace stays in `ImagePullBackOff` | GHCR packages are private or not accessible | Make the packages public or add an image pull secret |
+| `pods is forbidden` or namespace errors | Portal points at the wrong namespace | Check `workspaceNamespace` and the RoleBinding in that namespace |
+| SSH connection refused | The SSH port-forward is not running | Start `kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222` |
+| VS Code cannot connect | The key is not loaded or the SSH config was not saved | Run `ssh-add ./poddy_key` and save the config from the **SSH** dialog |
+| Login fails | Wrong token | Read the token from the `poddy-auth` secret again |

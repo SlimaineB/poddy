@@ -38,7 +38,7 @@ func TestCreateWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Name != "app" || ws.Template != "base" || ws.Image != "poddy/workspace:latest" {
+	if ws.Name != "app" || ws.Template != "base" || ws.Image != "ghcr.io/slimaineb/poddy-workspace-base:latest" {
 		t.Fatalf("unexpected workspace: %+v", ws)
 	}
 
@@ -53,7 +53,7 @@ func TestCreateWorkspace(t *testing.T) {
 	if container.Name != ContainerName {
 		t.Fatalf("container = %q", container.Name)
 	}
-	if container.Image != "poddy/workspace:latest" {
+	if container.Image != "ghcr.io/slimaineb/poddy-workspace-base:latest" {
 		t.Fatalf("image = %q", container.Image)
 	}
 	if len(container.Command) != 1 || container.Command[0] != "/usr/local/bin/poddy-ssh-start" {

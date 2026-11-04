@@ -166,10 +166,12 @@ spec:
 
 | Name | Image | Parameters | Notes |
 |------|-------|------------|-------|
-| `base` | `poddy/workspace:latest` | cpu, memory, storage, storageClass | Generic Linux |
-| `go` | `poddy/workspace:latest` | cpu, memory, storage, storageClass | Adds `GOPATH=/home/dev/go`, larger defaults |
+| `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass | Generic Linux |
+| `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass | Adds `GOPATH=/home/dev/go`, larger defaults |
 
 Both mount the workspace volume at `/workspace` and run the SSH entrypoint.
+The images point at the upstream GHCR namespace; forks should override the
+`image` field with their own published images.
 
 ## Adding external templates (local)
 
@@ -323,7 +325,7 @@ The portal picks up the change through the watch. Old ConfigMaps can stay for hi
 
 ### Operator checklist
 
-1. Build and push the workspace image, or reuse an existing image such as `poddy/workspace:latest`.
+1. Build and push the workspace image, or reuse a published image such as `ghcr.io/slimaineb/poddy-workspace-base:latest`.
 2. Add the template to the separate `poddy-templates` release, or `kubectl apply` a labeled ConfigMap. Use `poddy.io/template-version` and `poddy.io/template-active` to keep versions for rollback.
 3. Check the portal logs:
    ```bash
@@ -339,7 +341,7 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 
 ### Base image contract
 
-`poddy/workspace-base` provides:
+`ghcr.io/slimaineb/poddy-workspace-base` provides:
 - OpenSSH server on port 22
 - `dev` user (UID 1000), passwordless sudo
 - `/workspace` directory owned by `dev:dev`
@@ -372,7 +374,7 @@ EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 ```
 
-**Build & push:**
+**Build & publish (custom images only):**
 ```bash
 docker build -f Dockerfile.workspace-base -t ghcr.io/your-org/poddy-workspace-base:1 .
 docker push ghcr.io/your-org/poddy-workspace-base:1

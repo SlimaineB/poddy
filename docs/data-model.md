@@ -58,13 +58,13 @@ workspaces:
     name: my-workspace
     template: go
     owner: alice@example.com
-    image: poddy/workspace:latest
+    image: ghcr.io/slimaineb/poddy-workspace:latest
     persistent: true
     storage: 10Gi
     spec:
       containers:
         - name: workspace
-          image: poddy/workspace:latest
+          image: ghcr.io/slimaineb/poddy-workspace:latest
 ```
 
 This is enough to recreate the pod on **Start** even if the template catalog

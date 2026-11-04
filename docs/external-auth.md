@@ -75,7 +75,7 @@ Add `externalAuth` to `template.yaml`:
 ```yaml
 name: go
 displayName: Go
-image: poddy/workspace:latest
+image: ghcr.io/slimaineb/poddy-workspace:latest
 externalAuth:
   - id: github
     env: [GITHUB_TOKEN, GH_TOKEN]   # optional override

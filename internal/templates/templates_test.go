@@ -108,7 +108,7 @@ func TestRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	container := pod.Spec.Containers[0]
-	if container.Image != "poddy/workspace:latest" {
+	if container.Image != "ghcr.io/slimaineb/poddy-workspace-base:latest" {
 		t.Fatalf("image = %q", container.Image)
 	}
 	if len(container.Command) != 1 || container.Command[0] != "/usr/local/bin/poddy-ssh-start" {

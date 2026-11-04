@@ -1,7 +1,7 @@
 name: go
 displayName: Go
 description: Go 1.25 workspace with SSH and a larger persistent volume.
-image: poddy/workspace:latest
+image: ghcr.io/slimaineb/poddy-workspace:latest
 parameters:
   - name: cpu
     description: CPU request

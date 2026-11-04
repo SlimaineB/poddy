@@ -18,7 +18,7 @@ never need a kubeconfig.
 
     ---
 
-    Go from zero to a running workspace on local k3s.
+    Go from zero to a running workspace with Helm and published images.
 
     [:octicons-arrow-right-24: Quick start](getting-started.md)
 
@@ -88,6 +88,7 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 | Try it locally in a few minutes | [Getting started](getting-started.md) |
 | Run it in production | [Kubernetes deployment](deploy.md) |
 | Add my own workspace image | [Workspace templates](templates.md) |
+| Build poddy from source | [Development](development.md) |
 | Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |
 | Configure SSO | [OIDC / SSO](oidc.md) |
 | Understand who can see what | [RBAC and ownership](rbac.md) |

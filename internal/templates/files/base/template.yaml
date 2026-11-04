@@ -1,7 +1,7 @@
 name: base
 displayName: Base
 description: Generic Linux workspace with SSH and a persistent home volume.
-image: poddy/workspace:latest
+image: ghcr.io/slimaineb/poddy-workspace-base:latest
 parameters:
   - name: cpu
     description: CPU request

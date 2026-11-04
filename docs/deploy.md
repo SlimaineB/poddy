@@ -19,7 +19,7 @@ The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as sep
 - Ingress controller (nginx, traefik, etc.) for HTTPS
 - Optional: LoadBalancer for SSH (or use Ingress TCP)
 
-### 1. Use the published image (or build your own)
+### 1. Use the published image
 
 The repository publishes the portal/bastion image to GHCR on `main` and `v*` tags:
 
@@ -30,12 +30,7 @@ image:
 ```
 
 If the GHCR package is private, create an image pull secret and reference it in
-the chart values. To build your own image instead:
-
-```bash
-docker build -t ghcr.io/slimaineb/poddy:dev .
-docker push ghcr.io/slimaineb/poddy:dev
-```
+the chart values. For source builds, see [Development](development.md).
 
 ### 2. Prepare secrets
 
@@ -436,12 +431,10 @@ The portal does not build workspace images. The publish workflow pushes the
 base and Go workspace images to GHCR:
 - Base: `ghcr.io/slimaineb/poddy-workspace-base:latest`
 - Go: `ghcr.io/slimaineb/poddy-workspace:latest` (includes Go 1.25)
-- Custom: build on `poddy-workspace-base` (see [templates.md](templates.md#building-custom-workspace-images)).
+- Custom: build on `ghcr.io/slimaineb/poddy-workspace-base` (see [templates.md](templates.md#building-custom-workspace-images)).
 
-The built-in templates still use `poddy/workspace:latest` for local k3s
-imports. For a cluster, update the `template.yaml` `image` field to the GHCR
-image or your own registry. If using a private registry, add
-`imagePullSecrets` to the pod template.
+The built-in `base` and `go` templates use the GHCR images above. If you use a
+private registry, add `imagePullSecrets` to the pod template.
 
 ## Quick-start manifest (no Helm)
 

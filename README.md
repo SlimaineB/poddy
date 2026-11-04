@@ -31,49 +31,68 @@ The portal and bastion are separate Deployments built from the same image. Scale
 the portal for HTTP/API load and the bastion for SSH connections. In local mode,
 `poddy` starts both processes together; Helm runs them independently.
 
-## Quick start (local k3s + WSL)
+## Quick start (Helm + published images)
+
+No Go or Docker build is required. The portal, bastion, and built-in workspace
+images are published to GHCR.
 
 ### Prerequisites
-- Go 1.26+
-- Docker
-- kubectl + k3s (running)
-- Windows VS Code with **Remote-SSH** extension
+- Kubernetes or k3s (running)
+- `kubectl` and Helm 3.13+
+- `ssh-keygen` and `openssl`
+- Optional: VS Code with the **Remote-SSH** extension
 
-Create the workspace namespace once:
+### 1. Create the namespace and secrets
 ```bash
-kubectl --context local create namespace poddy
+kubectl create namespace poddy-system --dry-run=client -o yaml | kubectl apply -f -
+
+TOKEN="$(openssl rand -hex 32)"
+kubectl -n poddy-system create secret generic poddy-auth \
+  --from-literal=token="$TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+ssh-keygen -t ed25519 -N '' -C 'user:token' -f ./poddy_key
+ssh-keygen -t ed25519 -N '' -f ./poddy_host_ed25519
+kubectl -n poddy-system create secret generic poddy-host-key \
+  --from-file=ssh_host_ed25519_key=./poddy_host_ed25519 \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 1. Build workspace images
+### 2. Install poddy
 ```bash
-docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
-docker build -f Dockerfile.workspace-go -t poddy/workspace:latest .
-```
-Import them into k3s containerd:
-```bash
-docker save poddy/workspace-base:latest poddy/workspace:latest | sudo k3s ctr images import -
+helm upgrade --install poddy ./deploy/helm/poddy \
+  --namespace poddy-system \
+  --set image.repository=ghcr.io/slimaineb/poddy \
+  --set image.tag=latest \
+  --set auth.existingSecret=poddy-auth \
+  --set ssh.service.type=ClusterIP \
+  --set ssh.publicHost=127.0.0.1 \
+  --set ssh.publicPort=2222 \
+  --set-string ssh.authorizedKeys[0]="$(cat ./poddy_key.pub)" \
+  --set ssh.existingHostKeySecret=poddy-host-key \
+  --set workspaceNamespace=poddy-workspaces \
+  --set createWorkspaceNamespace=true
 ```
 
-### 2. Build the portal
-```bash
-go build -o poddy .
-```
-This builds the portal binary with the in-process bastion used by local mode.
-The standalone cluster bastion is built from `cmd/poddy-bastion`.
+If the GHCR packages are private, make them public for this quick start. The
+chart's `imagePullSecrets` only covers the portal and bastion; workspace
+templates need their own `imagePullSecrets` in the pod spec.
 
-### 3. Run the portal and bastion (WSL)
+### 3. Start the port-forwards
+Keep each command running in its own terminal:
 ```bash
-./poddy -context local -namespace poddy -token=secret \
-  -ssh-addr=127.0.0.1:2222 -ssh-public-host=127.0.0.1 -ssh-public-port=2222
+kubectl -n poddy-system port-forward svc/poddy 8080:80
 ```
-- `-context local` uses the `local` kubeconfig context (your k3s).
-- `-namespace poddy` is the workspace namespace.
-- `-token=secret` is the shared access token (use a strong random string in prod).
-- The local process starts the portal and the SSH bastion together; the bastion listens on `127.0.0.1:2222`, and `-ssh-public-host/port` is what users connect to.
-- In local editor mode, the portal marks the SSH keys it manages as admin keys, so the **SSH** and **VS Code** buttons keep working with token or OIDC login. Additional keys passed with `-ssh-keys` / `PODDY_SSH_KEYS` must be commented `user:<identity>` or `admin`.
+```bash
+kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222
+```
 
 ### 4. Open the UI
-Open `http://127.0.0.1:8090` in your browser. Enter the token `secret`.
+Read the token:
+```bash
+kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base64 -d
+```
+Open `http://127.0.0.1:8080` and enter the token.
 
 ### 5. Create a workspace
 Click **New workspace**, pick **Base** or **Go**, set parameters, **Create**. Wait for **Running**.
@@ -81,15 +100,20 @@ Click **New workspace**, pick **Base** or **Go**, set parameters, **Create**. Wa
 ### 6. Connect
 - **Terminal**: Click the terminal icon for a browser shell.
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
-- **VS Code**: Click **VS Code** to open Remote-SSH on the workspace user's home (`/home/dev`). In cluster mode this uses `vscode://` and needs the SSH config from the **SSH** dialog once; that config covers all workspaces. In local editor mode it launches VS Code directly. On Windows, save the config and key under `C:\Users\<you>\.ssh\`, not only in WSL.
+- **VS Code**: Click **VS Code** to open Remote-SSH on the workspace user's home (`/home/dev`).
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
 - **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
+
+Load the SSH key once for SSH/VS Code:
+```bash
+ssh-add ./poddy_key
+```
 
 ### 7. Manage users, teams, and access
 Use the dedicated **Users**, **Teams**, and **Templates** pages in the top bar. **Users** lists known identities and groups (admins also see team memberships). **Teams** creates and edits teams with the same table/autocomplete member editor. **Templates** searches by name, description, image, or version; select a template to edit its access. Owners, users, and team members are table rows with **Add** / **Remove** buttons.
 
 ### 8. Push a template (optional)
-Local runs can use `-templates-dir ./my-templates`. In Kubernetes, apply a ConfigMap labeled `poddy.io/template=true` with `template.yaml` and `pod.yaml` keys, or install the separate `poddy-templates` chart. Add `poddy.io/template-version` and `poddy.io/template-active=true` to keep versions for rollback. The portal hot-reloads templates; no restart is required. See [docs/templates.md](docs/templates.md#pushing-templates-to-kubernetes).
+Apply a ConfigMap labeled `poddy.io/template=true` with `template.yaml` and `pod.yaml` keys, or install the separate `poddy-templates` chart. Add `poddy.io/template-version` and `poddy.io/template-active=true` to keep versions for rollback. The portal hot-reloads templates; no restart is required. See [docs/templates.md](docs/templates.md#pushing-templates-to-kubernetes).
 
 ### 9. Try OIDC + RBAC (optional)
 A local Dex demo is included:
@@ -99,6 +123,13 @@ A local Dex demo is included:
 ```
 
 The demo ships a default user set: `admin`/`ops` (global admins), `dev` (owner of `go`), `alice`/`bob` (backend), `carol` (frontend), `dave` (direct `go` user), and `erin` (base only). See [docs/oidc.md](docs/oidc.md#local-demo-with-dex) for the full table and [docs/rbac.md](docs/rbac.md).
+
+## Development from source
+
+Building the portal and workspace images is only needed for contributors. See
+[docs/development.md](docs/development.md) for Go, Docker, and local image
+instructions. The publish workflow builds and pushes the GHCR images; manual
+`docker push` is not part of the setup flow.
 
 ## Production deployment
 
@@ -118,7 +149,7 @@ See [docs/templates.md](docs/templates.md) for:
 - Adding external templates (`-templates-dir`, the `poddy-templates` chart, or labeled ConfigMaps).
 - Pushing a template at any time without restarting the portal.
 - Versioning templates and rolling back by moving the active label.
-- Building custom images on top of `poddy/workspace-base`.
+- Building custom images on top of `ghcr.io/slimaineb/poddy-workspace-base`.
 - Example: Node.js workspace in `examples/templates/node` and `examples/workspaces/node`.
 
 ## Repository layout
@@ -171,7 +202,8 @@ See [docs/templates.md](docs/templates.md) for:
     ├── oidc.md
     ├── rbac.md
     ├── architecture.md
-    └── data-model.md
+    ├── data-model.md
+    └── development.md
 ```
 
 ## Authentication
@@ -234,7 +266,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 - **Publish images** builds and pushes the portal/bastion image, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
-Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public or add an image pull secret.
+Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template.
 
 Documentation lives under `docs/` and is configured by `mkdocs.yml`. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 

@@ -12,7 +12,7 @@ Add a `links` list to `template.yaml`:
 ```yaml
 name: go
 displayName: Go
-image: poddy/workspace:latest
+image: ghcr.io/slimaineb/poddy-workspace:latest
 links:
   - name: JetBrains Gateway
     url: "jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/workspace"
