@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"poddy/internal/auth"
+	"poddy/internal/metadata"
 )
 
 const (
@@ -54,6 +55,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			s.serveLogin(w, r.URL.RequestURI(), "", http.StatusUnauthorized)
 			return
 		}
+		s.auditDenied(r, "auth.denied", "", "")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
 }
@@ -131,6 +133,7 @@ func (s *Server) identify(r *http.Request) (*identity, bool) {
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	s.auditEvent(r, metadata.Event{Action: "auth.logout", Outcome: "success"})
 	for _, name := range []string{sessionCookie, cookieName, oidcCookie} {
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,

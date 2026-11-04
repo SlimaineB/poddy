@@ -25,6 +25,9 @@ type Config struct {
 	Context                  string
 	Editor                   string
 
+	DatabaseURL         string
+	DatabaseAutoMigrate bool
+
 	SSHEnabled           bool
 	SSHAddr              string
 	SSHHostKey           string
@@ -65,6 +68,9 @@ func Load(args []string) (Config, error) {
 		Kubeconfig:               os.Getenv("KUBECONFIG"),
 		Editor:                   env("PODDY_EDITOR", "code"),
 
+		DatabaseURL:         os.Getenv("PODDY_DATABASE_URL"),
+		DatabaseAutoMigrate: envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
+
 		SSHEnabled:           envBool("PODDY_SSH_ENABLED", true),
 		SSHAddr:              env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
 		SSHHostKey:           os.Getenv("PODDY_SSH_HOST_KEY"),
@@ -103,6 +109,8 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "path to kubeconfig")
 	fs.StringVar(&cfg.Context, "context", cfg.Context, "kubeconfig context")
 	fs.StringVar(&cfg.Editor, "editor", cfg.Editor, "editor command used to open VS Code (empty disables local launch)")
+	fs.StringVar(&cfg.DatabaseURL, "database-url", cfg.DatabaseURL, "PostgreSQL URL for optional metadata mirror and audit events")
+	fs.BoolVar(&cfg.DatabaseAutoMigrate, "database-auto-migrate", cfg.DatabaseAutoMigrate, "apply embedded PostgreSQL migrations on startup")
 	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
 	fs.StringVar(&cfg.SSHAddr, "ssh-addr", cfg.SSHAddr, "SSH bastion listen address, empty disables the local bastion")
 	fs.StringVar(&cfg.SSHHostKey, "ssh-host-key", cfg.SSHHostKey, "SSH bastion host key path")
@@ -128,6 +136,7 @@ func Load(args []string) (Config, error) {
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
+	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
 	return cfg, nil
 }
 

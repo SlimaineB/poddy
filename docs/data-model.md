@@ -1,8 +1,13 @@
 # Data model
 
-poddy has no database. The portal reads and writes Kubernetes objects in the
-workspace namespace. This page lists what is stored where and which fields
-matter.
+poddy does not require a database. By default, the portal reads and writes
+Kubernetes objects in the workspace namespace. This page lists what is stored
+where and which fields matter.
+
+An optional PostgreSQL mirror can store RBAC, OIDC users, templates, workspaces,
+and audit events. It is enabled with `PODDY_DATABASE_URL`; Kubernetes remains
+the source of truth and PostgreSQL is never read for access decisions. See
+[PostgreSQL schema](postgres-schema.md).
 
 ## Object map
 
@@ -15,6 +20,7 @@ matter.
 | RBAC | ConfigMap | `poddy-rbac` | `rbac.yaml` |
 | OIDC users | ConfigMap | `poddy-users` | `users.json` |
 | External auth tokens | Secret | `poddy-external-auth` | encrypted token document |
+| Optional metadata mirror | PostgreSQL | `poddy` schema | `migrations/0001_init.sql` |
 
 The portal's Kubernetes Role is scoped to this namespace. It needs access to
 pods, exec, port-forward, PVCs, ConfigMaps, and Secrets.
@@ -160,9 +166,27 @@ Required providers block workspace creation until the user connects them.
 Optional providers are injected only when connected. Workspace pods receive
 refreshed tokens through environment variables declared by the template.
 
+## Optional PostgreSQL metadata
+
+When `PODDY_DATABASE_URL` is set, the portal mirrors the same metadata into
+PostgreSQL: tenants, users, teams, RBAC, templates, template versions,
+workspaces, and audit events. The bastion also writes SSH audit events. The
+portal syncs at startup and after writes; it does not read PostgreSQL for RBAC
+or workspace decisions.
+
+The `external_auth_tokens` table is reserved for a future encrypted mirror;
+tokens currently remain in the Kubernetes Secret. PostgreSQL never stores PVC
+contents or plaintext secrets.
+
+See [PostgreSQL schema](postgres-schema.md) for the table list, audit actions,
+backup strategy, and current limitations.
+
 ## What is not stored
 
-- No Postgres or other database.
+- No database is required at runtime.
+- No workspace files or PVC contents in PostgreSQL.
+- No PostgreSQL reads for access decisions; Kubernetes remains authoritative.
+- No plaintext OAuth tokens in PostgreSQL.
 - No long-lived Kubernetes credentials in the browser.
 - No cluster-wide access for the portal.
 - No shared home volumes across users unless you configure them yourself.

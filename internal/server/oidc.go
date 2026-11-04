@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"poddy/internal/auth"
+	"poddy/internal/metadata"
 	"poddy/internal/userstore"
 )
 
@@ -52,26 +53,31 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		if description != "" {
 			message += " (" + description + ")"
 		}
+		s.auditOIDC(r, "denied", "", message)
 		s.serveLogin(w, "/", message, http.StatusUnauthorized)
 		return
 	}
 
 	cookie, err := r.Cookie(oidcCookie)
 	if err != nil {
+		s.auditOIDC(r, "error", "", "SSO session expired")
 		s.serveLogin(w, "/", "SSO session expired, please try again.", http.StatusUnauthorized)
 		return
 	}
 	flow, err := s.OIDC.ParseFlow(cookie.Value)
 	if err != nil {
+		s.auditOIDC(r, "denied", "", "invalid SSO state")
 		s.serveLogin(w, "/", "Invalid SSO state, please try again.", http.StatusUnauthorized)
 		return
 	}
 	if state := r.URL.Query().Get("state"); state != flow.State {
+		s.auditOIDC(r, "denied", "", "invalid SSO state")
 		s.serveLogin(w, "/", "Invalid SSO state, please try again.", http.StatusUnauthorized)
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		s.auditOIDC(r, "denied", "", "missing authorization code")
 		s.serveLogin(w, "/", "SSO response has no authorization code.", http.StatusUnauthorized)
 		return
 	}
@@ -79,24 +85,29 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	user, err := s.OIDC.Complete(r.Context(), code, flow)
 	if err != nil {
 		log.Printf("oidc callback: %v", err)
+		s.auditOIDC(r, "error", "", err.Error())
 		s.serveLogin(w, flow.Next, "SSO sign-in failed: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	if s.Users != nil {
-		if _, err := s.Users.Upsert(r.Context(), userstore.User{
+		saved, err := s.Users.Upsert(r.Context(), userstore.User{
 			Subject:  user.Subject,
 			Username: user.Username,
 			Email:    user.Email,
 			Name:     user.Name,
 			Groups:   user.Groups,
-		}); err != nil {
+		})
+		if err != nil {
 			log.Printf("user directory: %v", err)
+		} else {
+			s.syncUser(r.Context(), saved)
 		}
 	}
 
 	value, err := s.OIDC.SignSession(user)
 	if err != nil {
+		s.auditOIDC(r, "error", ownerID(user), err.Error())
 		http.Error(w, "oidc: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -119,5 +130,16 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
+	s.auditOIDC(r, "success", ownerID(user), "")
 	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther)
+}
+
+func (s *Server) auditOIDC(r *http.Request, outcome, actor, message string) {
+	s.auditEvent(r, metadata.Event{
+		Action:    "auth.login",
+		Outcome:   outcome,
+		Actor:     actor,
+		ActorType: "user",
+		Error:     message,
+	})
 }

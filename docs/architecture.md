@@ -1,7 +1,9 @@
 # Architecture
 
-poddy is a stateless Go portal plus a set of Kubernetes workspace pods. It has
-no database: Kubernetes is the control plane and the source of truth.
+poddy is a stateless Go portal plus a set of Kubernetes workspace pods. It does
+not require a database: Kubernetes is the control plane and the source of truth.
+An optional PostgreSQL mirror is available for metadata durability, disaster
+recovery, and an audit trail.
 
 ## High-level view
 
@@ -39,6 +41,7 @@ API and only needs pod read access plus port-forward.
 | Workspace state | Rendered specs of stopped workspaces | ConfigMap |
 | User directory | OIDC identities seen by the portal | ConfigMap |
 | External auth store | Encrypted OAuth2 tokens per user and provider | Secret |
+| Metadata mirror (optional) | Durable copy of control-plane metadata and append-only audit events | External PostgreSQL |
 
 ## Request flows
 
@@ -49,7 +52,9 @@ API and only needs pod read access plus port-forward.
 3. It renders the template's `pod.yaml` with the chosen parameters.
 4. It creates the pod and, when requested, a PVC in the workspace namespace.
 5. The owner is written to the `poddy.io/owner` annotation.
-6. The portal watches pods and reports their phase to the UI.
+6. If PostgreSQL is enabled, the portal mirrors the workspace snapshot and
+   records a `workspace.create` audit event.
+7. The portal watches pods and reports their phase to the UI.
 
 ### Browser terminal
 
@@ -57,6 +62,7 @@ API and only needs pod read access plus port-forward.
 2. The portal checks authentication and workspace ownership.
 3. It uses the Kubernetes exec API to start a shell in the workspace pod.
 4. Terminal I/O is streamed through the WebSocket.
+5. If PostgreSQL is enabled, the portal records `workspace.terminal.open`.
 
 ### SSH and VS Code
 
@@ -65,7 +71,8 @@ API and only needs pod read access plus port-forward.
    `user:alice`).
 3. The bastion checks that the owner matches the target workspace.
 4. It port-forwards to the pod's port 22 through the Kubernetes API.
-5. VS Code connects through `ProxyJump` using the same bastion.
+5. If PostgreSQL is enabled, the bastion records `ssh.connect`.
+6. VS Code connects through `ProxyJump` using the same bastion.
 
 In local mode, the portal process can start the same bastion in-process on
 `-ssh-addr`. Helm deployments run it as a separate Deployment.
@@ -95,11 +102,13 @@ poddy ships two Go binaries from one module:
 | `internal/bastion` | SSH bastion and owner checks |
 | `internal/sshkeys` | `authorized_keys` parsing and key-to-owner mapping |
 | `internal/links` | Template link validation |
+| `internal/metadata` | Optional PostgreSQL mirror, migrations, and audit writer |
 | `cmd/poddy-bastion` | Standalone bastion entry point |
 
 ## State and storage
 
-poddy deliberately avoids an external database:
+poddy does not require an external database. Kubernetes is the default source of
+truth:
 
 - **Workspaces** are pods with `app.kubernetes.io/name=poddy`.
 - **Ownership** is the `poddy.io/owner` annotation.
@@ -111,7 +120,19 @@ poddy deliberately avoids an external database:
   with AES-GCM when a key is configured.
 - **Persistent data** lives in one PVC per persistent workspace.
 
-See [Data model](data-model.md) for the object-level details.
+An optional PostgreSQL mirror stores RBAC, OIDC users, templates, workspaces,
+and audit events. When `PODDY_DATABASE_URL` is set, the portal syncs the mirror
+at startup and after writes; the bastion writes `ssh.connect` audit events.
+Kubernetes remains authoritative and PostgreSQL is never read for access
+decisions. It stores control-plane metadata only; PVC contents still need volume
+snapshots. See [PostgreSQL schema](postgres-schema.md) and
+[Data model](data-model.md) for the object-level details.
+
+### Cluster loss
+
+Losing the cluster loses ConfigMaps, Secrets, and PVCs. A PostgreSQL backup can
+restore metadata, but workspace files are only recoverable from PVC snapshots or
+another storage backup. Test both restore paths independently.
 
 ## Scaling and availability
 

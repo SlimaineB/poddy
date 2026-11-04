@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -417,5 +418,77 @@ func TestCreateWorkspaceUsesOwnerSSHKeys(t *testing.T) {
 	}
 	if strings.Contains(value, bob) {
 		t.Fatalf("bob key injected into alice workspace: %q", value)
+	}
+}
+
+func TestSnapshotRunningAndStopped(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+
+	tmpl, err := m.Templates.Get("base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(ctx, CreateRequest{
+		Name:       "snap",
+		Owner:      "alice@example.com",
+		Parameters: map[string]string{"storage": "7Gi"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	running, err := m.Snapshot(ctx, "snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if running.DesiredState != "running" || running.TemplateVersion != tmpl.Version || running.Parameters["storage"] != "7Gi" {
+		t.Fatalf("running snapshot = %+v", running)
+	}
+
+	if _, err := m.Stop(ctx, "snap"); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := m.Snapshot(ctx, "snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stopped.DesiredState != "stopped" || stopped.Phase != "Stopped" || stopped.StoppedAt.IsZero() {
+		t.Fatalf("stopped snapshot = %+v", stopped)
+	}
+}
+
+func TestSnapshotTerminatingStopped(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "snap", Owner: "alice@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := m.stateForPod(ctx, pod)
+	state.StoppedAt = time.Now().UTC()
+	states, err := m.stateStore().Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states["snap"] = state
+	if err := m.stateStore().Save(ctx, states); err != nil {
+		t.Fatal(err)
+	}
+
+	now := metav1.NewTime(time.Now().UTC())
+	pod.DeletionTimestamp = &now
+	if _, err := m.Client.CoreV1().Pods(m.Namespace).Update(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := m.Snapshot(ctx, "snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.DesiredState != "stopped" || snapshot.Phase != "Terminating" || snapshot.StoppedAt.IsZero() {
+		t.Fatalf("terminating snapshot = %+v", snapshot)
 	}
 }

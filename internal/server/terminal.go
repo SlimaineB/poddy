@@ -10,6 +10,8 @@ import (
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/remotecommand"
+
+	"poddy/internal/metadata"
 )
 
 var upgrader = websocket.Upgrader{
@@ -40,25 +42,30 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	}
 	allowed, err := s.workspaceAllowed(r, name, id, cfg)
 	if err != nil || !allowed {
+		s.auditTerminal(r, name, "denied", "workspace not found")
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
 
 	pod, err := s.Workspaces.Get(r.Context(), name)
 	if err != nil {
+		s.auditTerminal(r, name, "error", err.Error())
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	if pod.Status.Phase != corev1.PodRunning {
+		s.auditTerminal(r, name, "error", "workspace is not running")
 		http.Error(w, "workspace is not running", http.StatusConflict)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		s.auditTerminal(r, name, "error", err.Error())
 		return
 	}
 	defer conn.Close()
+	s.auditTerminal(r, name, "success", "")
 
 	exec, err := remotecommand.NewSPDYExecutor(
 		s.Workspaces.Rest,
@@ -110,6 +117,17 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		out.Write([]byte("\r\n" + err.Error() + "\r\n"))
 	}
+}
+
+func (s *Server) auditTerminal(r *http.Request, name, outcome, message string) {
+	s.auditEvent(r, metadata.Event{
+		Action:     "workspace.terminal.open",
+		Outcome:    outcome,
+		TargetType: "workspace",
+		TargetName: name,
+		Workspace:  name,
+		Error:      message,
+	})
 }
 
 func writeWS(conn *websocket.Conn, message string) {

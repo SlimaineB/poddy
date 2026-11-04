@@ -18,6 +18,7 @@ The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as sep
 - Container registry access for custom images (published GHCR images are available)
 - Ingress controller (nginx, traefik, etc.) for HTTPS
 - Optional: LoadBalancer for SSH (or use Ingress TCP)
+- Optional: PostgreSQL 13+ for the [metadata mirror and audit log](postgres-schema.md)
 
 ### 1. Use the published image
 
@@ -78,6 +79,31 @@ ssh:
   keysSecretKey: authorized_keys
 ```
 
+**Optional: PostgreSQL metadata and audit.** Kubernetes remains the source of
+truth, but you can mirror RBAC, users, templates, workspaces, and audit events
+into PostgreSQL. Create a Secret with the connection string:
+
+```bash
+kubectl create secret generic poddy-database \
+  --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require' \
+  -n poddy-system
+```
+
+Then reference it from values:
+
+```yaml
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
+```
+
+The chart injects `PODDY_DATABASE_URL` into the portal and bastion. The portal
+applies embedded migrations on startup by default. Set `autoMigrate: false` if
+migrations are managed externally. If PostgreSQL is configured but unreachable
+at startup, the portal exits; later audit/sync failures are logged without
+blocking workspace operations.
+
 ### 3. Minimal values.yaml
 ```yaml
 image:
@@ -102,6 +128,12 @@ bastion:
 
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: true
+
+# Optional: mirror metadata and audit events to PostgreSQL.
+# database:
+#   existingSecret: poddy-database
+#   urlKey: database-url
+#   autoMigrate: true
 
 ingress:
   enabled: true
@@ -155,7 +187,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and a database for audit/quotas.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and usage reporting. PostgreSQL is a mirror, not a read path; it does not remove the ConfigMap size limit by itself.
 
 ### Replicas and namespaces
 
@@ -423,7 +455,7 @@ The chart applies:
 - **OIDC**: Prefer OIDC over the shared token for human access. Set `allowedGroups`/`allowedUsers` to restrict sign-in, and use a stable `oidc.sessionKey` for HA.
 - **Namespace isolation**: For hard tenant isolation, deploy one release per team/namespace. SSH isolation prevents cross-owner access inside one portal, but a shared namespace still shares network and storage classes.
 - **Local editor keys**: In local editor mode the portal marks keys it manages as admin keys, which is intended for a single operator workstation. Cluster deployments use `-editor=` and do not add local keys.
-- **Audit**: The portal does not persist an audit log. Use Kubernetes audit logs and SSH server logs if you need a record of exec/port-forward activity.
+- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
 
 ## Workspace images
 
@@ -455,36 +487,46 @@ kubectl apply -f deploy/poddy.yaml
 ```
 **Not for production** — no TLS, no stable host key, no ingress, single replica.
 
-## Why no Postgres?
+## Do I need PostgreSQL?
 
-**Kubernetes is the source of truth.**
+**No. Kubernetes is the source of truth.**
 - Workspaces = Pods + PVCs (listable, watchable, deletable via API).
 - Templates = versioned files / ConfigMaps / Helm values (GitOps-friendly).
-- No separate DB to back up, migrate, or sync with the cluster.
+- No separate DB is required to run poddy.
 
-**Workspace ownership, RBAC, and stopped specs do not need a database:**
+**Workspace ownership, RBAC, and stopped specs work without a database:**
 - The owner is a pod annotation (`poddy.io/owner`).
 - Admins, teams, and template access are a small ConfigMap (`poddy-rbac`), updated through the API.
 - Stopped workspace specs are a small ConfigMap (`poddy-state`).
 - Users seen through OIDC are a small ConfigMap (`poddy-users`), written on sign-in. It is only a suggestion directory for access/team editors; authentication and sessions remain with the OIDC provider.
 
-**When you might add a database:**
-- Per-user quotas.
-- Audit log of create/delete/exec/port-forward.
-- Multi-portal federation (shared catalog).
+**When you might add PostgreSQL:**
+- You need metadata to survive loss of the cluster.
+- You need a queryable audit log of workspace, terminal, VS Code, SSH, team, template, and external-auth actions.
+- You need usage accounting or reporting.
+- You want a durable copy of the metadata mirror for restore tooling.
 
-Until then, a DB adds HA/backup/sync complexity without benefit.
+Set `database.url` or `database.existingSecret` in the Helm chart, or
+`PODDY_DATABASE_URL` outside Helm. The portal mirrors RBAC, users, templates,
+and workspaces, and records audit events; the bastion records SSH audit events.
+Kubernetes remains authoritative and PostgreSQL is never read for access
+decisions. If PostgreSQL is configured but unavailable at startup, the process
+exits; if it fails later, sync/audit errors are logged and workspace operations
+continue. Back up PVCs separately with volume snapshots. See
+[PostgreSQL schema](postgres-schema.md) for migrations, tables, and restore
+guidance.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
-| Portal pod `CrashLoopBackOff` | `kubectl logs -n poddy-system deploy/poddy` — usually missing token, SSH keys, or host key. |
+| Portal pod `CrashLoopBackOff` | `kubectl logs -n poddy-system deploy/poddy` — usually missing token, SSH keys, host key, or an unreachable configured PostgreSQL URL. |
 | SSH "Host key verification failed" | `ssh.existingHostKeySecret` not set and replica restarted; or user's `known_hosts` has old key. |
 | SSH "not authorized for this workspace" | The key's comment is mapped to another owner. Use `user:<owner-identity>` (for example `user:alice@example.com` or `user:token`) or an `admin` key. |
 | SSH "unknown public key" | The key is not in `ssh.authorizedKeys` / the keys Secret. |
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
+| No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
 | VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://`; the server-side launch endpoint is only available in local editor mode. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
 | PVC not created | `storage` parameter empty or not declared in template. |

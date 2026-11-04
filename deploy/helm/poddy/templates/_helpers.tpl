@@ -119,3 +119,14 @@ Secret where the portal stores encrypted per-user external auth tokens.
 {{- printf "%s-external-auth" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Secret holding the optional PostgreSQL connection string.
+*/}}
+{{- define "poddy.databaseSecretName" -}}
+{{- if .Values.database.existingSecret -}}
+{{- .Values.database.existingSecret -}}
+{{- else -}}
+{{- printf "%s-database" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

@@ -92,6 +92,8 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.syncRBAC(r.Context(), cfg)
+	s.syncTemplates(r.Context(), cfg)
 
 	writeJSON(w, http.StatusOK, teamInfo{
 		Name:        name,
@@ -134,6 +136,8 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.syncRBAC(r.Context(), cfg)
+	s.syncTemplates(r.Context(), cfg)
 	w.WriteHeader(http.StatusNoContent)
 }
 

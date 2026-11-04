@@ -72,6 +72,10 @@ Install the templates release in `workspaceNamespace` (the release namespace abo
 | `externalAuth.existingSecret` | `""` | Secret containing `externalAuth.keyKey` and provider secrets. |
 | `externalAuth.tokenSecretName` | `""` (`<fullname>-external-auth`) | Secret for encrypted per-user tokens. |
 | `externalAuth.providers` | `[]` | OAuth2 provider list. |
+| `database.url` | `""` | Optional PostgreSQL connection string. Enables metadata mirror and audit. |
+| `database.existingSecret` | `""` | Existing Secret with the connection string. Set either `url` or this. |
+| `database.urlKey` | `database-url` | Key in the database Secret. |
+| `database.autoMigrate` | `true` | Apply embedded schema migrations on startup. |
 | `ssh.addr` | `:2222` | Bastion listen address in pod. |
 | `ssh.publicPort` | `2222` | Port users connect to. |
 | `ssh.existingKeysSecret` | `""` | Use existing Secret for authorized_keys. |
@@ -192,6 +196,38 @@ kubectl create secret generic poddy-external-auth-config   --from-literal=extern
 The portal stores per-user tokens in a separate Secret, `externalAuth.tokenSecretName` (default `<fullname>-external-auth`). The chart grants `get/list/watch/create/update/patch` on Secrets. `externalAuth.key`/`existingSecret` is required when `replicaCount > 1`.
 
 Register `https://poddy.example.com/external-auth/<id>/callback` with each provider. See [docs/external-auth.md](../../../docs/external-auth.md) for provider defaults, template `externalAuth:` declarations, workspace env vars, and troubleshooting.
+
+## PostgreSQL metadata and audit
+
+PostgreSQL is optional. Kubernetes remains the runtime source of truth; the
+database receives a metadata mirror and append-only audit events. The chart
+injects `PODDY_DATABASE_URL` into both the portal and bastion.
+
+```yaml
+database:
+  url: postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require
+  autoMigrate: true
+```
+
+Or use an existing Secret in the release namespace:
+
+```bash
+kubectl create secret generic poddy-database \
+  --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require' \
+  -n poddy-system
+```
+
+```yaml
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
+```
+
+Set `autoMigrate: false` when migrations are managed externally. The portal
+mirrors RBAC, OIDC users, templates, and workspaces; the bastion records SSH
+connections. See [docs/postgres-schema.md](../../../docs/postgres-schema.md)
+for the schema, audit actions, backup, and limitations.
 
 ## Validation and tests
 

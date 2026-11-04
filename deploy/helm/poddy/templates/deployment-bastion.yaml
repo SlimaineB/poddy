@@ -60,9 +60,20 @@ spec:
             {{- with .Values.bastion.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with .Values.bastion.extraEnv }}
+          {{- if or .Values.database.url .Values.database.existingSecret .Values.bastion.extraEnv }}
           env:
+            {{- if or .Values.database.url .Values.database.existingSecret }}
+            - name: PODDY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.databaseSecretName" . }}
+                  key: {{ .Values.database.urlKey }}
+            - name: PODDY_DATABASE_AUTO_MIGRATE
+              value: {{ .Values.database.autoMigrate | quote }}
+            {{- end }}
+            {{- with .Values.bastion.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
           ports:
             - name: ssh

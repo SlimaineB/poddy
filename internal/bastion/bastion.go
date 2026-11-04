@@ -18,12 +18,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"poddy/internal/k8s"
+	"poddy/internal/metadata"
 	"poddy/internal/sshkeys"
 )
 
 type Bastion struct {
 	Addr     string
 	Manager  *k8s.Manager
+	Audit    metadata.Auditor
 	keys     *sshkeys.Set
 	config   *ssh.ServerConfig
 	listener net.Listener
@@ -109,11 +111,11 @@ func (b *Bastion) handle(conn net.Conn) {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only direct-tcpip is supported")
 			continue
 		}
-		go b.forward(newChannel, serverConn.Permissions)
+		go b.forward(newChannel, serverConn.Permissions, conn.RemoteAddr().String())
 	}
 }
 
-func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permissions) {
+func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permissions, remoteAddr string) {
 	var request directTCPIP
 	if err := ssh.Unmarshal(newChannel.ExtraData(), &request); err != nil {
 		_ = newChannel.Reject(ssh.ConnectionFailed, "invalid direct-tcpip request")
@@ -121,25 +123,29 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	}
 
 	name := workspaceName(request.Host)
+	fingerprint := ""
+	if permissions != nil {
+		fingerprint = permissions.Extensions["fingerprint"]
+	}
+	actor, actorType := b.auditActor(fingerprint)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	pod, err := b.Manager.Get(ctx, name)
 	if err != nil {
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", "workspace not found")
 		_ = newChannel.Reject(ssh.ConnectionFailed, "workspace not found")
 		return
 	}
 	if pod.Status.Phase != corev1.PodRunning {
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", "workspace is not running")
 		_ = newChannel.Reject(ssh.ConnectionFailed, "workspace is not running")
 		return
 	}
 
-	fingerprint := ""
-	if permissions != nil {
-		fingerprint = permissions.Extensions["fingerprint"]
-	}
 	if !b.keys.Authorize(fingerprint, k8s.Owner(pod)) {
 		log.Printf("ssh bastion: key %s is not authorized for workspace %s", fingerprint, name)
+		b.recordAudit(name, actor, actorType, remoteAddr, "denied", "not authorized for this workspace")
 		_ = newChannel.Reject(ssh.Prohibited, "not authorized for this workspace")
 		return
 	}
@@ -152,6 +158,7 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	local, stop, err := b.Manager.PortForward(k8s.PodName(name), port)
 	if err != nil {
 		log.Printf("ssh bastion: port-forward %s: %v", name, err)
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", "port-forward failed: "+err.Error())
 		_ = newChannel.Reject(ssh.ConnectionFailed, "cannot reach workspace")
 		return
 	}
@@ -160,6 +167,7 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	target, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", local), 5*time.Second)
 	if err != nil {
 		log.Printf("ssh bastion: dial %s: %v", name, err)
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", "dial workspace failed: "+err.Error())
 		_ = newChannel.Reject(ssh.ConnectionFailed, "cannot reach workspace")
 		return
 	}
@@ -167,8 +175,10 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 
 	channel, channelRequests, err := newChannel.Accept()
 	if err != nil {
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", err.Error())
 		return
 	}
+	b.recordAudit(name, actor, actorType, remoteAddr, "success", "")
 	go ssh.DiscardRequests(channelRequests)
 
 	done := make(chan struct{}, 2)
@@ -183,6 +193,43 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 
 	<-done
 	_ = channel.Close()
+}
+
+func (b *Bastion) auditActor(fingerprint string) (string, string) {
+	if key, ok := b.keys.Lookup(fingerprint); ok {
+		if key.User != "" {
+			return key.User, "user"
+		}
+		if key.Admin {
+			return "admin", "user"
+		}
+	}
+	if fingerprint != "" {
+		return fingerprint, "user"
+	}
+	return "", "user"
+}
+
+func (b *Bastion) recordAudit(workspace, actor, actorType, sourceIP, outcome, message string) {
+	if b.Audit == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := b.Audit.RecordAudit(ctx, metadata.Event{
+		Namespace:  b.Manager.Namespace,
+		Actor:      actor,
+		ActorType:  actorType,
+		Action:     "ssh.connect",
+		Outcome:    outcome,
+		TargetType: "workspace",
+		TargetName: workspace,
+		Workspace:  workspace,
+		SourceIP:   sourceIP,
+		Error:      message,
+	}); err != nil {
+		log.Printf("ssh bastion: audit %s: %v", workspace, err)
+	}
 }
 
 func workspaceName(host string) string {

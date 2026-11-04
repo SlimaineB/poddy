@@ -10,6 +10,7 @@ import (
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
+	"poddy/internal/metadata"
 	"poddy/internal/rbac"
 	"poddy/internal/userstore"
 )
@@ -33,8 +34,9 @@ type Server struct {
 	OIDC            *auth.OIDC
 	OIDCRedirectURL string
 
-	RBAC  *rbac.Store
-	Users *userstore.Store
+	RBAC     *rbac.Store
+	Users    *userstore.Store
+	Metadata metadata.Store
 
 	ExternalAuth             *externalauth.Manager
 	ExternalAuthURL          string
@@ -76,7 +78,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/restart", s.restart)
 	mux.HandleFunc("POST /api/workspaces/{name}/vscode", s.vscode)
 	mux.HandleFunc("GET /ws", s.terminal)
-	return s.auth(mux)
+	return s.auth(s.audit(mux))
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {

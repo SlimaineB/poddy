@@ -131,6 +131,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	setAuditTarget(r, req.Name)
 
 	templateName := req.Template
 	if templateName == "" {
@@ -139,6 +140,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 			templateName = "base"
 		}
 	}
+	setAuditDetail(r, "template", templateName)
 	if !s.isAdmin(id, cfg) && !cfg.CanUse(templateName, rbacIdentity(id.User)) {
 		http.Error(w, "template not available for this user", http.StatusForbidden)
 		return
@@ -154,6 +156,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusBadRequest)
 		return
 	}
+	s.syncWorkspace(r.Context(), ws.Name)
 	writeJSON(w, http.StatusCreated, ws)
 }
 
@@ -195,6 +198,7 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
 	}
+	s.deleteWorkspaceMetadata(r.Context(), name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -262,5 +266,6 @@ func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, acti
 			_ = s.Local.RemoveSSHConfig(name)
 		}
 	}
+	s.syncWorkspace(r.Context(), name)
 	writeJSON(w, http.StatusOK, ws)
 }

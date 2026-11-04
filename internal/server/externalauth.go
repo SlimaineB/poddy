@@ -9,6 +9,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/externalauth"
+	"poddy/internal/metadata"
 	"poddy/internal/templates"
 )
 
@@ -101,15 +102,18 @@ func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	cookie, err := r.Cookie(externalAuthCookie)
 	if err != nil {
+		s.auditExternalAuth(r, "error", "external auth session expired")
 		s.externalAuthError(w, r, "/", "External auth session expired, please try again.")
 		return
 	}
 	flow, err := s.ExternalAuth.ParseFlow(cookie.Value)
 	if err != nil {
+		s.auditExternalAuth(r, "denied", "invalid external auth state")
 		s.externalAuthError(w, r, "/", "Invalid external auth state, please try again.")
 		return
 	}
 	if state := r.URL.Query().Get("state"); state != flow.State {
+		s.auditExternalAuth(r, "denied", "invalid external auth state")
 		s.externalAuthError(w, r, flow.Next, "Invalid external auth state, please try again.")
 		return
 	}
@@ -118,29 +122,35 @@ func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 		if description := r.URL.Query().Get("error_description"); description != "" {
 			message += " (" + description + ")"
 		}
+		s.auditExternalAuth(r, "denied", message)
 		s.externalAuthError(w, r, flow.Next, message)
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		s.auditExternalAuth(r, "denied", "missing authorization code")
 		s.externalAuthError(w, r, flow.Next, "External auth response has no authorization code.")
 		return
 	}
 	id, ok := s.currentIdentity(r)
 	if !ok {
+		s.auditExternalAuth(r, "denied", "sign in required")
 		s.externalAuthError(w, r, flow.Next, "Sign in again before connecting external auth.")
 		return
 	}
 	userKey := externalAuthUserKey(id.User)
 	if flow.User != userKey {
+		s.auditExternalAuth(r, "denied", "external auth state belongs to another user")
 		s.externalAuthError(w, r, flow.Next, "External auth state belongs to another user.")
 		return
 	}
 	if _, err := s.ExternalAuth.Complete(r.Context(), r.PathValue("id"), userKey, code, flow); err != nil {
 		log.Printf("external auth callback: %v", err)
+		s.auditExternalAuth(r, "error", err.Error())
 		s.externalAuthError(w, r, flow.Next, "External auth failed: "+err.Error())
 		return
 	}
+	s.auditExternalAuth(r, "success", "")
 	http.SetCookie(w, &http.Cookie{
 		Name:     externalAuthCookie,
 		Value:    "",
@@ -151,6 +161,16 @@ func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   secureRequest(r),
 	})
 	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther)
+}
+
+func (s *Server) auditExternalAuth(r *http.Request, outcome, message string) {
+	s.auditEvent(r, metadata.Event{
+		Action:     "external_auth.connect",
+		Outcome:    outcome,
+		TargetType: "provider",
+		TargetName: r.PathValue("id"),
+		Error:      message,
+	})
 }
 
 func (s *Server) externalAuthDisconnect(w http.ResponseWriter, r *http.Request) {
