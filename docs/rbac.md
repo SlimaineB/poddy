@@ -1,6 +1,6 @@
 # RBAC: admins, owners, and teams
 
-poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. There is no database.
+poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. No database is required. An optional PostgreSQL mirror can copy RBAC metadata for disaster recovery and audit; Kubernetes remains authoritative. See [PostgreSQL schema](postgres-schema.md).
 
 - **Global admins** see and manage every workspace and template.
 - **Template owners** manage who can use their templates.
@@ -164,6 +164,6 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 ## Limits
 
 - One workspace namespace per portal; one RBAC document per portal.
-- No per-template quotas, audit log, or workspace sharing between users.
-- No database: back up the ConfigMap if you rely on UI-managed access.
+- No per-template quotas or workspace sharing between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, template-access, external-auth, terminal/VS Code, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
+- No database is required: back up the ConfigMap if you rely on UI-managed access, or enable the optional PostgreSQL metadata mirror.
 - RBAC writes are serialized within a portal replica and retried on conflicts. With multiple replicas, avoid simultaneous edits.

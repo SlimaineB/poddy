@@ -60,7 +60,9 @@ never need a kubeconfig.
   declare CPU, memory, storage, and links.
 - **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
   per-template access.
-- **No database.** Kubernetes ConfigMaps and Secrets are the source of truth.
+- **No database required.** Kubernetes ConfigMaps and Secrets are the source of
+  truth. An optional PostgreSQL mirror adds metadata durability, an audit log,
+  and disaster-recovery snapshots without becoming a read path.
 - **No cluster credentials for users.** The portal talks to the Kubernetes API;
   users only need a browser or an SSH key.
 
@@ -89,6 +91,7 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 | Run it in production | [Kubernetes deployment](deploy.md) |
 | Add my own workspace image | [Workspace templates](templates.md) |
 | Build poddy from source | [Development](development.md) |
+| Enable PostgreSQL metadata, audit, and backups | [PostgreSQL schema](postgres-schema.md) |
 | Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |
 | Configure SSO | [OIDC / SSO](oidc.md) |
 | Understand who can see what | [RBAC and ownership](rbac.md) |

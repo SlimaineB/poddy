@@ -330,18 +330,20 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 	stateSpec := *pod.Spec.DeepCopy()
 	stripExternalAuthEnv(&stateSpec, externalAuthEnvNames(pod))
 	state := WorkspaceState{
-		Name:         req.Name,
-		Template:     templateName,
-		Owner:        req.Owner,
-		Image:        containerImage(pod, ContainerName),
-		CreatedAt:    time.Now().UTC(),
-		Persistent:   storage != "",
-		Storage:      storage,
-		StorageClass: params["storageClass"],
-		PortalURL:    req.PortalURL,
-		Labels:       copyStringMap(pod.Labels),
-		Annotations:  copyStringMap(pod.Annotations),
-		Spec:         stateSpec,
+		Name:            req.Name,
+		Template:        templateName,
+		TemplateVersion: tmpl.Version,
+		Owner:           req.Owner,
+		Image:           containerImage(pod, ContainerName),
+		CreatedAt:       time.Now().UTC(),
+		Persistent:      storage != "",
+		Storage:         storage,
+		StorageClass:    params["storageClass"],
+		Parameters:      params,
+		PortalURL:       req.PortalURL,
+		Labels:          copyStringMap(pod.Labels),
+		Annotations:     copyStringMap(pod.Annotations),
+		Spec:            stateSpec,
 	}
 	raw, err := marshalState(state)
 	if err != nil {

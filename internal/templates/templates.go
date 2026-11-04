@@ -73,6 +73,7 @@ type Catalog struct {
 	mu        sync.RWMutex
 	templates map[string]*Template
 	dir       string
+	onReload  func()
 }
 
 // Source is a template loaded from an external store, such as a Kubernetes
@@ -238,7 +239,36 @@ func (c *Catalog) swap(next *Catalog) {
 	c.mu.Lock()
 	c.templates = next.templates
 	c.dir = next.dir
+	onReload := c.onReload
 	c.mu.Unlock()
+	if onReload != nil {
+		onReload()
+	}
+}
+
+// SetOnReload registers a callback invoked after the catalog is replaced.
+func (c *Catalog) SetOnReload(fn func()) {
+	c.mu.Lock()
+	c.onReload = fn
+	c.mu.Unlock()
+}
+
+// Snapshot returns a stable copy of the current templates, including pod
+// templates. It is used by the optional metadata mirror.
+func (c *Catalog) Snapshot() []Template {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	names := make([]string, 0, len(c.templates))
+	for name := range c.templates {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]Template, 0, len(names))
+	for _, name := range names {
+		out = append(out, *c.templates[name])
+	}
+	return out
 }
 
 func (t *Template) validate() error {

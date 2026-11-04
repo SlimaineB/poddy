@@ -31,6 +31,7 @@ func (m *Manager) Stop(ctx context.Context, name string) (Workspace, error) {
 	}
 
 	state := m.stateForPod(ctx, pod)
+	state.StoppedAt = time.Now().UTC()
 	states, err := m.stateStore().Load(ctx)
 	if err != nil {
 		return Workspace{}, err
@@ -81,6 +82,7 @@ func (m *Manager) Restart(ctx context.Context, name string) (Workspace, error) {
 	}
 
 	state := m.stateForPod(ctx, pod)
+	state.StoppedAt = time.Now().UTC()
 	states, err := m.stateStore().Load(ctx)
 	if err != nil {
 		return Workspace{}, err

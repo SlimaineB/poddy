@@ -205,6 +205,8 @@ func (s *Server) updateTemplateAccess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.syncRBAC(r.Context(), cfg)
+	s.syncTemplates(r.Context(), cfg)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"template":      name,

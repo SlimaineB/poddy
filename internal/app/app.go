@@ -24,6 +24,7 @@ import (
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
+	"poddy/internal/metadata"
 	"poddy/internal/rbac"
 	"poddy/internal/server"
 	"poddy/internal/sshkeys"
@@ -43,6 +44,15 @@ func Run(ctx context.Context, args []string) error {
 		return err
 	}
 
+	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
+	if err != nil {
+		return fmt.Errorf("metadata: %w", err)
+	}
+	defer metaStore.Close()
+	if cfg.DatabaseURL != "" {
+		log.Printf("metadata: PostgreSQL mirror and audit enabled")
+	}
+
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
 	if err != nil {
 		return fmt.Errorf("kubernetes: %w", err)
@@ -55,6 +65,18 @@ func Run(ctx context.Context, args []string) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	rbacStore := rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap)
+	userStore := userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap)
+	if cfg.DatabaseURL != "" {
+		catalog.SetOnReload(func() {
+			syncCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			if err := syncTemplates(syncCtx, cfg.Namespace, metaStore, rbacStore, catalog); err != nil {
+				log.Printf("metadata: template sync: %v", err)
+			}
+		})
+	}
 
 	if cfg.TemplatesDir != "" {
 		log.Printf("watching templates in %s", cfg.TemplatesDir)
@@ -92,7 +114,17 @@ func Run(ctx context.Context, args []string) error {
 		manager.ExternalAuthToken = externalAuth.SignWorkspace
 	}
 
-	sshBastion, err := startBastion(cfg, manager, keyring)
+	var metadataStore metadata.Store
+	var metadataAuditor metadata.Auditor
+	if cfg.DatabaseURL != "" {
+		metadataStore = metaStore
+		metadataAuditor = metaStore
+		if err := syncAll(ctx, cfg.Namespace, metaStore, rbacStore, userStore, manager, catalog); err != nil {
+			return fmt.Errorf("metadata sync: %w", err)
+		}
+	}
+
+	sshBastion, err := startBastion(cfg, manager, keyring, metadataAuditor)
 	if err != nil {
 		return err
 	}
@@ -119,8 +151,9 @@ func Run(ctx context.Context, args []string) error {
 
 	srv := &server.Server{
 		Workspaces:        manager,
-		RBAC:              rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap),
-		Users:             userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap),
+		RBAC:              rbacStore,
+		Users:             userStore,
+		Metadata:          metadataStore,
 		WebFS:             web.FS,
 		Token:             cfg.Token,
 		Local:             editor,
@@ -206,6 +239,15 @@ func RunBastion(ctx context.Context, args []string) error {
 		return fmt.Errorf("ssh bastion: -ssh-addr is required")
 	}
 
+	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
+	if err != nil {
+		return fmt.Errorf("metadata: %w", err)
+	}
+	defer metaStore.Close()
+	if cfg.DatabaseURL != "" {
+		log.Printf("metadata: PostgreSQL audit enabled")
+	}
+
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
 	if err != nil {
 		return fmt.Errorf("kubernetes: %w", err)
@@ -230,6 +272,9 @@ func RunBastion(ctx context.Context, args []string) error {
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keyring, cfg.SSHHostKey)
 	if err != nil {
 		return fmt.Errorf("ssh bastion: %w", err)
+	}
+	if cfg.DatabaseURL != "" {
+		sshBastion.Audit = metaStore
 	}
 	if err := sshBastion.Listen(); err != nil {
 		return fmt.Errorf("ssh bastion: %w", err)
@@ -256,6 +301,58 @@ func RunBastion(ctx context.Context, args []string) error {
 	}
 }
 
+func syncAll(ctx context.Context, namespace string, store metadata.Store, rbacStore *rbac.Store, userStore *userstore.Store, manager *k8s.Manager, catalog *templates.Catalog) error {
+	cfg, err := rbacStore.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("load rbac: %w", err)
+	}
+	if err := store.SyncRBAC(ctx, namespace, cfg); err != nil {
+		return err
+	}
+	if err := store.SyncTemplates(ctx, namespace, catalog, cfg); err != nil {
+		return err
+	}
+
+	if users, err := userStore.List(ctx); err != nil {
+		log.Printf("metadata: list users: %v", err)
+	} else {
+		for _, user := range users {
+			if err := store.SyncUser(ctx, namespace, user); err != nil {
+				log.Printf("metadata: sync user %s: %v", metadata.UserIdentity(user), err)
+			}
+		}
+	}
+
+	workspaces, err := manager.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list workspaces: %w", err)
+	}
+	names := make([]string, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		names = append(names, workspace.Name)
+		snapshot, err := manager.Snapshot(ctx, workspace.Name)
+		if err != nil {
+			log.Printf("metadata: snapshot workspace %s: %v", workspace.Name, err)
+			continue
+		}
+		if err := store.SyncWorkspace(ctx, namespace, snapshot); err != nil {
+			log.Printf("metadata: sync workspace %s: %v", workspace.Name, err)
+		}
+	}
+	if err := store.PruneWorkspaces(ctx, namespace, names); err != nil {
+		return err
+	}
+	return nil
+}
+
+func syncTemplates(ctx context.Context, namespace string, store metadata.Store, rbacStore *rbac.Store, catalog *templates.Catalog) error {
+	cfg, err := rbacStore.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("load rbac: %w", err)
+	}
+	return store.SyncTemplates(ctx, namespace, catalog, cfg)
+}
+
 func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Set, *local.Local, error) {
 	editor := newEditor(cfg)
 	keys, err := collectKeys(editor, cfg.SSHKeys, cfg.SSHKeysFile)
@@ -269,7 +366,7 @@ func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Set,
 	return keys, keyring, editor, nil
 }
 
-func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set) (*bastion.Bastion, error) {
+func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set, audit metadata.Auditor) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
 	}
@@ -282,6 +379,7 @@ func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set) (*
 	if err != nil {
 		return nil, fmt.Errorf("ssh bastion: %w", err)
 	}
+	sshBastion.Audit = audit
 	if err := sshBastion.Listen(); err != nil {
 		return nil, fmt.Errorf("ssh bastion: %w", err)
 	}

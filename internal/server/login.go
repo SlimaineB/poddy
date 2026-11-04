@@ -3,6 +3,8 @@ package server
 import (
 	"html/template"
 	"net/http"
+
+	"poddy/internal/metadata"
 )
 
 type loginData struct {
@@ -24,15 +26,18 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 	next := safeNext(r.FormValue("next"))
 	if s.Token == "" {
+		s.auditEvent(r, metadata.Event{Action: "auth.login", Outcome: "denied", Actor: "token", ActorType: "token", Error: "token sign-in is disabled"})
 		s.serveLogin(w, next, "Token sign-in is disabled.", http.StatusUnauthorized)
 		return
 	}
 	token := r.FormValue("token")
 	if !tokenEqual(token, s.Token) {
+		s.auditEvent(r, metadata.Event{Action: "auth.login", Outcome: "denied", Actor: "token", ActorType: "token", Error: "invalid token"})
 		s.serveLogin(w, next, "Invalid token", http.StatusUnauthorized)
 		return
 	}
 
+	s.auditEvent(r, metadata.Event{Action: "auth.login", Outcome: "success", Actor: "token", ActorType: "token"})
 	http.SetCookie(w, s.cookie(token, secureRequest(r)))
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }

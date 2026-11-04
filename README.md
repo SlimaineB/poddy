@@ -2,6 +2,8 @@
 
 Browser-accessible Kubernetes development workspaces with an SSH bastion. Open VS Code on Windows/WSL connected to a pod via SSH — no kubeconfig required for users.
 
+**Documentation:** <https://slimaineb.github.io/poddy/>
+
 ## Features
 
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; browser terminal (`xterm.js`).
@@ -14,7 +16,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap.
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, and security context.
-- **No database**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps.
+- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used as a read path.
 
 ## Architecture
 
@@ -136,7 +138,7 @@ instructions. The publish workflow builds and pushes the GHCR images; manual
 Use the Helm charts for anything beyond a quick test. See [docs/deploy.md](docs/deploy.md) for:
 - Installing the portal chart (portal + bastion Deployments) and templates chart with TLS, LoadBalancer SSH, and a stable host key.
 - Scaling the portal and bastion independently, multi-team namespaces, RBAC, SSH keys, image pull secrets.
-- Why there is no Postgres and when you might add one.
+- Whether you need PostgreSQL and how to enable the [optional metadata mirror and audit log](docs/postgres-schema.md).
 
 For a clean local k3s deployment with separate control-plane and workspace
 namespaces, see [docs/k3s-test.md](docs/k3s-test.md).
@@ -169,6 +171,7 @@ See [docs/templates.md](docs/templates.md) for:
 │   ├── bastion/                 # SSH bastion (direct-tcpip → port-forward, owner checks)
 │   ├── sshkeys/                 # authorized_keys parsing and owner mapping
 │   ├── links/                   # Custom link validation and ConfigMap storage
+│   ├── metadata/                # Optional PostgreSQL mirror, migrations, audit writer
 │   ├── server/                  # HTTP API, auth, RBAC, user directory, links, terminal WS, VS Code launch
 │   └── local/                   # Windows/WSL SSH config, key copy, VS Code launch
 ├── web/                         # Embedded UI (index.html, core.js, workspaces.js, ..., style.css)
@@ -189,6 +192,9 @@ See [docs/templates.md](docs/templates.md) for:
 │   └── helm/
 │       ├── poddy/              # Portal + bastion chart
 │       └── poddy-templates/    # Independently managed template ConfigMaps
+├── migrations/
+│   ├── embed.go                 # Embeds migrations in the portal/bastion image
+│   └── 0001_init.sql            # Optional PostgreSQL metadata schema
 ├── mkdocs.yml                   # MkDocs Material site config
 ├── requirements-docs.txt        # Docs build dependencies
 └── docs/
@@ -203,6 +209,7 @@ See [docs/templates.md](docs/templates.md) for:
     ├── rbac.md
     ├── architecture.md
     ├── data-model.md
+    ├── postgres-schema.md
     └── development.md
 ```
 
@@ -268,7 +275,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template.
 
-Documentation lives under `docs/` and is configured by `mkdocs.yml`. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
+Documentation lives under `docs/` and is configured by `mkdocs.yml`. The live site is <https://slimaineb.github.io/poddy/>. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 
 ## License
 

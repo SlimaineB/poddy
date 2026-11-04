@@ -46,6 +46,24 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+# Optional PostgreSQL metadata mirror and audit log. When a connection string
+# is configured, the portal mirrors RBAC, users, templates and workspaces into
+# PostgreSQL and records audit events. Kubernetes remains the runtime source of
+# truth. The portal exits if PostgreSQL is configured but unreachable at startup;
+# later sync and audit failures are logged without blocking workspace operations.
+database:
+  # PostgreSQL connection string, for example:
+  # postgres://poddy:secret@postgres:5432/poddy?sslmode=require
+  # Prefer existingSecret in production.
+  url: ""
+  # Existing Secret in the release namespace containing the connection string
+  # at database.urlKey. Set either url or existingSecret, not both.
+  existingSecret: ""
+  urlKey: database-url
+  # Apply the embedded schema migrations on startup. Disable when migrations
+  # are managed externally.
+  autoMigrate: true
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

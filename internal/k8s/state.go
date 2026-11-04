@@ -27,18 +27,21 @@ const (
 
 // WorkspaceState is everything needed to recreate a stopped workspace pod.
 type WorkspaceState struct {
-	Name         string            `json:"name" yaml:"name"`
-	Template     string            `json:"template,omitempty" yaml:"template,omitempty"`
-	Owner        string            `json:"owner,omitempty" yaml:"owner,omitempty"`
-	Image        string            `json:"image,omitempty" yaml:"image,omitempty"`
-	CreatedAt    time.Time         `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Persistent   bool              `json:"persistent,omitempty" yaml:"persistent,omitempty"`
-	Storage      string            `json:"storage,omitempty" yaml:"storage,omitempty"`
-	StorageClass string            `json:"storageClass,omitempty" yaml:"storageClass,omitempty"`
-	PortalURL    string            `json:"portalUrl,omitempty" yaml:"portalUrl,omitempty"`
-	Labels       map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Annotations  map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
-	Spec         corev1.PodSpec    `json:"spec" yaml:"spec"`
+	Name            string            `json:"name" yaml:"name"`
+	Template        string            `json:"template,omitempty" yaml:"template,omitempty"`
+	TemplateVersion string            `json:"templateVersion,omitempty" yaml:"templateVersion,omitempty"`
+	Owner           string            `json:"owner,omitempty" yaml:"owner,omitempty"`
+	Image           string            `json:"image,omitempty" yaml:"image,omitempty"`
+	CreatedAt       time.Time         `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	StoppedAt       time.Time         `json:"stoppedAt,omitempty" yaml:"stoppedAt,omitempty"`
+	Persistent      bool              `json:"persistent,omitempty" yaml:"persistent,omitempty"`
+	Storage         string            `json:"storage,omitempty" yaml:"storage,omitempty"`
+	StorageClass    string            `json:"storageClass,omitempty" yaml:"storageClass,omitempty"`
+	Parameters      map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	PortalURL       string            `json:"portalUrl,omitempty" yaml:"portalUrl,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Spec            corev1.PodSpec    `json:"spec" yaml:"spec"`
 }
 
 type stateDocument struct {
