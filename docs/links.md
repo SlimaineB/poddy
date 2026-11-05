@@ -15,7 +15,7 @@ displayName: Go
 image: ghcr.io/slimaineb/poddy-workspace:latest
 links:
   - name: JetBrains Gateway
-    url: "jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/workspace"
+    url: "jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/home/dev"
     icon: jetbrains
   - name: Internal docs
     url: "https://docs.example.com/workspaces/{name}"
@@ -44,10 +44,10 @@ URLs are expanded in the browser for each workspace:
 Example JetBrains Gateway link (adjust the query parameters to your Gateway version):
 
 ```text
-jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/workspace
+jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/home/dev
 ```
 
-The built-in **VS Code** button is separate: in local editor mode it writes the SSH config and starts the local port-forward before launching VS Code in a new window; in cluster mode it opens `vscode://vscode-remote/ssh-remote+.../home/dev` in a new window and requires the SSH config from the **SSH** dialog. That config uses `Host poddy-ssh-*`, so one entry covers all workspaces. When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button opens the same workspace in a new browser tab through the portal proxy.
+The built-in **VS Code** button is separate: in local editor mode it writes the SSH config and starts the local port-forward before launching VS Code in a new window; in cluster mode it opens `vscode://vscode-remote/ssh-remote+.../home/dev` in a new window and requires the SSH config from the **SSH** dialog. That config uses `Host poddy-ssh-*`, so one entry covers all workspaces. When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev` in a new browser tab through the portal proxy.
 
 ## Fields
 

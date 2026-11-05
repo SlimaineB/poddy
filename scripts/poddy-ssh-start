@@ -1,9 +1,18 @@
 #!/bin/sh
 set -e
 
-chown dev:dev /workspace 2>/dev/null || true
+# Keep the legacy /workspace path usable for images that still use it, while
+# /home/dev is the primary persistent workspace home.
+chown dev:dev /home/dev /workspace 2>/dev/null || true
 
 mkdir -p /home/dev/.ssh
+for file in .bashrc .profile .bash_logout; do
+  if [ ! -e "/home/dev/$file" ] && [ -e "/etc/skel/$file" ]; then
+    cp "/etc/skel/$file" "/home/dev/$file"
+  fi
+done
+chown dev:dev /home/dev/.bashrc /home/dev/.profile /home/dev/.bash_logout 2>/dev/null || true
+
 printf '%s\n' "$SSH_AUTHORIZED_KEY" > /home/dev/.ssh/authorized_keys
 chown -R dev:dev /home/dev/.ssh
 chmod 700 /home/dev/.ssh

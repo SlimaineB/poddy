@@ -9,7 +9,7 @@ This directory contains a production-oriented EKS example:
 | `shared-efs-pvc.yaml` | Shared `ReadWriteMany` PVC named `poddy-shared-efs`. |
 | `efs-workspace-template.yaml` | Workspace template with an EBS home, shared EFS at `/shared`, and an optional browser VS Code sidecar. |
 
-The example uses EBS for the per-workspace `/workspace` volume and EFS for
+The example uses EBS for the per-workspace `/home/dev` volume and EFS for
 shared data. poddy creates the workspace PVC as `ReadWriteOnce`, which is the
 right mode for EBS; EFS access points are `ReadWriteMany`.
 

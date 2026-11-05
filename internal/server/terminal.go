@@ -70,7 +70,7 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	exec, err := remotecommand.NewSPDYExecutor(
 		s.Workspaces.Rest,
 		http.MethodPost,
-		s.Workspaces.ExecRequest(name, []string{"/bin/bash"}).URL(),
+		s.Workspaces.ExecRequest(name, []string{"/bin/sh", "-c", `if [ "$(id -u)" = "0" ] && command -v su >/dev/null 2>&1 && id dev >/dev/null 2>&1; then exec su - dev; else exec /bin/bash; fi`}).URL(),
 	)
 	if err != nil {
 		writeWS(conn, err.Error())

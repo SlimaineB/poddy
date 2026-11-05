@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,11 @@ func TestApplyDefaultsInjectsWorkspace(t *testing.T) {
 	if !hasVolumeMount(workspace.VolumeMounts, "workspace") {
 		t.Fatalf("volumeMounts = %+v", workspace.VolumeMounts)
 	}
+	for _, mount := range workspace.VolumeMounts {
+		if mount.Name == "workspace" && mount.MountPath != "/home/dev" {
+			t.Fatalf("workspace mountPath = %q", mount.MountPath)
+		}
+	}
 
 	if len(pod.Spec.Volumes) != 1 || pod.Spec.Volumes[0].PersistentVolumeClaim == nil || pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName != "poddy-app" {
 		t.Fatalf("volumes = %+v", pod.Spec.Volumes)
@@ -70,6 +76,9 @@ func TestApplyDefaultsInjectsWorkspace(t *testing.T) {
 	}
 	if len(code.Args) != 1 || code.Args[0] == "" {
 		t.Fatalf("code-server args = %+v", code.Args)
+	}
+	if !strings.Contains(code.Args[0], "--default-folder /home/dev") {
+		t.Fatalf("code-server default folder args = %+v", code.Args)
 	}
 }
 

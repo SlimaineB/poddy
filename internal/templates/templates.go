@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	WorkspacePath = "/workspace"
+	WorkspacePath = "/home/dev"
 	SSHCommand    = "/usr/local/bin/poddy-ssh-start"
 )
 

@@ -24,7 +24,7 @@ const (
 	AppName                = "poddy"
 	ContainerName          = "workspace"
 	BrowserVSCodeContainer = "code-server"
-	WorkspacePath          = "/workspace"
+	WorkspacePath          = "/home/dev"
 
 	labelName      = "app.kubernetes.io/name"
 	labelManagedBy = "app.kubernetes.io/managed-by"

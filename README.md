@@ -105,10 +105,10 @@ Open `http://127.0.0.1:8080` and enter the token.
 Click **New workspace**, pick **Base** or **Go**, set parameters, **Create**. Wait for **Running**.
 
 ### 6. Connect
-- **Terminal**: Click the terminal icon for a browser shell.
+- **Terminal**: Click the terminal icon for a browser shell in the workspace user home (`/home/dev`).
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
 - **VS Code**: Click **VS Code** to open Remote-SSH on the workspace user's home (`/home/dev`) in a new window.
-- **VS Code Web**: Click **VS Code Web** to open the browser editor in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
+- **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
 - **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
 

@@ -104,15 +104,15 @@ The portal calls `template.Render(Data)` where `Data` contains:
 | `.Storage` | string | Same as `.Parameters["storage"]` |
 | `.AuthorizedKeys` | string | Newline-separated SSH public keys for the workspace owner plus admin keys (never the full global key set) |
 | `.SSHCommand` | string | `/usr/local/bin/poddy-ssh-start` |
-| `.WorkspacePath` | string | `/workspace` |
+| `.WorkspacePath` | string | `/home/dev` |
 | `.Param` | method | `Data.Param("cpu")` — same as `.Parameters.cpu` |
 | `quote` | func | `strconv.Quote` — use for env values, paths |
 
 **Defaults injected when missing:**
-- The `workspace` container with the template image, `IfNotPresent`, SSH command, `SSH_AUTHORIZED_KEY`, working directory `/workspace`, port 22, CPU/memory requests from the `cpu`/`memory` parameters, and the workspace mount.
+- The `workspace` container with the template image, `IfNotPresent`, SSH command, `SSH_AUTHORIZED_KEY`, working directory `/home/dev`, port 22, CPU/memory requests from the `cpu`/`memory` parameters, and the workspace mount.
 - `automountServiceAccountToken: false` and pod `securityContext.fsGroup: 1000`.
 - The `workspace` volume: PVC when `storage` is non-empty, `emptyDir` otherwise.
-- The `code-server` sidecar when `browserVSCode` is `"true"`.
+- The `code-server` sidecar when `browserVSCode` is `"true"`; it opens `/home/dev`.
 - The portal sets `metadata.name`, `metadata.namespace`, labels (`app.kubernetes.io/name=poddy`, `poddy.io/workspace=<name>`, `poddy.io/template=<template>`), and `restartPolicy: Always` when empty.
 - External auth env vars are added after rendering and recorded in the `poddy.io/external-auth-env` annotation so tokens are not stored in the stopped-state ConfigMap.
 
@@ -152,7 +152,7 @@ spec:
 | `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass, browserVSCode | Generic Linux |
 | `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass, browserVSCode | Adds `GOPATH=/home/dev/go`, larger defaults |
 
-Both rely on the pod defaults for SSH, the `/workspace` volume, security
+Both rely on the pod defaults for SSH, the `/home/dev` home volume, security
 context, resources, and the `code-server` sidecar. Their `pod.yaml` only adds
 the template-specific environment (`GOPATH` or `NODE_ENV`), which keeps them
 easy to read and override. Set `browserVSCode: "false"` to disable the sidecar.
@@ -323,11 +323,16 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 `ghcr.io/slimaineb/poddy-workspace-base` provides:
 - OpenSSH server on port 22
 - `dev` user (UID 1000), passwordless sudo
-- `/workspace` directory owned by `dev:dev`
+- `/home/dev` home directory owned by `dev:dev`
 - `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys` and starts `sshd`
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
 
 The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can override it.
+
+The persistent home volume is mounted at `/home/dev`. It shadows the image's
+home directory, so put shell defaults in `/etc/skel` (seeded on first start) or
+`/etc/profile.d`. `poddy-ssh-start` copies `.bashrc`, `.profile`, and
+`.bash_logout` from `/etc/skel` when they are missing.
 
 The repository uses these Dockerfiles:
 
@@ -348,7 +353,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace
+WORKDIR /home/dev
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 ```
@@ -425,7 +430,7 @@ The Helm chart's `imagePullSecrets` applies only to the portal and bastion pods,
 
 - The UI sends `parameters` from the create dialog (only declared parameters).
 - Deprecated API fields `cpu`, `memory`, `storage` in `CreateRequest` override parameters of the same name (for backward compatibility).
-- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The defaults mount it at `/workspace`; a template can override the `workspace` volume or mount.
+- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The defaults mount it at `/home/dev`; a template can override the `workspace` volume or mount.
 - If you don't want a PVC, set `storage` default to `""` in your template. The defaults then use an `emptyDir`; a template can still define additional PVCs of its own.
 
 ## Validation & debugging

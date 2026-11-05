@@ -4,7 +4,7 @@ This page shows a production-oriented EKS deployment:
 
 - **ALB Ingress** for the portal, with an ACM certificate.
 - **NLB Service** for SSH through the bastion.
-- **EBS** for each workspace's `/workspace` home volume.
+- **EBS** for each workspace's `/home/dev` home volume.
 - **EFS** for shared data at `/shared/<workspace>`.
 - **Okta OIDC** for sign-in.
 
@@ -13,7 +13,7 @@ The manifests are in
 
 !!! note "EBS and EFS have different access modes"
     poddy creates the per-workspace PVC as `ReadWriteOnce`, which is correct for
-    EBS. EFS access points are `ReadWriteMany`. Use EBS for `/workspace` and EFS
+    EBS. EFS access points are `ReadWriteMany`. Use EBS for `/home/dev` and EFS
     for shared data. Do not point the `storageClass` template parameter at an
     EFS StorageClass; the workspace PVC may stay `Pending`.
 
@@ -189,7 +189,7 @@ Load Balancer Controller because the Service uses
 1. Open `https://poddy.example.com` and sign in through Okta.
 2. Create a workspace and choose the **EFS shared** template.
 3. The workspace gets:
-   - `/workspace` on a per-workspace EBS volume;
+   - `/home/dev` on a per-workspace EBS volume;
    - `/shared/<workspace>` on the shared EFS PVC.
 4. Verify the resources:
 
@@ -204,7 +204,7 @@ other's files.
 
 ## Using EFS as the home volume
 
-If you want `/workspace` itself on EFS, you need a `ReadWriteMany` PVC. poddy's
+If you want `/home/dev` itself on EFS, you need a `ReadWriteMany` PVC. poddy's
 built-in PVC creation is `ReadWriteOnce`. Two options:
 
 - Pre-create a static PV/PVC named `poddy-<workspace>` with the access modes you
@@ -212,7 +212,7 @@ built-in PVC creation is `ReadWriteOnce`. Two options:
   with that name.
 - Change poddy's PVC access mode in code if all workspaces should use EFS.
 
-For most teams, EBS for `/workspace` plus EFS for `/shared` is simpler and
+For most teams, EBS for `/home/dev` plus EFS for `/shared` is simpler and
 faster.
 
 ## Troubleshooting

@@ -15,6 +15,6 @@ COPY scripts/poddy-git-askpass /usr/local/bin/poddy-git-askpass
 COPY scripts/poddy-external-auth /usr/local/bin/poddy-external-auth
 RUN chmod 0755 /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth
 
-WORKDIR /workspace
+WORKDIR /home/dev
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]

@@ -127,12 +127,13 @@ Open <http://127.0.0.1:8080> and sign in with that token.
 
 Use the buttons on the workspace card:
 
-- **Terminal** opens a browser shell.
+- **Terminal** opens a browser shell in the workspace user home (`/home/dev`).
 - **SSH** copies a ready-to-use SSH config. It uses the bastion as a
   `ProxyJump`, so you do not need direct access to the pod.
 - **VS Code** opens Remote-SSH on `/home/dev` in a new window.
-- **VS Code Web** opens the browser editor in a new tab when browser VS Code is
-  enabled (`browserVSCode`, default `true` for the built-in templates).
+- **VS Code Web** opens the browser editor on `/home/dev` in a new tab when
+  browser VS Code is enabled (`browserVSCode`, default `true` for the built-in
+  templates).
 
 For the SSH/VS Code path, load the private key once:
 

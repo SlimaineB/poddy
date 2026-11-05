@@ -1,5 +1,5 @@
 # Workspace template with:
-#   - an EBS-backed home volume at /workspace (per-workspace, ReadWriteOnce);
+#   - an EBS-backed home volume at /home/dev (per-workspace, ReadWriteOnce);
 #   - a shared EFS volume at /shared/<workspace> (ReadWriteMany).
 #
 # Apply this in the workspace namespace:
@@ -20,7 +20,7 @@ data:
   template.yaml: |
     name: efs
     displayName: EFS shared
-    description: EBS home at /workspace, shared EFS at /shared/<workspace>, and optional browser VS Code.
+    description: EBS home at /home/dev, shared EFS at /shared/<workspace>, and optional browser VS Code.
     image: ghcr.io/your-org/poddy-workspace-node:latest
     version: "1.0.0"
     parameters:
