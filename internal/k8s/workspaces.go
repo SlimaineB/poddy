@@ -278,23 +278,27 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 	}
 
-	pod, err := tmpl.Render(templates.Data{
+	image := req.Image
+	if image == "" {
+		image = tmpl.Image
+	}
+	data := templates.Data{
 		Name:           req.Name,
 		Namespace:      m.Namespace,
 		PodName:        PodName(req.Name),
 		PVCName:        PodName(req.Name),
-		Image:          req.Image,
+		Image:          image,
 		Parameters:     params,
 		Storage:        storage,
 		AuthorizedKeys: strings.Join(m.authorizedKeysFor(req.Owner), "\n"),
-	})
+	}
+	pod, err := tmpl.Render(data)
 	if err != nil {
 		if createdPVC {
 			_ = m.deletePVC(ctx, req.Name)
 		}
 		return Workspace{}, err
 	}
-
 	if !hasContainer(pod, ContainerName) {
 		if createdPVC {
 			_ = m.deletePVC(ctx, req.Name)

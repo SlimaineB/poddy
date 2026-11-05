@@ -1,57 +1,8 @@
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    poddy.io/template: go
 spec:
-  automountServiceAccountToken: false
-  securityContext:
-    fsGroup: 1000
   containers:
     - name: workspace
-      image: {{ .Image | quote }}
-      imagePullPolicy: IfNotPresent
-      command: ["/usr/local/bin/poddy-ssh-start"]
       env:
-        - name: SSH_AUTHORIZED_KEY
-          value: {{ .AuthorizedKeys | quote }}
         - name: GOPATH
           value: /home/dev/go
-      workingDir: {{ .WorkspacePath | quote }}
-      ports:
-        - name: ssh
-          containerPort: 22
-      resources:
-        requests:
-          cpu: {{ .Parameters.cpu | quote }}
-          memory: {{ .Parameters.memory | quote }}
-      volumeMounts:
-        - name: workspace
-          mountPath: {{ .WorkspacePath | quote }}
-    {{- if eq .Parameters.browserVSCode "true" }}
-    - name: code-server
-      image: gitpod/openvscode-server:latest
-      imagePullPolicy: IfNotPresent
-      command: ["/bin/sh", "-c"]
-      args:
-        - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder /workspace --telemetry-level off
-      workingDir: /workspace
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
-      volumeMounts:
-        - name: workspace
-          mountPath: /workspace
-    {{- end }}
-  volumes:
-    - name: workspace
-      {{- if .Storage }}
-      persistentVolumeClaim:
-        claimName: {{ .PVCName | quote }}
-      {{- else }}
-      emptyDir: {}
-      {{- end }}

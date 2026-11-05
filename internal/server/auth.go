@@ -31,7 +31,8 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			return
 		}
 
-		if _, ok := s.identify(r); ok {
+		if id, ok := s.identify(r); ok {
+			s.Metrics.AuthAttempt(id.Method, "success")
 			if wantsHTML(r) && s.Token != "" {
 				if token := r.URL.Query().Get("token"); token != "" && tokenEqual(token, s.Token) {
 					http.SetCookie(w, s.cookie(token, secureRequest(r)))
@@ -47,6 +48,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			return
 		}
 
+		s.Metrics.AuthAttempt("none", "denied")
 		if wantsHTML(r) {
 			if s.OIDC != nil {
 				http.Redirect(w, r, "/oidc/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)

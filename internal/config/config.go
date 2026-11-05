@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	Addr            string
+	MetricsAddr     string
 	Namespace       string
 	RBACConfigMap   string
 	StateConfigMap  string
@@ -54,6 +55,7 @@ type Config struct {
 func Load(args []string) (Config, error) {
 	cfg := Config{
 		Addr:            env("PODDY_ADDR", ":8090"),
+		MetricsAddr:     os.Getenv("PODDY_METRICS_ADDR"),
 		Namespace:       env("PODDY_NAMESPACE", "default"),
 		RBACConfigMap:   env("PODDY_RBAC_CONFIGMAP", "poddy-rbac"),
 		StateConfigMap:  env("PODDY_STATE_CONFIGMAP", "poddy-state"),
@@ -96,6 +98,7 @@ func Load(args []string) (Config, error) {
 
 	fs := flag.NewFlagSet("poddy", flag.ContinueOnError)
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "listen address")
+	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", cfg.MetricsAddr, "Prometheus metrics listen address (empty disables metrics)")
 	fs.StringVar(&cfg.Namespace, "namespace", cfg.Namespace, "workspace namespace")
 	fs.StringVar(&cfg.RBACConfigMap, "rbac-configmap", cfg.RBACConfigMap, "ConfigMap storing admins and template access")
 	fs.StringVar(&cfg.StateConfigMap, "state-configmap", cfg.StateConfigMap, "ConfigMap storing stopped workspace specs")

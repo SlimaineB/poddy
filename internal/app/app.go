@@ -25,6 +25,7 @@ import (
 	"poddy/internal/k8s"
 	"poddy/internal/local"
 	"poddy/internal/metadata"
+	"poddy/internal/metrics"
 	"poddy/internal/rbac"
 	"poddy/internal/server"
 	"poddy/internal/sshkeys"
@@ -42,6 +43,11 @@ func Run(ctx context.Context, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	var appMetrics *metrics.Metrics
+	if cfg.MetricsAddr != "" {
+		appMetrics = metrics.New()
 	}
 
 	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
@@ -68,8 +74,12 @@ func Run(ctx context.Context, args []string) error {
 
 	rbacStore := rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap)
 	userStore := userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap)
-	if cfg.DatabaseURL != "" {
+	if appMetrics != nil || cfg.DatabaseURL != "" {
 		catalog.SetOnReload(func() {
+			appMetrics.TemplateReload("success")
+			if cfg.DatabaseURL == "" {
+				return
+			}
 			syncCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			if err := syncTemplates(syncCtx, cfg.Namespace, metaStore, rbacStore, catalog); err != nil {
@@ -124,6 +134,25 @@ func Run(ctx context.Context, args []string) error {
 		}
 	}
 
+	if appMetrics != nil {
+		appMetrics.SetWorkspaceLister(func(ctx context.Context) ([]metrics.WorkspaceInfo, error) {
+			list, err := manager.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]metrics.WorkspaceInfo, 0, len(list))
+			for _, workspace := range list {
+				out = append(out, metrics.WorkspaceInfo{Phase: workspace.Phase, Template: workspace.Template})
+			}
+			return out, nil
+		})
+		metricsServer, err := startMetrics(ctx, cfg.MetricsAddr, appMetrics.Handler())
+		if err != nil {
+			return err
+		}
+		defer metricsServer.Close()
+	}
+
 	sshBastion, err := startBastion(cfg, manager, keyring, metadataAuditor)
 	if err != nil {
 		return err
@@ -154,6 +183,7 @@ func Run(ctx context.Context, args []string) error {
 		RBAC:              rbacStore,
 		Users:             userStore,
 		Metadata:          metadataStore,
+		Metrics:           appMetrics,
 		WebFS:             web.FS,
 		Token:             cfg.Token,
 		Local:             editor,
@@ -419,6 +449,30 @@ func newOIDC(ctx context.Context, cfg config.Config) (*auth.OIDC, error) {
 	}
 	log.Printf("oidc login enabled (issuer %s)", cfg.OIDCIssuer)
 	return oidcAuth, nil
+}
+
+func startMetrics(ctx context.Context, addr string, handler http.Handler) (*http.Server, error) {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("metrics: %w", err)
+	}
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("metrics listening on %s", addr)
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("metrics: %v", err)
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	return srv, nil
 }
 
 func serve(ctx context.Context, srv *http.Server) error {

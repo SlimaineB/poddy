@@ -84,7 +84,7 @@ data keys:
 | Key | Content |
 |-----|---------|
 | `template.yaml` | Metadata, image, parameters, links, external auth |
-| `pod.yaml` | Kubernetes pod template rendered with Go templates |
+| `pod.yaml` | Partial Kubernetes pod overlay rendered with Go templates, then merged over poddy's defaults |
 
 Versioning uses labels:
 

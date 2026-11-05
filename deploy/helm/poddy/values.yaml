@@ -227,6 +227,22 @@ http:
     # Optional fixed NodePort (30000-32767); only for type NodePort/LoadBalancer.
     nodePort: 0
 
+# Prometheus metrics are served on a separate listener so they are never
+# exposed through the portal ingress. The metrics Service is always ClusterIP.
+metrics:
+  enabled: true
+  service:
+    port: 9090
+    annotations: {}
+  # Requires the Prometheus Operator CRDs. Enable only if the cluster has them.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    relabelings: []
+    metricRelabelings: []
+
 portal:
   addr: ":8080"
 

@@ -41,12 +41,14 @@ func setAuditDetail(r *http.Request, key string, value any) {
 
 func (s *Server) audit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		original := r
 		info := &auditInfo{}
 		r = r.WithContext(context.WithValue(r.Context(), auditContextKey{}, info))
 		sw := &statusWriter{ResponseWriter: w}
 		start := time.Now()
 
 		next.ServeHTTP(sw, r)
+		original.Pattern = r.Pattern
 
 		action, targetType := auditRoute(r)
 		if action == "" {

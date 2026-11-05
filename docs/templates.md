@@ -7,7 +7,7 @@ A **template** is a pair of files:
 ```
 my-template/
 ├── template.yaml   # metadata, parameters, default image
-└── pod.yaml        # Go template → corev1.Pod
+└── pod.yaml        # Go template → partial Pod overlay
 ```
 
 The portal loads templates from these sources (later sources override embedded templates with the same name):
@@ -44,7 +44,7 @@ parameters:                   # optional list
     default: ""
   - name: browserVSCode
     description: Run VS Code in the browser
-    default: "false"
+    default: "true"
 links:                        # optional list; rendered on workspace cards
   - name: JetBrains Gateway
     url: "jetbrains-gateway://connect#host={sshHost}&port={sshPort}&user={user}"
@@ -89,7 +89,9 @@ See [external-auth.md](external-auth.md) for provider configuration, Helm values
 
 ## pod.yaml contract
 
-`pod.yaml` is a Go `text/template` rendered into a `corev1.Pod`. The portal calls `template.Render(Data)` where `Data` contains:
+`pod.yaml` is a Go `text/template` rendered into a partial `corev1.Pod`. Poddy then merges that partial pod over an internal default pod. The template is therefore a customization overlay, not a full pod definition.
+
+The portal calls `template.Render(Data)` where `Data` contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -103,66 +105,44 @@ See [external-auth.md](external-auth.md) for provider configuration, Helm values
 | `.AuthorizedKeys` | string | Newline-separated SSH public keys for the workspace owner plus admin keys (never the full global key set) |
 | `.SSHCommand` | string | `/usr/local/bin/poddy-ssh-start` |
 | `.WorkspacePath` | string | `/workspace` |
+| `.Param` | method | `Data.Param("cpu")` — same as `.Parameters.cpu` |
 | `quote` | func | `strconv.Quote` — use for env values, paths |
 
-External auth env vars are added to the `workspace` container after rendering; they are recorded in the `poddy.io/external-auth-env` annotation so tokens are not stored in the stopped-state ConfigMap.
-| `.Param "cpu"` | method | `Data.Param("cpu")` — same as `.Parameters.cpu` |
+**Defaults injected when missing:**
+- The `workspace` container with the template image, `IfNotPresent`, SSH command, `SSH_AUTHORIZED_KEY`, working directory `/workspace`, port 22, CPU/memory requests from the `cpu`/`memory` parameters, and the workspace mount.
+- `automountServiceAccountToken: false` and pod `securityContext.fsGroup: 1000`.
+- The `workspace` volume: PVC when `storage` is non-empty, `emptyDir` otherwise.
+- The `code-server` sidecar when `browserVSCode` is `"true"`.
+- The portal sets `metadata.name`, `metadata.namespace`, labels (`app.kubernetes.io/name=poddy`, `poddy.io/workspace=<name>`, `poddy.io/template=<template>`), and `restartPolicy: Always` when empty.
+- External auth env vars are added after rendering and recorded in the `poddy.io/external-auth-env` annotation so tokens are not stored in the stopped-state ConfigMap.
 
-**Requirements:**
-- The template **must define a container named `workspace`**. This is the target for exec/port-forward.
-- Use `{{ .SSHCommand | quote }}` as the container `command` and set `env: [{name: SSH_AUTHORIZED_KEY, value: {{ .AuthorizedKeys | quote }}]` so the bastion/VS Code can authenticate. The portal fills `.AuthorizedKeys` with the workspace owner's key plus admin keys; it does not inject every global key.
-- Mount the workspace volume at `{{ .WorkspacePath | quote }}`. Use a PVC when `.Storage` is non-empty, else `emptyDir`:
-  ```yaml
-  volumes:
-    - name: workspace
-      {{- if .Storage }}
-      persistentVolumeClaim:
-        claimName: {{ .PVCName | quote }}
-      {{- else }}
-      emptyDir: {}
-      {{- end }}
-  ```
-- The portal overwrites `metadata.name`, `metadata.namespace`, adds labels (`app.kubernetes.io/name=poddy`, `poddy.io/workspace=<name>`, `poddy.io/template=<template>`), and sets `restartPolicy: Always` if empty.
-- `missingkey=error` is set — every `.Parameters.foo` must be declared in `template.yaml`.
+**Customization and merge rules:**
+- Any field present in `pod.yaml` wins over the default.
+- Scalars replace the default value.
+- Lists merge with the usual Kubernetes keys: containers by `name`, env by `name`, ports by `containerPort`, and volume mounts by `mountPath`.
+- A volume defined in `pod.yaml` with the same name as a default volume replaces that default volume.
+- Use the standard `$patch: replace` or `$patch: delete` directives when a list must be replaced or removed instead of merged.
+- Templates are not limited to the default volume or environment. They can declare any number of additional PVCs, volumes, mounts, env vars, containers, and init containers; the defaults only fill what is missing.
+- Define a `code-server` container to customize the IDE image, arguments, resources, or mounts. Set `browserVSCode: "false"` to omit the default sidecar.
+- The final pod must still contain a container named `workspace`; the defaults provide one if the template does not.
 
 **Example (minimal):**
 ```yaml
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    poddy.io/template: my-template
+spec: {}
+```
+
+**Example (add environment without repeating defaults):**
+```yaml
+apiVersion: v1
+kind: Pod
 spec:
-  automountServiceAccountToken: false
-  securityContext:
-    fsGroup: 1000
   containers:
     - name: workspace
-      image: {{ .Image | quote }}
-      imagePullPolicy: IfNotPresent
-      command: [{{ .SSHCommand | quote }}]
       env:
-        - name: SSH_AUTHORIZED_KEY
-          value: {{ .AuthorizedKeys | quote }}
-      workingDir: {{ .WorkspacePath | quote }}
-      ports:
-        - name: ssh
-          containerPort: 22
-      resources:
-        requests:
-          cpu: {{ .Parameters.cpu | quote }}
-          memory: {{ .Parameters.memory | quote }}
-      volumeMounts:
-        - name: workspace
-          mountPath: {{ .WorkspacePath | quote }}
-  volumes:
-    - name: workspace
-      {{- if .Storage }}
-      persistentVolumeClaim:
-        claimName: {{ .PVCName | quote }}
-      {{- else }}
-      emptyDir: {}
-      {{- end }}
+        - name: GOPATH
+          value: /home/dev/go
 ```
 
 ## Built-in templates
@@ -172,9 +152,10 @@ spec:
 | `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass, browserVSCode | Generic Linux |
 | `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass, browserVSCode | Adds `GOPATH=/home/dev/go`, larger defaults |
 
-Both mount the workspace volume at `/workspace` and run the SSH entrypoint.
-Both support the optional `code-server` sidecar for browser VS Code; set
-`browserVSCode: "true"` to enable it.
+Both rely on the pod defaults for SSH, the `/workspace` volume, security
+context, resources, and the `code-server` sidecar. Their `pod.yaml` only adds
+the template-specific environment (`GOPATH` or `NODE_ENV`), which keeps them
+easy to read and override. Set `browserVSCode: "false"` to disable the sidecar.
 
 The images point at the upstream GHCR namespace; forks should override the
 `image` field with their own published images.
@@ -224,14 +205,7 @@ templates:
         pod: |
           apiVersion: v1
           kind: Pod
-          spec:
-            containers:
-              - name: workspace
-                image: {{ .Image | quote }}
-                command: [{{ .SSHCommand | quote }}]
-                env:
-                  - name: SSH_AUTHORIZED_KEY
-                    value: {{ .AuthorizedKeys | quote }}
+          spec: {}
       "2.0.0":
         template: |
           name: node
@@ -243,8 +217,9 @@ templates:
           spec:
             containers:
               - name: workspace
-                image: {{ .Image | quote }}
-                command: [{{ .SSHCommand | quote }}]
+                env:
+                  - name: NODE_ENV
+                    value: production
 ```
 
 The chart creates one ConfigMap per template version with `poddy.io/template=true`. Install it in the portal's workspace namespace (`workspaceNamespace`, usually the release namespace). A single unversioned `template`/`pod` entry is still supported.
@@ -278,11 +253,9 @@ data:
     spec:
       containers:
         - name: workspace
-          image: {{ .Image | quote }}
-          command: [{{ .SSHCommand | quote }}]
           env:
-            - name: SSH_AUTHORIZED_KEY
-              value: {{ .AuthorizedKeys | quote }}
+            - name: NODE_ENV
+              value: development
 ```
 
 ```bash
@@ -354,7 +327,7 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 - `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys` and starts `sshd`
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
 
-The pod template uses `command: [{{ .SSHCommand | quote }}]` to run the entrypoint.
+The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can override it.
 
 The repository uses these Dockerfiles:
 
@@ -404,48 +377,37 @@ ssh -p 2222 dev@127.0.0.1
 
 ### VS Code in the browser
 
-The built-in `base` and `go` templates support an optional
-[OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) sidecar.
-When it is present, the workspace card shows a **VS Code Web** button that opens
+Poddy's defaults inject an
+[OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) sidecar when
+the `browserVSCode` parameter is `"true"` (the built-in default). When the
+sidecar is present, the workspace card shows a **VS Code Web** button that opens
 a new browser tab. The portal authenticates the request, checks workspace
 ownership, port-forwards to the sidecar, and proxies HTTP and WebSocket traffic.
 
-The sidecar is opt-in through the `browserVSCode` template parameter (default
-`false`). Set it to `true` to enable it, or remove the sidecar from a custom
-template. It binds to `127.0.0.1:3000`, so it is only reachable through the
-portal's port-forward, not from other pods or the internet.
+The sidecar binds to `127.0.0.1:3000`, so it is only reachable through the
+portal's port-forward, not from other pods or the internet. Set
+`browserVSCode: "false"` to omit it. The container name must stay `code-server`;
+the portal uses that name to decide whether to show the button, and the
+`--server-base-path` value must match the portal path for the workspace.
+
+Templates can override any part of the sidecar by defining a `code-server`
+container. Only the fields they set replace the defaults:
 
 ```yaml
-containers:
-  - name: code-server
-    image: gitpod/openvscode-server:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder /workspace --telemetry-level off
-    workingDir: /workspace
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
-    volumeMounts:
-      - name: workspace
-        mountPath: /workspace
+spec:
+  containers:
+    - name: code-server
+      image: registry.example.com/mirror/openvscode-server:1
+      resources:
+        limits:
+          memory: 2Gi
 ```
 
-The container name must be `code-server`; the portal uses it to decide whether
-to show the button. The `--server-base-path` value must match the portal path
-for the workspace. OpenVSCode Server 1.97.2+ supports this flag. To keep the
-sidecar opt-in, wrap it in `{{- if eq .Parameters.browserVSCode "true" }}` and
-`{{- end }}` and declare the parameter with a default of `"false"`.
-
 The default image comes from Docker Hub. If your cluster blocks Docker Hub,
-mirror `gitpod/openvscode-server` to your registry and update the template, or
-leave `browserVSCode` at `"false"` to skip the sidecar. OpenVSCode Server is
-MIT-licensed; the Gitpod image is only a published build, so mirroring it under
-your own registry does not change the license.
+mirror `gitpod/openvscode-server` to your registry and override the image as
+above, or set `browserVSCode` to `"false"` to skip the sidecar. OpenVSCode
+Server is MIT-licensed; the Gitpod image is only a published build, so mirroring
+it under your own registry does not change the license.
 
 ### Image pull secrets
 
@@ -463,8 +425,8 @@ The Helm chart's `imagePullSecrets` applies only to the portal and bastion pods,
 
 - The UI sends `parameters` from the create dialog (only declared parameters).
 - Deprecated API fields `cpu`, `memory`, `storage` in `CreateRequest` override parameters of the same name (for backward compatibility).
-- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The pod template decides whether to mount it (see `.Storage`).
-- If you don't want a PVC, set `storage` default to `""` in your template and omit the `persistentVolumeClaim` volume.
+- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The defaults mount it at `/workspace`; a template can override the `workspace` volume or mount.
+- If you don't want a PVC, set `storage` default to `""` in your template. The defaults then use an `emptyDir`; a template can still define additional PVCs of its own.
 
 ## Validation & debugging
 

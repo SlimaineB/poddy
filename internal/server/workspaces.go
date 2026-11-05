@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -188,6 +189,13 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	req.Owner = ownerID(id.User)
 	req.PortalURL = s.externalAuthPortalURL(r)
 
+	start := time.Now()
+	result := "error"
+	defer func() {
+		s.Metrics.WorkspaceOperation("create", result)
+		s.Metrics.WorkspaceCreate(templateName, result, time.Since(start))
+	}()
+
 	ws, err := s.Workspaces.Create(r.Context(), req)
 	if err != nil {
 		if s.writeExternalAuthRequired(w, r, err) {
@@ -196,6 +204,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusBadRequest)
 		return
 	}
+	result = "success"
 	s.syncWorkspace(r.Context(), ws.Name)
 	writeJSON(w, http.StatusCreated, ws)
 }
@@ -229,6 +238,9 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 		_ = s.Local.RemoveSSHConfig(name)
 	}
 
+	result := "error"
+	defer func() { s.Metrics.WorkspaceOperation("delete", result) }()
+
 	err = s.Workspaces.Delete(r.Context(), name)
 	if apierrors.IsNotFound(err) {
 		http.Error(w, "workspace not found", http.StatusNotFound)
@@ -238,6 +250,7 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
 	}
+	result = "success"
 	s.deleteWorkspaceMetadata(r.Context(), name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -271,6 +284,9 @@ func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, acti
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
+
+	result := "error"
+	defer func() { s.Metrics.WorkspaceOperation(action, result) }()
 
 	var ws k8s.Workspace
 	switch action {
@@ -306,6 +322,7 @@ func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, acti
 			_ = s.Local.RemoveSSHConfig(name)
 		}
 	}
+	result = "success"
 	s.syncWorkspace(r.Context(), name)
 	writeJSON(w, http.StatusOK, ws)
 }

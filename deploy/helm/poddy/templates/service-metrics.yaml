@@ -1,0 +1,29 @@
+{{- $metrics := default (dict) (index .Values "metrics") }}
+{{- $metricsEnabled := true }}
+{{- if hasKey $metrics "enabled" }}{{ $metricsEnabled = index $metrics "enabled" }}{{ end }}
+{{- $metricsService := default (dict) (index $metrics "service") }}
+{{- $metricsPort := default 9090 (index $metricsService "port") }}
+{{- $annotations := default (dict) (index $metricsService "annotations") }}
+{{- if $metricsEnabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ $metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "poddy.selectorLabels" . | nindent 4 }}
+{{- end }}

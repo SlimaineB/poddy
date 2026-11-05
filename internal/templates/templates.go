@@ -391,9 +391,5 @@ func (t *Template) Render(data Data) (*corev1.Pod, error) {
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("render pod template: %w", err)
 	}
-	var pod corev1.Pod
-	if err := yaml.Unmarshal(buf.Bytes(), &pod); err != nil {
-		return nil, fmt.Errorf("decode pod template: %w", err)
-	}
-	return &pod, nil
+	return ApplyDefaults(buf.Bytes(), data)
 }

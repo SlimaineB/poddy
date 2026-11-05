@@ -116,12 +116,16 @@ data:
     spec:
       containers:
         - name: workspace
-          image: {{ .Image | quote }}
-          command: [{{ .SSHCommand | quote }}]
           env:
-            - name: SSH_AUTHORIZED_KEY
-              value: {{ .AuthorizedKeys | quote }}
+            - name: NODE_ENV
+              value: development
 ```
+
+Poddy merges `pod.yaml` over its internal pod defaults (SSH, workspace volume,
+resources, security context, browser VS Code sidecar). A template can be as
+small as `apiVersion: v1`, `kind: Pod`, `spec: {}`, and can still override or
+add any field. See [docs/templates.md](../../../docs/templates.md) for the merge
+rules.
 
 ```bash
 kubectl -n poddy-system apply -f node-template.yaml

@@ -9,13 +9,14 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; browser terminal (`xterm.js`).
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC**: global admins, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, and templates each have a dedicated page; data is stored in a ConfigMap.
-- **Extensible templates**: YAML templates define pod specs, parameters, and images. Built-in `base` and `go` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
+- **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base` and `go` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Keys are bound to workspace owners; users only need an SSH key.
-- **VS Code launch**: One-click opens Remote-SSH (`vscode://`) in a new window from the workspace card. In local editor mode the portal can also launch Windows VS Code directly, write `~/.ssh/config`, and copy the portal key. Workspaces with a `code-server` sidecar also expose **VS Code Web** in a new browser tab.
+- **VS Code launch**: One-click opens Remote-SSH (`vscode://`) in a new window from the workspace card. In local editor mode the portal can also launch Windows VS Code directly, write `~/.ssh/config`, and copy the portal key. Workspaces with browser VS Code enabled (the built-in default) also expose **VS Code Web** in a new browser tab.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap.
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, and security context.
+- **Prometheus metrics**: A dedicated metrics listener exposes HTTP, workspace lifecycle, authentication, template reload, and workspace phase metrics, plus Go/process metrics. The Helm chart creates a ClusterIP metrics Service and can render a ServiceMonitor.
 - **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace or RBAC decisions; only the admin audit screen reads it.
 
 ## Architecture
@@ -107,7 +108,7 @@ Click **New workspace**, pick **Base** or **Go**, set parameters, **Create**. Wa
 - **Terminal**: Click the terminal icon for a browser shell.
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
 - **VS Code**: Click **VS Code** to open Remote-SSH on the workspace user's home (`/home/dev`) in a new window.
-- **VS Code Web**: Click **VS Code Web** to open the browser editor in a new tab when the template includes the `code-server` sidecar.
+- **VS Code Web**: Click **VS Code Web** to open the browser editor in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
 - **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
 

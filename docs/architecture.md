@@ -77,8 +77,8 @@ API and only needs pod read access plus port-forward.
 
 ### Browser VS Code
 
-1. The workspace pod runs an optional `code-server` sidecar bound to
-   `127.0.0.1:3000`.
+1. Poddy's pod defaults add an optional `code-server` sidecar when
+   `browserVSCode` is `"true"`; it binds to `127.0.0.1:3000`.
 2. The browser opens `/api/workspaces/<name>/code/`.
 3. The portal authenticates the user, checks workspace ownership, and
    port-forwards to port 3000 through the Kubernetes API.
@@ -160,6 +160,16 @@ The portal and bastion scale independently:
 Workspace pods are independent. The portal's Kubernetes Role is scoped to the
 workspace namespace; the bastion's Role is narrower still and only grants pod
 read access plus port-forward.
+
+## Observability
+
+The portal exposes Prometheus metrics on a separate listener (`-metrics-addr`,
+`PODDY_METRICS_ADDR`, Helm `metrics.*`). The listener is never routed through the
+portal Ingress. Metrics cover HTTP requests and latency, workspace lifecycle
+operations and create latency, authentication outcomes, template reloads, and a
+scrape-time gauge of workspaces by phase and template, plus standard Go and
+process metrics. When the Prometheus Operator is installed, the Helm chart can
+render a ServiceMonitor. See [deployment metrics](deploy.md#prometheus-metrics).
 
 ## Security boundaries
 

@@ -155,9 +155,10 @@ kubectl apply -f examples/eks/efs-workspace-template.yaml
 ```
 
 The portal watches labeled template ConfigMaps and reloads within a few seconds.
-The new **EFS shared** template appears in the create dialog. Set the template
-parameter `browserVSCode` to `true` to add the `code-server` sidecar and show
-**VS Code Web**; it is disabled by default.
+The new **EFS shared** template appears in the create dialog. Poddy's defaults
+add the `code-server` sidecar when `browserVSCode` is `"true"`, so workspaces
+also show **VS Code Web**; set the template parameter `browserVSCode` to
+`false` to omit it.
 
 ## 6. Point DNS at the load balancers
 

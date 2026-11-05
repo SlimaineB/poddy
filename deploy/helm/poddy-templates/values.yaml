@@ -22,15 +22,7 @@ fullnameOverride: ""
 #         pod: |
 #           apiVersion: v1
 #           kind: Pod
-#           spec:
-#             containers:
-#               - name: workspace
-#                 image: {{ .Image | quote }}
-#                 command: [{{ .SSHCommand | quote }}]
-#                 env:
-#                   - name: SSH_AUTHORIZED_KEY
-#                     value: {{ .AuthorizedKeys | quote }}
-#                 # ...
+#           spec: {}
 #       "2.0.0":
 #         template: |
 #           name: node
@@ -42,8 +34,9 @@ fullnameOverride: ""
 #           spec:
 #             containers:
 #               - name: workspace
-#                 image: {{ .Image | quote }}
-#                 command: [{{ .SSHCommand | quote }}]
+#                 env:
+#                   - name: NODE_ENV
+#                     value: production
 #
 # Unversioned template (backward compatible, one ConfigMap):
 # templates:
@@ -54,4 +47,5 @@ fullnameOverride: ""
 #     pod: |
 #       apiVersion: v1
 #       kind: Pod
+#       spec: {}
 templates: {}

@@ -172,7 +172,7 @@ The templates release creates labeled ConfigMaps in its namespace, so install it
   kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base64 -d
   ```
 - **SSH**: Users connect to `ssh.dev.example.com:2222`. The UI's **SSH** button gives a ready-to-use config with `ProxyJump`.
-- **VS Code Web**: If the workspace template includes the `code-server` sidecar, the **VS Code Web** button opens the editor in a new tab through the portal. No SSH key or local port-forward is needed.
+- **VS Code Web**: When browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates), the **VS Code Web** button opens the editor in a new tab through the portal. No SSH key or local port-forward is needed.
 
 With SSH enabled, the release creates two Deployments:
 
@@ -449,6 +449,56 @@ externalAuth:
 
 See [external-auth.md](external-auth.md) for provider defaults, callbacks, template declarations, and troubleshooting.
 
+## Prometheus metrics
+
+The portal can expose Prometheus metrics on a dedicated listener. The listener is
+disabled by default when running the binary directly; the Helm chart enables it
+on port `9090`.
+
+- **Flag / environment**: `-metrics-addr=:9090` or `PODDY_METRICS_ADDR=:9090`.
+  Leave both empty to disable the listener.
+- **Helm**: `metrics.enabled` (default `true`), `metrics.service.port` (default
+  `9090`). The chart creates a ClusterIP Service named
+  `<fullname>-metrics`. Metrics are never routed through the portal Ingress.
+- **ServiceMonitor**: set `metrics.serviceMonitor.enabled=true` if the
+  Prometheus Operator CRDs are installed. Optional settings include `interval`,
+  `scrapeTimeout`, `labels`, `relabelings`, and `metricRelabelings`.
+
+```yaml
+metrics:
+  enabled: true
+  service:
+    port: 9090
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: kube-prometheus-stack
+```
+
+Metrics include:
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `poddy_http_requests_total` | `method`, `route`, `status` | HTTP requests handled by the portal. |
+| `poddy_http_request_duration_seconds` | `method`, `route` | HTTP request latency histogram. |
+| `poddy_http_in_flight_requests` | | Requests currently being handled. |
+| `poddy_workspace_operations_total` | `operation`, `result` | Workspace create/delete/stop/start/restart outcomes. |
+| `poddy_workspace_create_duration_seconds` | `template`, `result` | Workspace creation latency histogram. |
+| `poddy_auth_attempts_total` | `method`, `result` | Successful and denied authentication attempts. |
+| `poddy_template_reloads_total` | `result` | Template catalog reloads. |
+| `poddy_workspaces` | `phase`, `template` | Current workspaces, queried from Kubernetes on scrape. |
+| `poddy_build_info` | `version`, `go_version` | Build metadata. |
+
+The standard Go runtime and process metrics are also exposed. The `route` label
+uses the Go `http.ServeMux` pattern (for example
+`GET /api/workspaces/{name}`), which keeps cardinality bounded.
+
+The metrics listener has no authentication and must not be exposed publicly.
+Keep the metrics Service `ClusterIP` and restrict access with a NetworkPolicy or
+your monitoring stack's scrape configuration.
+
 ## Security hardening
 
 The chart applies:
@@ -535,10 +585,11 @@ guidance.
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
 | No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
 | VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://` in a new window; the server-side launch endpoint is only available in local editor mode. |
-| **VS Code Web** button is missing | The workspace pod has no `code-server` container. Enable the `browserVSCode` parameter (default `false`) in the workspace template. |
+| **VS Code Web** button is missing | The workspace pod has no `code-server` container. Check that the template declares `browserVSCode` with default `"true"` (or explicitly `"true"`), and that the workspace was not created with `browserVSCode: "false"`. |
 | **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
 | PVC not created | `storage` parameter empty or not declared in template. |
+| Metrics endpoint refuses connections | Check `metrics.enabled`, the `-metrics-addr` flag, and portal logs for `metrics listening on`. The metrics listener is separate from the portal HTTP port. |
 
 ## Validation and smoke test
 
@@ -549,7 +600,12 @@ helm lint deploy/helm/poddy -f values.yaml
 helm test poddy -n poddy-system
 ```
 
-The test pod calls `/healthz` through the HTTP Service.
+The test pod calls `/healthz` through the HTTP Service. To check metrics:
+
+```bash
+kubectl -n poddy-system port-forward svc/poddy-metrics 9090:9090
+curl -s http://127.0.0.1:9090/metrics | grep '^poddy_'
+```
 
 ## Chart publishing
 

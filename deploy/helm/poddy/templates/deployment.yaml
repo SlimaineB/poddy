@@ -10,6 +10,11 @@
 {{- if and .Values.oidc.enabled (not .Values.oidc.existingSecret) (not .Values.oidc.clientId) }}
 {{- fail "oidc.clientId is required when oidc.enabled=true and oidc.existingSecret is not set" }}
 {{- end }}
+{{- $metrics := default (dict) (index .Values "metrics") }}
+{{- $metricsEnabled := true }}
+{{- if hasKey $metrics "enabled" }}{{ $metricsEnabled = index $metrics "enabled" }}{{ end }}
+{{- $metricsService := default (dict) (index $metrics "service") }}
+{{- $metricsPort := default 9090 (index $metricsService "port") }}
 {{- if and .Values.oidc.enabled (gt (int .Values.replicaCount) 1) (not .Values.oidc.sessionKey) (not .Values.oidc.existingSecret) }}
 {{- fail "oidc.sessionKey or oidc.existingSecret is required when oidc.enabled=true and replicaCount > 1" }}
 {{- end }}
@@ -77,6 +82,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - -addr={{ .Values.portal.addr }}
+            {{- if $metricsEnabled }}
+            - -metrics-addr=:{{ $metricsPort }}
+            {{- end }}
             - -namespace={{ include "poddy.workspaceNamespace" . }}
             - -rbac-configmap={{ include "poddy.rbacConfigMapName" . }}
             - -state-configmap={{ include "poddy.stateConfigMapName" . }}
@@ -263,6 +271,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if $metricsEnabled }}
+            - name: metrics
+              containerPort: {{ $metricsPort }}
+              protocol: TCP
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           readinessProbe:

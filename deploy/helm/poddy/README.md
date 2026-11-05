@@ -37,6 +37,24 @@ Replace `0.1.0` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
+## Metrics
+
+Metrics are enabled by default on port `9090` and served by a separate
+ClusterIP Service named `<fullname>-metrics`; they are not exposed through the
+portal Ingress. Set `metrics.enabled=false` to disable the listener and Service.
+
+If the cluster has the Prometheus Operator CRDs, enable a ServiceMonitor:
+
+```yaml
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: kube-prometheus-stack
+```
+
 ## Publishing
 
 The `Publish Helm charts` workflow packages and pushes both charts to
@@ -108,6 +126,15 @@ name (without the leading `v`) is used.
 | `http.service.type` | `ClusterIP` | HTTP Service type. |
 | `http.service.port` | `80` | HTTP Service port. |
 | `http.service.nodePort` | `0` | Optional fixed HTTP NodePort. |
+| `metrics.enabled` | `true` | Expose Prometheus metrics on a dedicated listener and ClusterIP Service. |
+| `metrics.service.port` | `9090` | Metrics listener and Service port. |
+| `metrics.service.annotations` | `{}` | Annotations for the metrics Service. |
+| `metrics.serviceMonitor.enabled` | `false` | Render a `monitoring.coreos.com/v1` ServiceMonitor. Requires the Prometheus Operator CRDs. |
+| `metrics.serviceMonitor.interval` | `30s` | ServiceMonitor scrape interval. |
+| `metrics.serviceMonitor.scrapeTimeout` | `10s` | ServiceMonitor scrape timeout. |
+| `metrics.serviceMonitor.labels` | `{}` | Extra labels for the ServiceMonitor. |
+| `metrics.serviceMonitor.relabelings` | `[]` | Prometheus relabeling configs. |
+| `metrics.serviceMonitor.metricRelabelings` | `[]` | Prometheus metric relabeling configs. |
 | `ingress.enabled` | `false` | Create Ingress for HTTP. |
 | `ingress.className` | `""` | Ingress class (nginx, traefik...). |
 | `ingress.hosts` | `[poddy.example.com]` | Ingress hosts & paths. |
@@ -148,11 +175,12 @@ data:
     spec:
       containers:
         - name: workspace
-          image: {{ .Image | quote }}
-          command: [{{ .SSHCommand | quote }}]
+          env:
+            - name: NODE_ENV
+              value: development
 ```
 
-The portal watches these ConfigMaps in `workspaceNamespace` and reloads without restarting. Keep several versions with `poddy.io/template-version` and mark exactly one `poddy.io/template-active=true`; rollback is a label change. See [templates.md](../../../docs/templates.md#versioning-and-rollback) for the full contract.
+The portal watches these ConfigMaps in `workspaceNamespace` and reloads without restarting. `pod.yaml` is a partial overlay: poddy merges it over the internal pod defaults, so templates only declare what they customize. Keep several versions with `poddy.io/template-version` and mark exactly one `poddy.io/template-active=true`; rollback is a label change. See [templates.md](../../../docs/templates.md#versioning-and-rollback) for the full contract.
 
 ## OIDC / SSO
 

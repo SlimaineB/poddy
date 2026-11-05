@@ -62,8 +62,8 @@ never need a kubeconfig.
   delete workspaces.
 - **Scale what you need.** The portal and SSH bastion run as separate
   Deployments, so HTTP/API and SSH capacity scale independently.
-- **Four ways to work.** Browser terminal, browser VS Code (opt-in), SSH
-  through a bastion, or VS Code Remote-SSH.
+- **Four ways to work.** Browser terminal, browser VS Code, SSH through a
+  bastion, or VS Code Remote-SSH.
 - **Real dev containers.** Persistent volumes, custom images, and templates that
   declare CPU, memory, storage, and links.
 - **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
@@ -74,6 +74,9 @@ never need a kubeconfig.
   workspace or RBAC decisions.
 - **No cluster credentials for users.** The portal talks to the Kubernetes API;
   users only need a browser or an SSH key.
+- **Observable by default.** Prometheus metrics cover HTTP traffic, workspace
+  lifecycle, authentication, template reloads, and current workspaces, with an
+  optional ServiceMonitor.
 
 ## How it works
 

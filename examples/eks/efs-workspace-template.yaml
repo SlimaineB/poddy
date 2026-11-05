@@ -38,17 +38,11 @@ data:
         default: ""
       - name: browserVSCode
         description: Run VS Code in the browser (true/false)
-        default: "false"
+        default: "true"
   pod.yaml: |
     apiVersion: v1
     kind: Pod
-    metadata:
-      labels:
-        poddy.io/template: efs
     spec:
-      automountServiceAccountToken: false
-      securityContext:
-        fsGroup: 1000
       initContainers:
         - name: init-shared
           image: public.ecr.aws/docker/library/busybox:1.36
@@ -61,49 +55,11 @@ data:
               mountPath: /shared
       containers:
         - name: workspace
-          image: {{ .Image | quote }}
-          imagePullPolicy: IfNotPresent
-          command: [{{ .SSHCommand | quote }}]
-          env:
-            - name: SSH_AUTHORIZED_KEY
-              value: {{ .AuthorizedKeys | quote }}
-          workingDir: {{ .WorkspacePath | quote }}
-          ports:
-            - name: ssh
-              containerPort: 22
-          resources:
-            requests:
-              cpu: {{ .Parameters.cpu | quote }}
-              memory: {{ .Parameters.memory | quote }}
           volumeMounts:
-            - name: workspace
-              mountPath: {{ .WorkspacePath | quote }}
             - name: shared-efs
               mountPath: /shared
               subPath: {{ .Name | quote }}
-        {{- if eq .Parameters.browserVSCode "true" }}
-        - name: code-server
-          image: gitpod/openvscode-server:latest
-          imagePullPolicy: IfNotPresent
-          command: ["/bin/sh", "-c"]
-          args:
-            - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder /workspace --telemetry-level off
-          workingDir: /workspace
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-        {{- end }}
       volumes:
-        - name: workspace
-          persistentVolumeClaim:
-            claimName: {{ .PVCName | quote }}
         - name: shared-efs
           persistentVolumeClaim:
             claimName: poddy-shared-efs

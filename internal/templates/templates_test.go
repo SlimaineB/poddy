@@ -96,14 +96,17 @@ func TestRender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pod, err := tmpl.Render(Data{
+	data := Data{
 		Name:           "app",
 		Namespace:      "poddy",
 		PodName:        "poddy-app",
 		PVCName:        "poddy-app",
+		Image:          tmpl.Image,
 		Parameters:     params,
+		Storage:        params["storage"],
 		AuthorizedKeys: "ssh-ed25519 AAAA test",
-	})
+	}
+	pod, err := tmpl.Render(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +139,8 @@ func TestRenderEphemeral(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pod, err := tmpl.Render(Data{Parameters: params})
+	data := Data{Image: tmpl.Image, Parameters: params, Storage: params["storage"]}
+	pod, err := tmpl.Render(data)
 	if err != nil {
 		t.Fatal(err)
 	}

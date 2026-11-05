@@ -17,4 +17,4 @@ parameters:
     default: ""
   - name: browserVSCode
     description: Run VS Code in the browser (true/false)
-    default: "false"
+    default: "true"
