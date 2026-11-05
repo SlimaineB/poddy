@@ -57,6 +57,15 @@ API and only needs pod read access plus port-forward.
    records a `workspace.create` audit event.
 7. The portal watches pods and reports their phase to the UI.
 
+### Workspace details and startup logs
+
+1. Clicking a workspace card or name opens the details dialog.
+2. The portal checks authentication and workspace ownership, then reads the pod.
+3. The dialog shows metadata and fetches startup output for init containers and
+   regular containers through the Kubernetes `pods/log` subresource.
+4. A container that is waiting or has no output reports its state and error
+   inline; a stopped workspace asks the user to start it first.
+
 ### Browser terminal
 
 1. The browser opens a WebSocket to the portal.

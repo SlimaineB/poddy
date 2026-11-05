@@ -310,11 +310,11 @@
   </dialog>
 
 
-  <dialog id="detail-dialog" class="dialog">
+  <dialog id="detail-dialog" class="dialog dialog-wide">
     <header class="dialog-header">
       <div>
         <h2 id="detail-title">Workspace details</h2>
-        <p>Image and metadata for this workspace.</p>
+        <p>Metadata and startup logs for this workspace.</p>
       </div>
       <button class="icon-button" type="button" data-close aria-label="Close">
         <svg class="icon"><use href="#icon-x"></use></svg>
@@ -322,6 +322,16 @@
     </header>
     <div class="dialog-body">
       <dl id="detail-list" class="detail-list"></dl>
+      <section class="workspace-logs">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Startup logs</h3>
+            <p>Init containers and workspace containers, from the current pod.</p>
+          </div>
+          <button id="detail-logs-refresh" class="button ghost small" type="button">Refresh</button>
+        </header>
+        <div id="detail-logs-body" class="workspace-logs-body"></div>
+      </section>
     </div>
     <footer class="dialog-footer">
       <button class="button ghost" type="button" data-close>Close</button>

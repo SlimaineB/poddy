@@ -6,7 +6,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 
 ## Features
 
-- **Web portal**: Create, stop, start, restart, delete, and list workspaces; browser terminal (`xterm.js`).
+- **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs; browser terminal (`xterm.js`).
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC**: global admins, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, and templates each have a dedicated page; data is stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base` and `go` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.

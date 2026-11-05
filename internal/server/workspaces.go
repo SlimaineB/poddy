@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,6 +115,42 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"teams":       nonNil(teams),
 		"teamMembers": teamMembers,
 	})
+}
+
+func (s *Server) workspaceLogs(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	name := r.PathValue("name")
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	if err != nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if !allowed {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	tail := int64(0)
+	if raw := r.URL.Query().Get("tail"); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			tail = value
+		}
+	}
+	logs, err := s.Workspaces.Logs(r.Context(), name, tail)
+	if err != nil {
+		writeK8sError(w, err, http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
 }
 
 var workspacePrefixCleaner = regexp.MustCompile(`[^a-z0-9]+`)

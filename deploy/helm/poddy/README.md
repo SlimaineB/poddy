@@ -331,6 +331,7 @@ across replicas.
 
 The portal gets a Role in `workspaceNamespace` with:
 - `pods` (get, list, watch, create, delete)
+- `pods/log` (get) for startup logs in the workspace details dialog
 - `pods/exec` (get, create)
 - `pods/portforward` (get, create)
 - `persistentvolumeclaims` (get, list, create, delete)

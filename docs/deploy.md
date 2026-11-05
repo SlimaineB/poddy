@@ -213,6 +213,7 @@ The chart creates two least-privilege identities:
 - **ServiceAccount** `poddy` (or custom name) in the release namespace.
 - **Role** in `workspaceNamespace` with rules:
   - `pods` (get, list, watch, create, delete) — workspace lifecycle.
+  - `pods/log` (get) — startup logs in the workspace details dialog.
   - `pods/exec` (get, create) — browser terminal.
   - `pods/portforward` (get, create) — local editor and VS Code helpers.
   - `persistentvolumeclaims` (get, list, create, delete) — persistent volumes.
@@ -237,6 +238,7 @@ Neither the portal nor the bastion can access other namespaces or cluster-scoped
 - **Start** recreates the pod from the stored spec; **Restart** deletes and recreates it. The PVC is reused.
 - **Ephemeral workspaces** (`storage` empty) have no PVC: stopping them loses their data. The UI warns before stopping.
 - Stopped workspaces appear with phase `Stopped`; only their owner or a global admin can start/stop/restart/delete them.
+- Click a workspace card or name to open its details. The dialog shows metadata plus **startup logs** from init containers and workspace containers. Logs are fetched with the `pods/log` permission and are limited to the last 500 lines per container.
 - The state ConfigMap name is `workspaceState.configMapName` (default `<fullname>-state`) in the chart, or `-state-configmap` / `PODDY_STATE_CONFIGMAP`. It is created on first use and covered by the `configmaps` permission.
 - The rendered spec is preserved, so a stopped workspace resumes with the same image/resources even if the template changes. Delete and recreate to pick up template changes.
 

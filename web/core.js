@@ -23,6 +23,8 @@ const state = {
   pollError: false,
   sshWorkspace: null,
   pendingDelete: null,
+  detailWorkspace: null,
+  detailRequest: 0,
   accessTemplate: null,
   accessCanEditOwners: false,
   editingTeam: null,
@@ -68,6 +70,8 @@ const els = {
   detailDialog: document.getElementById("detail-dialog"),
   detailTitle: document.getElementById("detail-title"),
   detailList: document.getElementById("detail-list"),
+  detailLogsBody: document.getElementById("detail-logs-body"),
+  detailLogsRefresh: document.getElementById("detail-logs-refresh"),
   confirmDialog: document.getElementById("confirm-dialog"),
   confirmText: document.getElementById("confirm-text"),
   confirmDelete: document.getElementById("confirm-delete"),
@@ -177,7 +181,7 @@ function templateByName(name) {
 function statusClass(phase) {
   const value = String(phase || "").toLowerCase();
   if (value === "running") return "running";
-  if (value === "pending" || value === "containercreating" || value === "podinitializing") return "pending";
+  if (value === "pending" || value === "waiting" || value === "containercreating" || value === "podinitializing") return "pending";
   if (value === "failed" || value === "error" || value === "crashloopbackoff" || value === "imagepullbackoff") return "failed";
   if (value === "terminating") return "terminating";
   if (value === "stopped") return "stopped";

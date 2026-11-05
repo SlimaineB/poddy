@@ -407,3 +407,38 @@ func TestBrowserVSCodeRequiresRunningWorkspace(t *testing.T) {
 		t.Fatalf("code status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestWorkspaceLogsResponseAndAudit(t *testing.T) {
+	s := newTestServer("")
+	store := &recordingMetadata{}
+	s.Metadata = store
+
+	rec := request(t, s, http.MethodPost, "/api/workspaces", map[string]any{"name": "app", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = request(t, s, http.MethodGet, "/api/workspaces/app/logs?tail=50", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logs status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var logs k8s.WorkspaceLogs
+	if err := json.Unmarshal(rec.Body.Bytes(), &logs); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Name != "app" || len(logs.Containers) < 1 {
+		t.Fatalf("logs = %+v", logs)
+	}
+	found := map[string]bool{}
+	for _, container := range logs.Containers {
+		found[container.Name] = true
+	}
+	if !found["workspace"] || !found["code-server"] {
+		t.Fatalf("logs containers = %+v", logs.Containers)
+	}
+
+	event := store.last()
+	if event.Action != "workspace.logs.view" || event.Outcome != "success" || event.TargetName != "app" {
+		t.Fatalf("logs audit = %+v", event)
+	}
+}

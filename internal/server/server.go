@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/teams/{name}", s.deleteTeam)
 	mux.HandleFunc("GET /api/workspaces", s.list)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
+	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
 	mux.HandleFunc("POST /api/workspaces", s.create)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.remove)
 	mux.HandleFunc("POST /api/workspaces/{name}/stop", s.stop)

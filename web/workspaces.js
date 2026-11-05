@@ -10,8 +10,13 @@ function renderCard(workspace) {
   const title = document.createElement("div");
   title.className = "card-title";
   const name = document.createElement("h2");
-  name.textContent = workspace.name;
-  name.title = workspace.name;
+  const nameButton = document.createElement("button");
+  nameButton.type = "button";
+  nameButton.className = "workspace-name-button";
+  nameButton.textContent = workspace.name;
+  nameButton.title = workspace.name;
+  nameButton.addEventListener("click", () => showDetails(workspace));
+  name.append(nameButton);
   title.append(name);
 
   const status = document.createElement("span");
@@ -67,6 +72,11 @@ function renderCard(workspace) {
   meta.append(metaRow, created);
 
   card.append(top, meta, renderWorkspaceActions(workspace));
+  card.classList.add("card-clickable");
+  card.addEventListener("click", (event) => {
+    if (event.target.closest("button, a, input, select, textarea")) return;
+    showDetails(workspace);
+  });
   return card;
 }
 
@@ -409,22 +419,109 @@ function resolveLink(link, workspace) {
   });
 }
 async function showDetails(workspace) {
+  state.detailWorkspace = workspace;
   els.detailTitle.textContent = workspace.name;
   els.detailList.replaceChildren();
+  els.detailLogsBody.replaceChildren();
 
-  // Show loading
   const loading = document.createElement("div");
   loading.className = "loading-small";
   loading.textContent = "Loading details...";
   els.detailList.append(loading);
+  setLogsMessage("Loading startup logs...");
   els.detailDialog.showModal();
 
+  await refreshDetails();
+}
+
+async function refreshDetails() {
+  const workspace = state.detailWorkspace;
+  if (!workspace) return;
+  const request = ++state.detailRequest;
+  els.detailLogsRefresh.disabled = true;
+  await Promise.all([loadDetails(workspace, request), loadLogs(workspace, request)]);
+  if (request === state.detailRequest) {
+    els.detailLogsRefresh.disabled = false;
+  }
+}
+
+async function loadDetails(workspace, request) {
   try {
     const res = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}`);
+    if (request !== state.detailRequest) return;
     renderDetails(res);
   } catch (err) {
+    if (request !== state.detailRequest) return;
     toast(err.message || "Failed to load details");
     renderDetails(workspace);
+  }
+}
+
+async function loadLogs(workspace, request) {
+  setLogsMessage("Loading startup logs...");
+  try {
+    const logs = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/logs`);
+    if (request !== state.detailRequest) return;
+    renderLogs(logs);
+  } catch (err) {
+    if (request !== state.detailRequest) return;
+    setLogsMessage(err.message || "Failed to load startup logs.");
+  }
+}
+
+function setLogsMessage(message) {
+  els.detailLogsBody.replaceChildren();
+  const note = document.createElement("p");
+  note.className = "hint";
+  note.textContent = message;
+  els.detailLogsBody.append(note);
+}
+
+function renderLogs(logs) {
+  els.detailLogsBody.replaceChildren();
+  if (!logs || !Array.isArray(logs.containers) || !logs.containers.length) {
+    setLogsMessage((logs && logs.message) || "No startup logs yet.");
+    return;
+  }
+
+  for (const container of logs.containers) {
+    const block = document.createElement("details");
+    block.className = "log-block";
+    block.open = true;
+
+    const summary = document.createElement("summary");
+    const name = document.createElement("span");
+    name.className = "log-name";
+    name.textContent = container.name;
+    summary.append(name);
+
+    if (container.type === "init") {
+      const badge = document.createElement("span");
+      badge.className = "badge neutral";
+      badge.textContent = "init";
+      summary.append(badge);
+    }
+
+    const state = document.createElement("span");
+    state.className = `log-state ${statusClass(container.state)}`;
+    state.textContent = container.reason || container.state || "Unknown";
+    if (container.reason) {
+      state.title = container.message || container.reason;
+    }
+    summary.append(state);
+    block.append(summary);
+
+    const output = document.createElement("pre");
+    output.className = "log-output";
+    const code = document.createElement("code");
+    if (container.error) {
+      code.textContent = `Could not load logs: ${container.error}`;
+    } else {
+      code.textContent = container.logs || "(no output yet)";
+    }
+    output.append(code);
+    block.append(output);
+    els.detailLogsBody.append(block);
   }
 }
 function renderDetails(ws) {

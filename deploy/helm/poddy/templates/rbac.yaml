@@ -11,6 +11,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  # Startup logs shown in the workspace details dialog.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   # Browser terminal: exec into the workspace container.
   - apiGroups: [""]
     resources: ["pods/exec"]

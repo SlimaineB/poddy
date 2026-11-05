@@ -135,6 +135,11 @@ els.templatesSearch.addEventListener("input", () => {
 });
 
 els.copySSH.addEventListener("click", copySSHConfig);
+els.detailLogsRefresh.addEventListener("click", refreshDetails);
+els.detailDialog.addEventListener("close", () => {
+  state.detailWorkspace = null;
+  state.detailRequest += 1;
+});
 
 els.openVSCode.addEventListener("click", () => {
   const workspace = state.sshWorkspace;

@@ -468,6 +468,10 @@ select {
   background: linear-gradient(180deg, #ffffff, var(--panel-hover));
 }
 
+.card-clickable {
+  cursor: pointer;
+}
+
 .card-top {
   display: flex;
   align-items: flex-start;
@@ -496,6 +500,10 @@ select {
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-title .workspace-name-button {
+  max-width: 100%;
 }
 
 .badge {
@@ -909,6 +917,102 @@ select {
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 12.5px;
+}
+
+.workspace-logs {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.workspace-logs-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspace-logs-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.workspace-logs-header p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.workspace-logs-body {
+  display: grid;
+  gap: 10px;
+}
+
+.log-block {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.log-block summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+}
+
+.log-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-block[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.log-name {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.log-state {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.log-state.running {
+  color: var(--success);
+}
+
+.log-state.pending {
+  color: var(--warning);
+}
+
+.log-state.failed {
+  color: var(--danger);
+}
+
+.log-output {
+  max-height: 260px;
+  margin: 0;
+  padding: 11px;
+  overflow: auto;
+  background: #f6f8fb;
+}
+
+.log-output code {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #334155;
+  white-space: pre;
 }
 
 .dialog-footer {
