@@ -42,6 +42,9 @@ parameters:                   # optional list
   - name: storageClass
     description: StorageClass name (empty = default)
     default: ""
+  - name: browserVSCode
+    description: Run VS Code in the browser
+    default: "false"
 links:                        # optional list; rendered on workspace cards
   - name: JetBrains Gateway
     url: "jetbrains-gateway://connect#host={sshHost}&port={sshPort}&user={user}"
@@ -166,10 +169,13 @@ spec:
 
 | Name | Image | Parameters | Notes |
 |------|-------|------------|-------|
-| `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass | Generic Linux |
-| `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass | Adds `GOPATH=/home/dev/go`, larger defaults |
+| `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass, browserVSCode | Generic Linux |
+| `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass, browserVSCode | Adds `GOPATH=/home/dev/go`, larger defaults |
 
 Both mount the workspace volume at `/workspace` and run the SSH entrypoint.
+Both support the optional `code-server` sidecar for browser VS Code; set
+`browserVSCode: "true"` to enable it.
+
 The images point at the upstream GHCR namespace; forks should override the
 `image` field with their own published images.
 
@@ -396,6 +402,51 @@ docker run --rm -p 2222:22 \
 ssh -p 2222 dev@127.0.0.1
 ```
 
+### VS Code in the browser
+
+The built-in `base` and `go` templates support an optional
+[OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) sidecar.
+When it is present, the workspace card shows a **VS Code Web** button that opens
+a new browser tab. The portal authenticates the request, checks workspace
+ownership, port-forwards to the sidecar, and proxies HTTP and WebSocket traffic.
+
+The sidecar is opt-in through the `browserVSCode` template parameter (default
+`false`). Set it to `true` to enable it, or remove the sidecar from a custom
+template. It binds to `127.0.0.1:3000`, so it is only reachable through the
+portal's port-forward, not from other pods or the internet.
+
+```yaml
+containers:
+  - name: code-server
+    image: gitpod/openvscode-server:latest
+    command: ["/bin/sh", "-c"]
+    args:
+      - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder /workspace --telemetry-level off
+    workingDir: /workspace
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+```
+
+The container name must be `code-server`; the portal uses it to decide whether
+to show the button. The `--server-base-path` value must match the portal path
+for the workspace. OpenVSCode Server 1.97.2+ supports this flag. To keep the
+sidecar opt-in, wrap it in `{{- if eq .Parameters.browserVSCode "true" }}` and
+`{{- end }}` and declare the parameter with a default of `"false"`.
+
+The default image comes from Docker Hub. If your cluster blocks Docker Hub,
+mirror `gitpod/openvscode-server` to your registry and update the template, or
+leave `browserVSCode` at `"false"` to skip the sidecar. OpenVSCode Server is
+MIT-licensed; the Gitpod image is only a published build, so mirroring it under
+your own registry does not change the license.
+
 ### Image pull secrets
 
 If your registry is private, add `imagePullSecrets` in the pod template:
@@ -425,7 +476,7 @@ The Helm chart's `imagePullSecrets` applies only to the portal and bastion pods,
 ## Example: Node.js workspace
 
 See `examples/templates/node/` and `examples/workspaces/node/`:
-- `template.yaml` declares `cpu`, `memory`, `storage`, `storageClass`.
+- `template.yaml` declares `cpu`, `memory`, `storage`, `storageClass`, `browserVSCode`.
 - `pod.yaml` adds `NODE_ENV=development`.
 - `Dockerfile` layers Node.js 22 on `poddy-workspace-base`.
 

@@ -350,3 +350,60 @@ func TestLogoutClearsCookie(t *testing.T) {
 		t.Fatalf("token cookie was not cleared: %+v", cookies)
 	}
 }
+
+func TestBrowserVSCodePath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/workspaces/app/code", true},
+		{"/api/workspaces/app/code/", true},
+		{"/api/workspaces/app/code/static/main.js", false},
+		{"/api/workspaces/app", false},
+		{"/api/workspaces/code/other", false},
+		{"/api/workspaces/app/vscode", false},
+	}
+	for _, test := range tests {
+		if got := isBrowserVSCodePath(test.path); got != test.want {
+			t.Errorf("isBrowserVSCodePath(%q) = %v, want %v", test.path, got, test.want)
+		}
+	}
+}
+
+func TestBrowserVSCodeTokenSetsCookieAndRedirects(t *testing.T) {
+	s := newTestServer("secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/app/code/?token=secret", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/api/workspaces/app/code/" {
+		t.Fatalf("location = %q", loc)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != cookieName {
+		t.Fatalf("cookies = %+v", cookies)
+	}
+}
+
+func TestBrowserVSCodeRequiresRunningWorkspace(t *testing.T) {
+	s := newTestServer("secret")
+	req := httptest.NewRequest(http.MethodPost, "/api/workspaces", strings.NewReader(`{"name":"app"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/workspaces/token-app/code/", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("code status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}

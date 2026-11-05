@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	AppName       = "poddy"
-	ContainerName = "workspace"
-	WorkspacePath = "/workspace"
+	AppName                = "poddy"
+	ContainerName          = "workspace"
+	BrowserVSCodeContainer = "code-server"
+	WorkspacePath          = "/workspace"
 
 	labelName      = "app.kubernetes.io/name"
 	labelManagedBy = "app.kubernetes.io/managed-by"
@@ -54,13 +55,14 @@ var (
 )
 
 type Workspace struct {
-	Name       string    `json:"name"`
-	Template   string    `json:"template"`
-	Phase      string    `json:"phase"`
-	Image      string    `json:"image"`
-	Owner      string    `json:"owner,omitempty"`
-	Persistent bool      `json:"persistent"`
-	CreatedAt  time.Time `json:"createdAt"`
+	Name          string    `json:"name"`
+	Template      string    `json:"template"`
+	Phase         string    `json:"phase"`
+	Image         string    `json:"image"`
+	Owner         string    `json:"owner,omitempty"`
+	Persistent    bool      `json:"persistent"`
+	BrowserVSCode bool      `json:"browserVSCode,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 type CreateRequest struct {

@@ -1,6 +1,6 @@
 name: node
 displayName: Node.js
-description: Node.js workspace with SSH and a persistent home volume.
+description: Node.js workspace with SSH, optional browser VS Code, and a persistent home volume.
 image: ghcr.io/your-org/poddy-workspace-node:latest
 version: "1.0.0"
 parameters:
@@ -16,3 +16,6 @@ parameters:
   - name: storageClass
     description: StorageClass name (empty for the cluster default)
     default: ""
+  - name: browserVSCode
+    description: Run VS Code in the browser (true/false)
+    default: "false"

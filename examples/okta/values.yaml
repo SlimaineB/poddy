@@ -1,0 +1,25 @@
+# Okta OIDC example. Copy this file and replace the placeholders.
+#
+# Create the Secret first (see docs/okta.md):
+#   kubectl -n poddy-system create secret generic poddy-oidc \
+#     --from-literal=oidc-client-id="$OKTA_CLIENT_ID" \
+#     --from-literal=oidc-client-secret="$OKTA_CLIENT_SECRET" \
+#     --from-literal=oidc-session-key="$(openssl rand -hex 32)"
+oidc:
+  enabled: true
+  # Custom authorization server:
+  #   https://<org>.okta.com/oauth2/default
+  # Org authorization server:
+  #   https://<org>.okta.com
+  issuer: https://dev-123456.okta.com/oauth2/default
+  existingSecret: poddy-oidc
+  redirectUrl: https://poddy.example.com/oidc/callback
+  # The groups claim can be included in the ID token without a groups scope.
+  # If your Okta authorization server defines a groups scope, add it here.
+  scopes: "openid,profile,email"
+  allowedGroups:
+    - poddy-users
+  usernameClaim: preferred_username
+  emailClaim: email
+  groupsClaim: groups
+  sessionTtl: 12h

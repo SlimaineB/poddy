@@ -62,8 +62,8 @@ never need a kubeconfig.
   delete workspaces.
 - **Scale what you need.** The portal and SSH bastion run as separate
   Deployments, so HTTP/API and SSH capacity scale independently.
-- **Three ways to work.** Browser terminal, SSH through a bastion, or VS Code
-  Remote-SSH.
+- **Four ways to work.** Browser terminal, browser VS Code (opt-in), SSH
+  through a bastion, or VS Code Remote-SSH.
 - **Real dev containers.** Persistent volumes, custom images, and templates that
   declare CPU, memory, storage, and links.
 - **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
@@ -98,11 +98,13 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 |------------|------------|
 | Try it locally in a few minutes | [Getting started](getting-started.md) |
 | Run it in production | [Kubernetes deployment](deploy.md) |
+| Run it on Amazon EKS with ALB and EFS | [Amazon EKS](eks.md) |
 | Add my own workspace image | [Workspace templates](templates.md) |
 | Build poddy from source | [Development](development.md) |
 | Enable PostgreSQL metadata, audit, and backups | [PostgreSQL schema](postgres-schema.md) |
 | Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |
 | Configure SSO | [OIDC / SSO](oidc.md) |
+| Configure Okta SSO | [Okta SSO](okta.md) |
 | Understand who can see what | [RBAC and ownership](rbac.md) |
 | Understand the request flow and components | [Architecture](architecture.md) |
 | Inspect the Kubernetes and PostgreSQL objects | [Data model](data-model.md) |

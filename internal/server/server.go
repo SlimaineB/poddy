@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/start", s.start)
 	mux.HandleFunc("POST /api/workspaces/{name}/restart", s.restart)
 	mux.HandleFunc("POST /api/workspaces/{name}/vscode", s.vscode)
+	mux.HandleFunc("GET /api/workspaces/{name}/code/", s.browserVSCode)
 	mux.HandleFunc("GET /ws", s.terminal)
 	return s.auth(s.audit(mux))
 }

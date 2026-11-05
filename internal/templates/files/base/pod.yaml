@@ -26,6 +26,25 @@ spec:
       volumeMounts:
         - name: workspace
           mountPath: {{ .WorkspacePath | quote }}
+    {{- if eq .Parameters.browserVSCode "true" }}
+    - name: code-server
+      image: gitpod/openvscode-server:latest
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c"]
+      args:
+        - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder /workspace --telemetry-level off
+      workingDir: /workspace
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+    {{- end }}
   volumes:
     - name: workspace
       {{- if .Storage }}

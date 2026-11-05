@@ -100,6 +100,26 @@ function renderWorkspaceActions(workspace) {
       actions.append(button);
     }
 
+    if (workspace.browserVSCode) {
+      const web = document.createElement("a");
+      web.className = "button small vscode";
+      web.innerHTML = `${icon("vscode", "icon brand-icon")}VS Code Web`;
+      web.href = withToken(browserVSCodeURL(workspace.name));
+      web.target = "_blank";
+      web.rel = "noopener";
+      if (!running) {
+        web.setAttribute("aria-disabled", "true");
+        web.title = "Workspace is not running";
+        web.tabIndex = -1;
+        web.style.opacity = "0.45";
+        web.style.pointerEvents = "none";
+        web.addEventListener("click", (event) => event.preventDefault());
+      } else {
+        web.title = "Open VS Code in a new browser tab";
+      }
+      actions.append(web);
+    }
+
     if (state.config.ssh) {
       const button = document.createElement("button");
       button.type = "button";
@@ -475,6 +495,10 @@ function showSSH(workspace) {
     els.sshNote.textContent = `Save this config once in ~/.ssh/config and use the key at ${state.config.sshKeyPath}. It covers all workspaces.`;
   } else {
     els.sshNote.textContent = "Save this config once in ~/.ssh/config. It covers all workspaces.";
+  }
+  if (els.openVSCodeWeb) {
+    els.openVSCodeWeb.hidden = !workspace.browserVSCode;
+    els.openVSCodeWeb.href = withToken(browserVSCodeURL(workspace.name));
   }
   els.sshDialog.showModal();
 }

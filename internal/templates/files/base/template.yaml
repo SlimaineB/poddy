@@ -1,6 +1,6 @@
 name: base
 displayName: Base
-description: Generic Linux workspace with SSH and a persistent home volume.
+description: Generic Linux workspace with SSH, optional browser VS Code, and a persistent home volume.
 image: ghcr.io/slimaineb/poddy-workspace-base:latest
 parameters:
   - name: cpu
@@ -15,3 +15,6 @@ parameters:
   - name: storageClass
     description: StorageClass name (empty for the cluster default)
     default: ""
+  - name: browserVSCode
+    description: Run VS Code in the browser (true/false)
+    default: "false"

@@ -14,7 +14,7 @@ Idées notées pour plus tard.
 
 ## Authentification
 
-- [ ] Ajouter un exemple complet Okta pour l'OIDC (issuer, scopes, groupes, redirect URL).
+- [x] Ajouter un exemple complet Okta pour l'OIDC (issuer, scopes, groupes, redirect URL).
 
 ## Templates
 

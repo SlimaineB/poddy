@@ -1,6 +1,6 @@
 name: go
 displayName: Go
-description: Go 1.25 workspace with SSH and a larger persistent volume.
+description: Go 1.25 workspace with SSH, optional browser VS Code, and a larger persistent volume.
 image: ghcr.io/slimaineb/poddy-workspace:latest
 parameters:
   - name: cpu
@@ -15,3 +15,6 @@ parameters:
   - name: storageClass
     description: StorageClass name (empty for the cluster default)
     default: ""
+  - name: browserVSCode
+    description: Run VS Code in the browser (true/false)
+    default: "false"

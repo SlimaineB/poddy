@@ -74,7 +74,7 @@ name (without the leading `v`) is used.
 | `auth.secretKey` | `token` | Key in the token Secret. |
 | `oidc.enabled` | `false` | Enable OIDC / SSO login. |
 | `oidc.issuer` | `""` | OIDC issuer URL. Required when enabled. |
-| `oidc.clientId` | `""` | OIDC client ID. Required when enabled. |
+| `oidc.clientId` | `""` | OIDC client ID. Required when enabled unless `oidc.existingSecret` is set. |
 | `oidc.clientSecret` | `""` | OIDC client secret (empty = public client with PKCE). |
 | `oidc.existingSecret` | `""` | Secret with client ID, client secret and session key. |
 | `oidc.redirectUrl` | `""` | Public callback URL (`https://host/oidc/callback`). |

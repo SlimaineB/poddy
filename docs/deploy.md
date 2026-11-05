@@ -11,6 +11,10 @@
 
 The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as separate Deployments. The `deploy/helm/poddy-templates` chart installs workspace templates as a separate release; templates hot-reload without restarting the portal. Both charts are published as OCI artifacts at `oci://ghcr.io/slimaineb/charts/poddy` and `oci://ghcr.io/slimaineb/charts/poddy-templates`.
 
+!!! tip "Amazon EKS"
+    For an EKS example with ALB Ingress, an NLB for SSH, Okta OIDC, and shared
+    EFS storage, see [Amazon EKS with ALB and EFS](eks.md).
+
 ### Prerequisites
 - Kubernetes 1.28+
 - Helm 3.13+
@@ -168,6 +172,7 @@ The templates release creates labeled ConfigMaps in its namespace, so install it
   kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base64 -d
   ```
 - **SSH**: Users connect to `ssh.dev.example.com:2222`. The UI's **SSH** button gives a ready-to-use config with `ProxyJump`.
+- **VS Code Web**: If the workspace template includes the `code-server` sidecar, the **VS Code Web** button opens the editor in a new tab through the portal. No SSH key or local port-forward is needed.
 
 With SSH enabled, the release creates two Deployments:
 
@@ -529,7 +534,9 @@ guidance.
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
 | No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
-| VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://`; the server-side launch endpoint is only available in local editor mode. |
+| VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://` in a new window; the server-side launch endpoint is only available in local editor mode. |
+| **VS Code Web** button is missing | The workspace pod has no `code-server` container. Enable the `browserVSCode` parameter (default `false`) in the workspace template. |
+| **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
 | PVC not created | `storage` parameter empty or not declared in template. |
 

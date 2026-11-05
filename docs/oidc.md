@@ -69,6 +69,10 @@ The demo uses plain HTTP on `127.0.0.1` and known passwords. Never expose it.
 
 ## Provider configuration
 
+!!! tip "Okta"
+    For a complete Okta setup with the groups claim, Secret, Helm values, and
+    troubleshooting, see [Okta SSO](okta.md).
+
 - **Redirect URI**: `https://<poddy-host>/oidc/callback`
 - **Scopes**: `openid profile email groups` (`groups` is optional but needed for group-based RBAC)
 - **Client type**: confidential (with a client secret) or public (PKCE, no secret)

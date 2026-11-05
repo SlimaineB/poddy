@@ -87,7 +87,22 @@ func wantsHTML(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	return !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws"
+	return isBrowserVSCodePath(r.URL.Path) ||
+		(!strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws")
+}
+
+func isBrowserVSCodePath(path string) bool {
+	const prefix = "/api/workspaces/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return false
+	}
+	tail := rest[slash:]
+	return tail == "/code" || tail == "/code/"
 }
 
 func safeNext(next string) string {

@@ -44,6 +44,7 @@ nav:
   - Getting started: getting-started.md
   - Deployment:
       - Kubernetes (Helm): deploy.md
+      - Amazon EKS (ALB + EFS): eks.md
       - Local k3s test: k3s-test.md
   - Workspaces:
       - Templates: templates.md
@@ -51,6 +52,7 @@ nav:
       - Links: links.md
   - Access and security:
       - OIDC / SSO: oidc.md
+      - Okta SSO: okta.md
       - RBAC and ownership: rbac.md
   - Reference:
       - Architecture: architecture.md

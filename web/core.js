@@ -63,6 +63,7 @@ const els = {
   sshConfig: document.getElementById("ssh-config"),
   sshNote: document.getElementById("ssh-note"),
   openVSCode: document.getElementById("open-vscode"),
+  openVSCodeWeb: document.getElementById("open-vscode-web"),
   copySSH: document.getElementById("copy-ssh"),
   detailDialog: document.getElementById("detail-dialog"),
   detailTitle: document.getElementById("detail-title"),
@@ -192,7 +193,10 @@ function formatAge(iso) {
   return "just now";
 }
 function vscodeURL(name) {
-  return `vscode://vscode-remote/ssh-remote+poddy-ssh-${encodeURIComponent(name)}/home/dev`;
+  return `vscode://vscode-remote/ssh-remote+poddy-ssh-${encodeURIComponent(name)}/home/dev?windowId=_blank`;
+}
+function browserVSCodeURL(name) {
+  return `/api/workspaces/${encodeURIComponent(name)}/code/`;
 }
 function sshConfigFor() {
   const keyPath = state.config.windowsSSHKeyPath || state.config.sshKeyPath || "~/.ssh/id_ed25519";

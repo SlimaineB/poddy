@@ -130,7 +130,9 @@ Use the buttons on the workspace card:
 - **Terminal** opens a browser shell.
 - **SSH** copies a ready-to-use SSH config. It uses the bastion as a
   `ProxyJump`, so you do not need direct access to the pod.
-- **VS Code** opens Remote-SSH on `/home/dev`.
+- **VS Code** opens Remote-SSH on `/home/dev` in a new window.
+- **VS Code Web** opens the browser editor in a new tab when the workspace
+  template includes the `code-server` sidecar.
 
 For the SSH/VS Code path, load the private key once:
 

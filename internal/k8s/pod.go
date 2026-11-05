@@ -5,7 +5,11 @@ import (
 )
 
 func hasContainer(pod *corev1.Pod, name string) bool {
-	for _, container := range pod.Spec.Containers {
+	return hasContainerSpec(pod.Spec, name)
+}
+
+func hasContainerSpec(spec corev1.PodSpec, name string) bool {
+	for _, container := range spec.Containers {
 		if container.Name == name {
 			return true
 		}
@@ -19,25 +23,27 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 		phase = "Terminating"
 	}
 	return Workspace{
-		Name:       pod.Labels[labelWorkspace],
-		Template:   pod.Labels[labelTemplate],
-		Phase:      phase,
-		Image:      containerImage(pod, ContainerName),
-		Owner:      Owner(pod),
-		Persistent: hasPVC(pod),
-		CreatedAt:  pod.CreationTimestamp.Time,
+		Name:          pod.Labels[labelWorkspace],
+		Template:      pod.Labels[labelTemplate],
+		Phase:         phase,
+		Image:         containerImage(pod, ContainerName),
+		Owner:         Owner(pod),
+		Persistent:    hasPVC(pod),
+		BrowserVSCode: hasContainer(pod, BrowserVSCodeContainer),
+		CreatedAt:     pod.CreationTimestamp.Time,
 	}
 }
 
 func workspaceFromState(state WorkspaceState, phase string) Workspace {
 	return Workspace{
-		Name:       state.Name,
-		Template:   state.Template,
-		Phase:      phase,
-		Image:      state.Image,
-		Owner:      state.Owner,
-		Persistent: state.Persistent,
-		CreatedAt:  state.CreatedAt,
+		Name:          state.Name,
+		Template:      state.Template,
+		Phase:         phase,
+		Image:         state.Image,
+		Owner:         state.Owner,
+		Persistent:    state.Persistent,
+		BrowserVSCode: hasContainerSpec(state.Spec, BrowserVSCodeContainer),
+		CreatedAt:     state.CreatedAt,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,33 +28,41 @@ func NewForwarder() *Forwarder {
 }
 
 func (f *Forwarder) Ensure(manager *k8s.Manager, name string) (int, error) {
+	return f.EnsurePort(manager, name, 22)
+}
+
+func (f *Forwarder) EnsurePort(manager *k8s.Manager, name string, remotePort int) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if t, ok := f.tunnels[name]; ok {
+	key := fmt.Sprintf("%s:%d", name, remotePort)
+	if t, ok := f.tunnels[key]; ok {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", t.port), 500*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return t.port, nil
 		}
 		t.stop()
-		delete(f.tunnels, name)
+		delete(f.tunnels, key)
 	}
 
-	port, stop, err := manager.PortForward(k8s.PodName(name), 22)
+	port, stop, err := manager.PortForward(k8s.PodName(name), remotePort)
 	if err != nil {
 		return 0, err
 	}
-	f.tunnels[name] = &tunnel{port: port, stop: stop}
+	f.tunnels[key] = &tunnel{port: port, stop: stop}
 	return port, nil
 }
 
 func (f *Forwarder) Remove(name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if t, ok := f.tunnels[name]; ok {
-		t.stop()
-		delete(f.tunnels, name)
+	prefix := name + ":"
+	for key, t := range f.tunnels {
+		if key == name || strings.HasPrefix(key, prefix) {
+			t.stop()
+			delete(f.tunnels, key)
+		}
 	}
 }
 

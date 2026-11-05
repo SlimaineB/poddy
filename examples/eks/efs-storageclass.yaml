@@ -1,0 +1,26 @@
+# EFS StorageClass for a shared workspace volume.
+#
+# Replace fs-REPLACE_ME with the EFS file system ID. The EFS CSI driver must be
+# installed and its controller must have permission to create access points.
+#
+# uid/gid 1000 matches the `dev` user in the poddy workspace base image.
+# Recent EFS CSI driver versions support uid/gid; for older versions use
+# gidRangeStart/gidRangeEnd instead.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-shared
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: fs-REPLACE_ME
+  directoryPerms: "0770"
+  uid: "1000"
+  gid: "1000"
+  basePath: /poddy
+  subPathPattern: "${.PVC.namespace}/${.PVC.name}"
+  ensureUniqueDirectory: "true"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+mountOptions:
+  - tls

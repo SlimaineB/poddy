@@ -1,0 +1,16 @@
+# Shared EFS volume mounted at /shared in the example workspace template.
+#
+# EFS is elastic; the 5Gi request is a nominal Kubernetes value, not a hard
+# capacity limit. The PVC must be in the same namespace as the workspace pods.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: poddy-shared-efs
+  namespace: poddy-workspaces
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-shared
+  resources:
+    requests:
+      storage: 5Gi

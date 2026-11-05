@@ -1,0 +1,84 @@
+# Amazon EKS example: ALB Ingress, NLB for SSH, Okta OIDC, and EFS.
+#
+# Prerequisites:
+#   - AWS Load Balancer Controller installed with IRSA.
+#   - EFS CSI driver installed with IRSA.
+#   - ACM certificate for poddy.example.com.
+#   - Secrets poddy-auth, poddy-oidc, poddy-host-key, and poddy-ssh-keys.
+#   - Namespace poddy-workspaces already exists.
+#
+# See docs/eks.md for the full walkthrough.
+image:
+  repository: ghcr.io/slimaineb/poddy
+  tag: "latest" # Pin a release tag in production.
+
+replicaCount: 2
+
+auth:
+  existingSecret: poddy-auth
+
+oidc:
+  enabled: true
+  # Use https://<org>.okta.com for the org authorization server.
+  issuer: https://dev-123456.okta.com/oauth2/default
+  existingSecret: poddy-oidc
+  redirectUrl: https://poddy.example.com/oidc/callback
+  scopes: "openid,profile,email"
+  allowedGroups:
+    - poddy-users
+  usernameClaim: preferred_username
+  emailClaim: email
+  groupsClaim: groups
+  sessionTtl: 12h
+
+ssh:
+  enabled: true
+  publicHost: ssh.poddy.example.com
+  publicPort: 2222
+  existingHostKeySecret: poddy-host-key
+  existingKeysSecret: poddy-ssh-keys
+  keysSecretKey: authorized_keys
+  service:
+    type: LoadBalancer
+    port: 2222
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+
+bastion:
+  enabled: true
+  replicaCount: 2
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+workspaceNamespace: poddy-workspaces
+createWorkspaceNamespace: false
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-1:123456789012:certificate/REPLACE_ME
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/load-balancer-name: poddy
+  hosts:
+    - host: poddy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  # ALB terminates TLS with the ACM certificate above. Leave this empty.
+  tls: []
+
+# Optional PostgreSQL metadata mirror and audit log.
+# database:
+#   existingSecret: poddy-database
+#   urlKey: database-url
+#   autoMigrate: true

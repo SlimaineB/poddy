@@ -129,7 +129,7 @@ func (l *Local) RemoveSSHConfig(name string) error {
 }
 
 func (l *Local) Launch(name string) error {
-	args := []string{"--remote", "ssh-remote+" + Alias(name), HomePath}
+	args := []string{"--new-window", "--remote", "ssh-remote+" + Alias(name), HomePath}
 
 	if l.WindowsEditor != "" {
 		cmd := exec.Command("cmd.exe", append([]string{"/c", l.WindowsEditor}, args...)...)

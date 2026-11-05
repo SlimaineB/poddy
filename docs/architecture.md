@@ -75,6 +75,16 @@ API and only needs pod read access plus port-forward.
 5. If PostgreSQL is enabled, the bastion records `ssh.connect`.
 6. VS Code connects through `ProxyJump` using the same bastion.
 
+### Browser VS Code
+
+1. The workspace pod runs an optional `code-server` sidecar bound to
+   `127.0.0.1:3000`.
+2. The browser opens `/api/workspaces/<name>/code/`.
+3. The portal authenticates the user, checks workspace ownership, and
+   port-forwards to port 3000 through the Kubernetes API.
+4. The portal reverse-proxies HTTP and WebSocket traffic, preserving the
+   OpenVSCode base path.
+
 In local mode, the portal process can start the same bastion in-process on
 `-ssh-addr`. Helm deployments run it as a separate Deployment.
 
