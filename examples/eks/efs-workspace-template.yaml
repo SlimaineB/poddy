@@ -21,7 +21,7 @@ data:
     name: efs
     displayName: EFS shared
     description: EBS home at /home/dev, shared EFS at /shared/<workspace>, and optional browser VS Code.
-    image: ghcr.io/your-org/poddy-workspace-node:latest
+    image: ghcr.io/slimaineb/poddy-workspace-node:latest
     version: "1.0.0"
     parameters:
       - name: cpu

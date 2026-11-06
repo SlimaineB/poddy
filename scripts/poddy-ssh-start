@@ -5,7 +5,11 @@ set -e
 # /home/dev is the primary persistent workspace home.
 chown dev:dev /home/dev /workspace 2>/dev/null || true
 
-mkdir -p /home/dev/.ssh
+# The PV can be mounted 2777 by the provisioner; sshd StrictModes rejects that.
+chmod 700 /home/dev
+
+mkdir -p /home/dev/.ssh /home/dev/.npm-global /home/dev/.local/bin /home/dev/go/bin
+chown dev:dev /home/dev/.npm-global /home/dev/.local/bin /home/dev/go/bin
 for file in .bashrc .profile .bash_logout; do
   if [ ! -e "/home/dev/$file" ] && [ -e "/etc/skel/$file" ]; then
     cp "/etc/skel/$file" "/home/dev/$file"

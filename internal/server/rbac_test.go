@@ -84,13 +84,20 @@ func TestRBACTemplateVisibility(t *testing.T) {
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
 	bob := sessionFor(t, s, auth.User{Username: "bob", Email: "bob@example.com"})
 
+	all := s.Workspaces.Templates.List()
+
 	got := templatesByName(t, requestAs(t, s, admin, http.MethodGet, "/api/templates", nil))
-	if len(got) != 2 || !got["go"].CanManage || !got["base"].CanManage {
+	if len(got) != len(all) {
 		t.Fatalf("admin templates = %+v", got)
+	}
+	for _, template := range all {
+		if !got[template.Name].CanManage {
+			t.Fatalf("admin cannot manage %q: %+v", template.Name, got[template.Name])
+		}
 	}
 
 	got = templatesByName(t, requestAs(t, s, dev, http.MethodGet, "/api/templates", nil))
-	if len(got) != 2 {
+	if len(got) != len(all) {
 		t.Fatalf("owner templates = %+v", got)
 	}
 	if !got["go"].Owned || !got["go"].CanManage {
@@ -101,7 +108,7 @@ func TestRBACTemplateVisibility(t *testing.T) {
 	}
 
 	got = templatesByName(t, requestAs(t, s, alice, http.MethodGet, "/api/templates", nil))
-	if len(got) != 2 || got["go"].Name != "go" || got["base"].Name != "base" {
+	if len(got) != len(all) || got["go"].Name != "go" || got["base"].Name != "base" {
 		t.Fatalf("alice templates = %+v", got)
 	}
 	if got["go"].CanManage || got["go"].Owned {
@@ -109,8 +116,11 @@ func TestRBACTemplateVisibility(t *testing.T) {
 	}
 
 	got = templatesByName(t, requestAs(t, s, bob, http.MethodGet, "/api/templates", nil))
-	if len(got) != 1 || got["base"].Name != "base" {
+	if len(got) != len(all)-1 || got["base"].Name != "base" {
 		t.Fatalf("bob templates = %+v", got)
+	}
+	if _, ok := got["go"]; ok {
+		t.Fatalf("bob should not see restricted go template: %+v", got)
 	}
 }
 

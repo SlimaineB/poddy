@@ -12,7 +12,7 @@ my-template/
 
 The portal loads templates from these sources (later sources override embedded templates with the same name):
 
-1. **Embedded** templates in `internal/templates/files/` (`base`, `go`).
+1. **Embedded** templates in `internal/templates/files/` (`base`, `go`, `node`, `python`).
 2. **Local directory** given by `-templates-dir` (or `PODDY_TEMPLATES_DIR`). It accepts either subdirectories (`node/template.yaml`, `node/pod.yaml`) or flat files (`node.template.yaml`, `node.pod.yaml`). The portal watches the directory and reloads on change.
 3. **Kubernetes ConfigMaps** labeled `poddy.io/template=true` in the workspace namespace. Each ConfigMap contains `template.yaml` and `pod.yaml`. The portal watches them and reloads in place, so templates can be pushed at any time without restarting the portal.
 
@@ -149,13 +149,16 @@ spec:
 
 | Name | Image | Parameters | Notes |
 |------|-------|------------|-------|
-| `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass, browserVSCode | Generic Linux |
-| `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass, browserVSCode | Adds `GOPATH=/home/dev/go`, larger defaults |
+| `base` | `ghcr.io/slimaineb/poddy-workspace-base:latest` | cpu, memory, storage, storageClass, browserVSCode | Debian 12, Git, curl, sudo, SSH |
+| `go` | `ghcr.io/slimaineb/poddy-workspace:latest` | cpu, memory, storage, storageClass, browserVSCode | Go 1.25.5, `GOPATH=/home/dev/go`, larger defaults |
+| `node` | `ghcr.io/slimaineb/poddy-workspace-node:latest` | cpu, memory, storage, storageClass, browserVSCode | Node.js 22, npm, pnpm, Yarn, TypeScript, tsx |
+| `python` | `ghcr.io/slimaineb/poddy-workspace-python:latest` | cpu, memory, storage, storageClass, browserVSCode | Python 3.11, pip, venv, uv, build tools |
 
-Both rely on the pod defaults for SSH, the `/home/dev` home volume, security
+All four rely on the pod defaults for SSH, the `/home/dev` home volume, security
 context, resources, and the `code-server` sidecar. Their `pod.yaml` only adds
-the template-specific environment (`GOPATH` or `NODE_ENV`), which keeps them
-easy to read and override. Set `browserVSCode: "false"` to disable the sidecar.
+the template-specific environment (`GOPATH`, `NODE_ENV`/`NPM_CONFIG_PREFIX`, or
+`PYTHONUNBUFFERED`), which keeps them easy to read and override. Set
+`browserVSCode: "false"` to disable the sidecar.
 
 The images point at the upstream GHCR namespace; forks should override the
 `image` field with their own published images.
@@ -341,6 +344,8 @@ The repository uses these Dockerfiles:
 | Portal | `Dockerfile` |
 | Workspace base | `Dockerfile.workspace-base` |
 | Go workspace | `Dockerfile.workspace-go` |
+| Node.js workspace | `Dockerfile.workspace-node` |
+| Python workspace | `Dockerfile.workspace-python` |
 
 ### Dockerfile pattern
 
@@ -441,6 +446,10 @@ The Helm chart's `imagePullSecrets` applies only to the portal and bastion pods,
 - The pod template is rendered server-side; if rendering fails, the API returns 400 with the error.
 
 ## Example: Node.js workspace
+
+Poddy ships a built-in `node` template using `ghcr.io/slimaineb/poddy-workspace-node:latest`.
+The files in `examples/templates/node/` and `examples/workspaces/node/` show how
+to override it with a private image.
 
 See `examples/templates/node/` and `examples/workspaces/node/`:
 - `template.yaml` declares `cpu`, `memory`, `storage`, `storageClass`, `browserVSCode`.

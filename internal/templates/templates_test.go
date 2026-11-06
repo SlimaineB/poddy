@@ -12,14 +12,13 @@ func TestLoadEmbedded(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := catalog.List()
-	if len(list) < 2 {
+	if len(list) < 4 {
 		t.Fatalf("templates = %+v", list)
 	}
-	if _, err := catalog.Get("base"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := catalog.Get("go"); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"base", "go", "node", "python"} {
+		if _, err := catalog.Get(name); err != nil {
+			t.Fatalf("built-in template %q: %v", name, err)
+		}
 	}
 	if _, err := catalog.Get("missing"); err == nil {
 		t.Fatal("expected missing template error")
@@ -122,6 +121,52 @@ func TestRender(t *testing.T) {
 	}
 	if pod.Spec.Volumes[0].PersistentVolumeClaim == nil || pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName != "poddy-app" {
 		t.Fatalf("volumes = %+v", pod.Spec.Volumes)
+	}
+}
+
+func TestBuiltInTemplateEnv(t *testing.T) {
+	catalog, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]map[string]string{
+		"go":     {"GOPATH": "/home/dev/go"},
+		"node":   {"NODE_ENV": "development", "NPM_CONFIG_PREFIX": "/home/dev/.npm-global"},
+		"python": {"PYTHONUNBUFFERED": "1"},
+	}
+	for name, want := range cases {
+		tmpl, err := catalog.Get(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		params, err := tmpl.Resolve(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pod, err := tmpl.Render(Data{
+			Name:           "app",
+			PodName:        "poddy-app",
+			PVCName:        "poddy-app",
+			Image:          tmpl.Image,
+			Parameters:     params,
+			Storage:        params["storage"],
+			AuthorizedKeys: "ssh-ed25519 AAAA test",
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for envName, envValue := range want {
+			found := false
+			for _, env := range pod.Spec.Containers[0].Env {
+				if env.Name == envName && env.Value == envValue {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s: env %s=%q missing from %+v", name, envName, envValue, pod.Spec.Containers[0].Env)
+			}
+		}
 	}
 }
 

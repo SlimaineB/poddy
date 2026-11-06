@@ -16,7 +16,7 @@ a cloud load balancer. The example also enables an optional Traefik ingress.
 |-----------|-----------|-------|
 | Portal and bastion Deployments | `poddy-system` | Helm release `poddy` |
 | Workspace pods + PVCs | `poddy-workspaces` | Dedicated namespace |
-| Templates | `poddy-workspaces` | Built-in `base`/`go` templates, or the `poddy-templates` chart |
+| Templates | `poddy-workspaces` | Built-in `base`/`go`/`node`/`python` templates, or the `poddy-templates` chart |
 
 The portal and bastion Roles/RoleBindings are created in `poddy-workspaces`;
 both ServiceAccounts stay in `poddy-system`. Neither can access other

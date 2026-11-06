@@ -1,0 +1,25 @@
+name: python
+displayName: Python 3.11
+description: Python 3.11 workspace with pip, venv, uv, build tools, and a persistent home. Good for scripts, APIs, and automation.
+image: ghcr.io/slimaineb/poddy-workspace-python:latest
+parameters:
+  - name: cpu
+    description: CPU request (Kubernetes quantity, e.g. 1)
+    default: "1"
+  - name: memory
+    description: Memory request (Kubernetes quantity, e.g. 2Gi)
+    default: 2Gi
+  - name: storage
+    description: Persistent home volume size (empty for ephemeral storage)
+    default: 10Gi
+  - name: storageClass
+    description: StorageClass name (empty for the cluster default)
+    default: ""
+  - name: browserVSCode
+    description: Run VS Code in the browser (true/false)
+    default: "true"
+links:
+  - name: Python docs
+    url: https://docs.python.org/3.11/
+    icon: external
+    newTab: true

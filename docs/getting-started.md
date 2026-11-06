@@ -118,7 +118,7 @@ Open <http://127.0.0.1:8080> and sign in with that token.
 ## 5. Create your first workspace
 
 1. Click **New workspace**.
-2. Pick **Base** or **Go**.
+2. Pick **Base**, **Go**, **Node.js**, or **Python**.
 3. Adjust CPU, memory, or storage if you want.
 4. Click **Create**.
 5. Wait for the workspace to reach **Running**.

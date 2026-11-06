@@ -519,13 +519,15 @@ The chart applies:
 ## Workspace images
 
 The portal does not build workspace images. The publish workflow pushes the
-base and Go workspace images to GHCR:
-- Base: `ghcr.io/slimaineb/poddy-workspace-base:latest`
-- Go: `ghcr.io/slimaineb/poddy-workspace:latest` (includes Go 1.25)
+built-in workspace images to GHCR:
+- Base: `ghcr.io/slimaineb/poddy-workspace-base:latest` (Debian 12)
+- Go: `ghcr.io/slimaineb/poddy-workspace:latest` (Go 1.25.5)
+- Node.js: `ghcr.io/slimaineb/poddy-workspace-node:latest` (Node.js 22)
+- Python: `ghcr.io/slimaineb/poddy-workspace-python:latest` (Python 3.11 + uv)
 - Custom: build on `ghcr.io/slimaineb/poddy-workspace-base` (see [templates.md](templates.md#building-custom-workspace-images)).
 
-The built-in `base` and `go` templates use the GHCR images above. If you use a
-private registry, add `imagePullSecrets` to the pod template.
+The built-in `base`, `go`, `node`, and `python` templates use the GHCR images
+above. If you use a private registry, add `imagePullSecrets` to the pod template.
 
 ## Quick-start manifest (no Helm)
 

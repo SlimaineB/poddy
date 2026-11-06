@@ -1,16 +1,16 @@
 name: go
-displayName: Go
-description: Go 1.25 workspace with SSH, optional browser VS Code, and a larger persistent volume.
+displayName: Go 1.25
+description: Go 1.25.5 workspace with GOPATH, Git, SSH, and a persistent home. Good for CLIs, services, and Kubernetes tooling.
 image: ghcr.io/slimaineb/poddy-workspace:latest
 parameters:
   - name: cpu
-    description: CPU request
+    description: CPU request (Kubernetes quantity, e.g. 1)
     default: "1"
   - name: memory
-    description: Memory request
+    description: Memory request (Kubernetes quantity, e.g. 2Gi)
     default: 2Gi
   - name: storage
-    description: Persistent volume size (empty for ephemeral storage)
+    description: Persistent home volume size (empty for ephemeral storage)
     default: 10Gi
   - name: storageClass
     description: StorageClass name (empty for the cluster default)
@@ -18,3 +18,8 @@ parameters:
   - name: browserVSCode
     description: Run VS Code in the browser (true/false)
     default: "true"
+links:
+  - name: Go docs
+    url: https://go.dev/doc/
+    icon: external
+    newTab: true

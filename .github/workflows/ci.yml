@@ -126,3 +126,9 @@ jobs:
           docker build -f Dockerfile.workspace-go \
             --build-arg BASE_IMAGE=poddy/workspace-base:ci \
             -t poddy/workspace:ci .
+          docker build -f Dockerfile.workspace-node \
+            --build-arg BASE_IMAGE=poddy/workspace-base:ci \
+            -t poddy/workspace-node:ci .
+          docker build -f Dockerfile.workspace-python \
+            --build-arg BASE_IMAGE=poddy/workspace-base:ci \
+            -t poddy/workspace-python:ci .

@@ -1,16 +1,16 @@
 name: base
-displayName: Base
-description: Generic Linux workspace with SSH, optional browser VS Code, and a persistent home volume.
+displayName: Base (Debian 12)
+description: Minimal Debian 12 workspace with Git, curl, sudo, SSH, and a persistent home. Start here for a clean Linux environment.
 image: ghcr.io/slimaineb/poddy-workspace-base:latest
 parameters:
   - name: cpu
-    description: CPU request
+    description: CPU request (Kubernetes quantity, e.g. 500m or 1)
     default: 500m
   - name: memory
-    description: Memory request
+    description: Memory request (Kubernetes quantity, e.g. 1Gi)
     default: 1Gi
   - name: storage
-    description: Persistent volume size (empty for ephemeral storage)
+    description: Persistent home volume size (empty for ephemeral storage)
     default: 5Gi
   - name: storageClass
     description: StorageClass name (empty for the cluster default)

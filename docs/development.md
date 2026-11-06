@@ -45,8 +45,11 @@ development, build and import your own tags into k3s:
 ```bash
 docker build -f Dockerfile.workspace-base -t poddy/workspace-base:latest .
 docker build -f Dockerfile.workspace-go -t poddy/workspace:latest .
+docker build -f Dockerfile.workspace-node -t poddy/workspace-node:latest .
+docker build -f Dockerfile.workspace-python -t poddy/workspace-python:latest .
 
 docker save poddy/workspace-base:latest poddy/workspace:latest \
+  poddy/workspace-node:latest poddy/workspace-python:latest \
   | sudo k3s ctr images import -
 ```
 
@@ -66,5 +69,6 @@ for a local Helm install.
 ## Publishing images
 
 The GitHub Actions publish workflow builds and pushes the portal/bastion image,
-the workspace base image, and the Go workspace image to GHCR on pushes to
-`main` and `v*` tags. Manual `docker push` is not part of the user setup flow.
+the workspace base image, and the Go, Node.js, and Python workspace images to
+GHCR on pushes to `main` and `v*` tags. Manual `docker push` is not part of the
+user setup flow.

@@ -9,7 +9,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs; browser terminal (`xterm.js`).
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC**: global admins, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, and templates each have a dedicated page; data is stored in a ConfigMap.
-- **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base` and `go` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
+- **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Keys are bound to workspace owners; users only need an SSH key.
 - **VS Code launch**: One-click opens Remote-SSH (`vscode://`) in a new window from the workspace card. In local editor mode the portal can also launch Windows VS Code directly, write `~/.ssh/config`, and copy the portal key. Workspaces with browser VS Code enabled (the built-in default) also expose **VS Code Web** in a new browser tab.
@@ -102,7 +102,7 @@ kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base
 Open `http://127.0.0.1:8080` and enter the token.
 
 ### 5. Create a workspace
-Click **New workspace**, pick **Base** or **Go**, set parameters, **Create**. Wait for **Running**.
+Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set parameters, **Create**. Wait for **Running**.
 
 ### 6. Connect
 - **Terminal**: Click the terminal icon for a browser shell in the workspace user home (`/home/dev`).
@@ -153,7 +153,7 @@ namespaces, see [docs/k3s-test.md](docs/k3s-test.md).
 
 See [docs/templates.md](docs/templates.md) for:
 - The template contract (`template.yaml` + `pod.yaml`).
-- Built-in `base` / `go` templates.
+- Built-in `base`, `go`, `node`, and `python` templates.
 - Adding external templates (`-templates-dir`, the `poddy-templates` chart, or labeled ConfigMaps).
 - Pushing a template at any time without restarting the portal.
 - Versioning templates and rolling back by moving the active label.
@@ -189,6 +189,8 @@ See [docs/templates.md](docs/templates.md) for:
 ├── Dockerfile                   # Portal + bastion distroless build
 ├── Dockerfile.workspace-base    # Reusable SSH + dev user base image
 ├── Dockerfile.workspace-go      # Go toolchain on top of base
+├── Dockerfile.workspace-node    # Node.js 22 toolchain on top of base
+├── Dockerfile.workspace-python  # Python 3.11 + uv on top of base
 ├── examples/
 │   ├── templates/node/          # Custom template example
 │   └── workspaces/node/         # Custom image example
@@ -279,7 +281,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 - **Publish images** builds and pushes the portal/bastion image, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
-Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, and `ghcr.io/slimaineb/poddy-workspace`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template.
+Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, `ghcr.io/slimaineb/poddy-workspace`, `ghcr.io/slimaineb/poddy-workspace-node`, and `ghcr.io/slimaineb/poddy-workspace-python`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template.
 
 Documentation lives under `docs/` and is configured by `mkdocs.yml`. The live site is <https://slimaineb.github.io/poddy/>. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 

@@ -104,3 +104,43 @@ jobs:
           labels: ${{ steps.meta_workspace.outputs.labels }}
           cache-from: type=gha,scope=workspace
           cache-to: type=gha,mode=max,scope=workspace
+
+      - name: Node workspace metadata
+        id: meta_node
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy-workspace-node
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push Node workspace
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.workspace-node
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ steps.base_image.outputs.ref }}
+          tags: ${{ steps.meta_node.outputs.tags }}
+          labels: ${{ steps.meta_node.outputs.labels }}
+          cache-from: type=gha,scope=workspace-node
+          cache-to: type=gha,mode=max,scope=workspace-node
+
+      - name: Python workspace metadata
+        id: meta_python
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAMESPACE }}/poddy-workspace-python
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push Python workspace
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.workspace-python
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ steps.base_image.outputs.ref }}
+          tags: ${{ steps.meta_python.outputs.tags }}
+          labels: ${{ steps.meta_python.outputs.labels }}
+          cache-from: type=gha,scope=workspace-python
+          cache-to: type=gha,mode=max,scope=workspace-python
