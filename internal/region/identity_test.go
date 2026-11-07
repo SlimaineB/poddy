@@ -49,3 +49,24 @@ func TestIdentityRejectsExpired(t *testing.T) {
 		t.Fatal("expired identity accepted")
 	}
 }
+
+func TestParseRegionCoordinates(t *testing.T) {
+	registry, err := Parse([]byte("regions:\n- name: eu\n  url: http://example\n  key: secret\n  lat: 50.1\n  lon: 8.7\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, ok := registry.Get("eu")
+	if !ok {
+		t.Fatal("region not found")
+	}
+	if cfg.Lat != 50.1 || cfg.Lon != 8.7 {
+		t.Fatalf("coordinates = %v,%v", cfg.Lat, cfg.Lon)
+	}
+
+	if _, err := Parse([]byte("regions:\n- name: eu\n  url: http://example\n  key: secret\n  lat: 91\n")); err == nil {
+		t.Fatal("invalid latitude accepted")
+	}
+	if _, err := Parse([]byte("regions:\n- name: eu\n  url: http://example\n  key: secret\n  lon: -181\n")); err == nil {
+		t.Fatal("invalid longitude accepted")
+	}
+}

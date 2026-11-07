@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
 	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
+	mux.HandleFunc("GET /api/workspaces/{name}/manifests", s.workspaceManifests)
 	mux.HandleFunc("POST /api/workspaces", s.create)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.remove)
 	mux.HandleFunc("POST /api/workspaces/{name}/stop", s.stop)

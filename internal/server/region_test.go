@@ -66,6 +66,18 @@ func TestHubCreateListAndDetails(t *testing.T) {
 	if details["region"] != "eu" || details["owner"] == "" {
 		t.Fatalf("details = %+v", details)
 	}
+
+	rec = request(t, hub, http.MethodGet, "/api/workspaces/app/manifests", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("manifests status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var manifests map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &manifests); err != nil {
+		t.Fatal(err)
+	}
+	if manifests["podSource"] != "live" || manifests["pod"] == "" {
+		t.Fatalf("manifests = %+v", manifests)
+	}
 }
 
 func TestRegionModeRejectsUnsignedRequests(t *testing.T) {
@@ -165,7 +177,7 @@ func TestHubRegionFilterAndSummaries(t *testing.T) {
 		t.Fatalf("summaries = %+v", summaries)
 	}
 	for _, summary := range summaries {
-		if !summary.Available || summary.Workspaces != 1 {
+		if !summary.Available || summary.Workspaces != 1 || summary.Users != 1 {
 			t.Fatalf("summary = %+v", summary)
 		}
 	}

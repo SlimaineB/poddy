@@ -10,13 +10,15 @@ import (
 )
 
 type Config struct {
-	Name        string `json:"name" yaml:"name"`
-	DisplayName string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	URL         string `json:"url" yaml:"url"`
-	Key         string `json:"key" yaml:"key"`
-	SSHHost     string `json:"sshHost,omitempty" yaml:"sshHost,omitempty"`
-	SSHPort     string `json:"sshPort,omitempty" yaml:"sshPort,omitempty"`
-	Default     bool   `json:"default,omitempty" yaml:"default,omitempty"`
+	Name        string  `json:"name" yaml:"name"`
+	DisplayName string  `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	URL         string  `json:"url" yaml:"url"`
+	Key         string  `json:"key" yaml:"key"`
+	SSHHost     string  `json:"sshHost,omitempty" yaml:"sshHost,omitempty"`
+	SSHPort     string  `json:"sshPort,omitempty" yaml:"sshPort,omitempty"`
+	Lat         float64 `json:"lat,omitempty" yaml:"lat,omitempty"`
+	Lon         float64 `json:"lon,omitempty" yaml:"lon,omitempty"`
+	Default     bool    `json:"default,omitempty" yaml:"default,omitempty"`
 }
 
 type File struct {
@@ -54,6 +56,12 @@ func Parse(raw []byte) (*Registry, error) {
 		cfg.SSHHost = strings.TrimSpace(cfg.SSHHost)
 		cfg.SSHPort = strings.TrimSpace(cfg.SSHPort)
 		cfg.Key = strings.TrimSpace(cfg.Key)
+		if cfg.Lat < -90 || cfg.Lat > 90 {
+			return nil, fmt.Errorf("region %q latitude must be between -90 and 90", cfg.Name)
+		}
+		if cfg.Lon < -180 || cfg.Lon > 180 {
+			return nil, fmt.Errorf("region %q longitude must be between -180 and 180", cfg.Name)
+		}
 		if cfg.Name == "" {
 			return nil, fmt.Errorf("regions[%d].name is required", i)
 		}

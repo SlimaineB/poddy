@@ -102,8 +102,12 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			topology.Users = filtered
-			if query != "" {
-				topology.Totals.Users = len(filtered)
+			topology.Totals = region.TopologyTotals{}
+			for _, user := range filtered {
+				topology.Totals.Users++
+				topology.Totals.Workspaces += user.WorkspaceCount
+				topology.Totals.Volumes += user.VolumeCount
+				topology.Totals.StorageBytes += user.StorageBytes
 			}
 		}
 		if pagedRequest(r) {
@@ -239,6 +243,13 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp.Users = filtered
+	}
+	resp.Totals = topologyTotals{}
+	for _, user := range resp.Users {
+		resp.Totals.Users++
+		resp.Totals.Workspaces += user.WorkspaceCount
+		resp.Totals.Volumes += user.VolumeCount
+		resp.Totals.StorageBytes += user.StorageBytes
 	}
 	if !pagedRequest(r) {
 		writeJSON(w, http.StatusOK, resp)

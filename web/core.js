@@ -17,6 +17,7 @@ const state = {
   workspacePages: 0,
   topologyPage: 1,
   topologyPerPage: 10,
+  topologyQuery: "",
   userPage: 1,
   userPerPage: 20,
   userTotal: 0,
@@ -36,6 +37,8 @@ const state = {
   templatePageItems: [],
   templatePageLoaded: false,
   topologyActive: false,
+  mapActive: false,
+  mapSelected: "",
   workspaceView: (() => {
     try {
       return localStorage.getItem("poddy.workspaceView") === "list" ? "list" : "cards";
@@ -51,6 +54,8 @@ const state = {
   pendingDelete: null,
   detailWorkspace: null,
   detailRequest: 0,
+  manifests: null,
+  manifestTab: "pod",
   accessTemplate: null,
   accessCanEditOwners: false,
   editingTeam: null,
@@ -74,6 +79,7 @@ const els = {
   count: document.getElementById("count"),
   workspacesPagination: document.getElementById("workspaces-pagination"),
   topologyPagination: document.getElementById("topology-pagination"),
+  topologySearch: document.getElementById("topology-search"),
   usersPagination: document.getElementById("users-pagination"),
   groupsPagination: document.getElementById("groups-pagination"),
   teamsPagination: document.getElementById("teams-pagination"),
@@ -114,6 +120,11 @@ const els = {
   detailList: document.getElementById("detail-list"),
   detailLogsBody: document.getElementById("detail-logs-body"),
   detailLogsRefresh: document.getElementById("detail-logs-refresh"),
+  detailManifests: document.getElementById("detail-manifests"),
+  detailManifestsNote: document.getElementById("detail-manifests-note"),
+  detailManifestsBody: document.getElementById("detail-manifests-body"),
+  detailManifestsRefresh: document.getElementById("detail-manifests-refresh"),
+  detailManifestsCopy: document.getElementById("detail-manifests-copy"),
   confirmDialog: document.getElementById("confirm-dialog"),
   confirmText: document.getElementById("confirm-text"),
   confirmDelete: document.getElementById("confirm-delete"),
@@ -134,6 +145,19 @@ const els = {
   topologyRelayout: document.getElementById("topology-relayout"),
   topologyZoomIn: document.getElementById("topology-zoom-in"),
   topologyZoomOut: document.getElementById("topology-zoom-out"),
+  mapView: document.getElementById("map-view"),
+  mapCount: document.getElementById("map-count"),
+  mapEmpty: document.getElementById("map-empty"),
+  mapContainer: document.getElementById("map-container"),
+  mapSvg: document.getElementById("world-map"),
+  mapGrid: document.getElementById("map-grid"),
+  mapLand: document.getElementById("map-land"),
+  mapMarkers: document.getElementById("map-markers"),
+  mapDetail: document.getElementById("map-detail"),
+  mapRegionsList: document.getElementById("map-regions-list"),
+  mapReset: document.getElementById("map-reset"),
+  mapZoomIn: document.getElementById("map-zoom-in"),
+  mapZoomOut: document.getElementById("map-zoom-out"),
   usersView: document.getElementById("users-view"),
   usersBack: document.getElementById("users-back"),
   usersSearch: document.getElementById("users-search"),
@@ -401,9 +425,23 @@ function setRegionFilter(name, { reload = true } = {}) {
   if (state.regionFilter && els.regionSelect) els.regionSelect.value = state.regionFilter;
   state.workspacePage = 1;
   state.topologyPage = 1;
+  if (state.mapActive) state.mapSelected = state.regionFilter;
   syncRegionURL();
   renderRegionSummary();
+  if (state.mapActive) {
+    if (typeof renderMapIfVisible === "function") renderMapIfVisible();
+    if (state.regionFilter) {
+      if (typeof focusMapRegion === "function") focusMapRegion(state.regionFilter);
+    } else if (typeof resetMapView === "function") {
+      resetMapView();
+    }
+  }
   if (!reload) return;
+  if (state.topologyActive) {
+    if (typeof loadTopology === "function") loadTopology({ silent: true });
+    return;
+  }
+  if (state.mapActive) return;
   if (typeof load === "function") load({ silent: true });
 }
 async function loadRegionSummaries({ silent = false } = {}) {
@@ -419,6 +457,7 @@ async function loadRegionSummaries({ silent = false } = {}) {
     if (request !== state.regionSummaryRequest) return;
     state.regionSummaries = Array.isArray(data) ? data : [];
     renderRegionSummary();
+    if (typeof renderMapIfVisible === "function") renderMapIfVisible();
     if (els.regionsDialog && els.regionsDialog.open) {
       renderRegionsList(state.regionSummaries);
     }
@@ -571,8 +610,11 @@ function renderRegionsList(summaries) {
     view.disabled = !available;
     view.addEventListener("click", () => {
       if (els.regionsDialog) els.regionsDialog.close();
+      state.topologyActive = false;
+      state.mapActive = false;
       setRegionFilter(region.name);
       showView("workspaces");
+      if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
     });
     footer.append(view);
 
@@ -914,13 +956,14 @@ async function loadMe() {
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
   els.topologyView.hidden = name !== "topology";
+  els.mapView.hidden = name !== "map";
   els.connectionsView.hidden = name !== "connections";
   els.sshKeysView.hidden = name !== "ssh-keys";
   els.usersView.hidden = name !== "users";
   els.teamsView.hidden = name !== "teams";
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
-  const active = name === "workspaces" || name === "topology" ? els.manageWorkspaces
+  const active = name === "workspaces" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams

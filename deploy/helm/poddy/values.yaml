@@ -123,6 +123,8 @@ regions: []
 #   key: a-long-random-region-key
 #   sshHost: ssh.eu.example.com
 #   sshPort: 2222
+#   lat: 50.1109
+#   lon: 8.6821
 #   default: true
 regionsExistingSecret: ""
 regionsKey: regions.yaml

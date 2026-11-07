@@ -125,6 +125,8 @@ func regionConfigInfo(cfg region.Config) map[string]any {
 		"default":     cfg.Default,
 		"sshHost":     cfg.SSHHost,
 		"sshPort":     cfg.SSHPort,
+		"lat":         cfg.Lat,
+		"lon":         cfg.Lon,
 	}
 }
 

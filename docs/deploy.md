@@ -246,6 +246,8 @@ regions:
     key: <same random key as regionManager.key in the eu cluster>
     sshHost: ssh.eu.example.com
     sshPort: 2222
+    lat: 50.1109
+    lon: 8.6821
     default: true
   - name: us
     displayName: United States
@@ -253,7 +255,15 @@ regions:
     key: <same random key as regionManager.key in the us cluster>
     sshHost: ssh.us.example.com
     sshPort: 2222
+    lat: 39.0438
+    lon: -77.4874
 ```
+
+`lat` and `lon` are optional coordinates for the World map view. Regions
+without them fall back to coordinates based on the region name, then to
+`0, 0`.
+
+The top bar region filter applies to workspace lists, topology, and the world map.
 
 Region manager values:
 

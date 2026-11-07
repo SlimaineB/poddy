@@ -491,6 +491,16 @@
             "type": "string",
             "minLength": 1
           },
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
           "key": {
             "type": "string",
             "minLength": 1

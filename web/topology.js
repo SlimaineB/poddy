@@ -15,8 +15,10 @@ const topologyCardSize = {
 
 async function openTopology() {
   state.topologyActive = true;
+  state.mapActive = false;
   showView("topology");
   if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
+  if (els.topologySearch) els.topologySearch.value = state.topologyQuery;
   if (topologyCy) topologyCy.resize();
   await loadTopology();
 }
@@ -39,7 +41,7 @@ async function loadTopology({ silent = false } = {}) {
     els.topologyHint.hidden = true;
   }
   try {
-    const data = await api(pageURL("/api/topology", state.topologyPage, state.topologyPerPage));
+    const data = await api(pageURL("/api/topology", state.topologyPage, state.topologyPerPage, state.topologyQuery.trim()));
     if (request !== topologyRequest) return;
     state.topology = data && typeof data === "object" ? data : { totals: {}, users: [] };
     state.topologyPage = Number(data.page) || 1;

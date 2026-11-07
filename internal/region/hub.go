@@ -236,15 +236,18 @@ func (h *Hub) TopologyRegion(ctx context.Context, region string, identity Identi
 }
 
 type Summary struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName,omitempty"`
-	Default     bool   `json:"default,omitempty"`
-	SSHHost     string `json:"sshHost,omitempty"`
-	SSHPort     string `json:"sshPort,omitempty"`
-	Available   bool   `json:"available"`
-	Workspaces  int    `json:"workspaces"`
-	Running     int    `json:"running"`
-	Stopped     int    `json:"stopped"`
+	Name        string  `json:"name"`
+	DisplayName string  `json:"displayName,omitempty"`
+	Default     bool    `json:"default,omitempty"`
+	SSHHost     string  `json:"sshHost,omitempty"`
+	SSHPort     string  `json:"sshPort,omitempty"`
+	Lat         float64 `json:"lat,omitempty"`
+	Lon         float64 `json:"lon,omitempty"`
+	Available   bool    `json:"available"`
+	Users       int     `json:"users"`
+	Workspaces  int     `json:"workspaces"`
+	Running     int     `json:"running"`
+	Stopped     int     `json:"stopped"`
 }
 
 func (h *Hub) Summaries(ctx context.Context, identity Identity) []Summary {
@@ -261,6 +264,8 @@ func (h *Hub) Summaries(ctx context.Context, identity Identity) []Summary {
 			Default:     cfg.Default,
 			SSHHost:     cfg.SSHHost,
 			SSHPort:     cfg.SSHPort,
+			Lat:         cfg.Lat,
+			Lon:         cfg.Lon,
 		}
 		client := h.Client(cfg.Name)
 		if client == nil {
@@ -275,7 +280,11 @@ func (h *Hub) Summaries(ctx context.Context, identity Identity) []Summary {
 			}
 			summaries[index].Available = true
 			summaries[index].Workspaces = len(workspaces)
+			owners := map[string]struct{}{}
 			for _, workspace := range workspaces {
+				if workspace.Owner != "" {
+					owners[workspace.Owner] = struct{}{}
+				}
 				switch workspace.Phase {
 				case "Running":
 					summaries[index].Running++
@@ -283,6 +292,7 @@ func (h *Hub) Summaries(ctx context.Context, identity Identity) []Summary {
 					summaries[index].Stopped++
 				}
 			}
+			summaries[index].Users = len(owners)
 		}(i, client)
 	}
 	wg.Wait()
