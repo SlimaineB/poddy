@@ -35,3 +35,13 @@ Idées notées pour plus tard.
 - [ ] L'isoler dans un cgroup dédié ou un sidecar.
 - [ ] Le protéger de l'OOM killer (limites/réservations, priorité).
 - [ ] Éviter les déconnexions des sessions actives.
+
+## Port forwarding
+
+- [ ] Détecter les ports en écoute dans un workspace, ou les déclarer manuellement.
+- [ ] Ajouter un bouton "Ouvrir dans le navigateur" pour proxyfier une app HTTP/HTTPS du workspace avec authentification et RBAC.
+- [ ] Fournir une URL stable par workspace/port (sous-domaine ou path) avec TLS.
+- [ ] Supporter le TCP brut (base de données, serveur de dev) via tunnel SSH `-L` ou une CLI dédiée.
+- [ ] Gérer les WebSockets, le HMR et les applications qui génèrent des URLs absolues.
+- [ ] Fermer automatiquement les forwards à l'arrêt/suppression du workspace et après inactivité.
+- [ ] Documenter les limites (binding sur `127.0.0.1`, CORS, un port à la fois) et les alternatives SSH.
