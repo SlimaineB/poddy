@@ -206,8 +206,78 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 
 ### Replicas and namespaces
 
-- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. The portal is stateless; use a stable OIDC session key when OIDC is enabled.
+- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable VS Code desktop tickets.
 - **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
+
+### Multi-region
+
+Multi-region uses one central hub and one manager per region. The hub owns
+authentication, RBAC, users, templates, the workspace list, the UI, and external
+auth tokens. Region managers own the Kubernetes API connection, workspace pods,
+PVCs, stopped-state ConfigMap, terminal/VS Code proxying, and the region SSH
+bastion.
+
+```text
+Browser ──► central hub ── signed identity ──► region manager (eu) ──► pods
+                       └─ signed identity ──► region manager (us) ──► pods
+```
+
+The hub sends `X-Poddy-Region-Identity`, an HMAC-signed short-lived identity
+(2 minutes) containing the user and admin flag. Region managers reject every
+untrusted request, including direct browser requests without the signature.
+Workspace operations, logs, terminal WebSocket, browser VS Code, SSH details,
+desktop tickets, and external-auth workspace callbacks are routed by the hub.
+SSH public keys are replicated from the hub registry to every region.
+
+Central hub values:
+
+```yaml
+regionsExistingSecret: poddy-regions
+regionsKey: regions.yaml
+```
+
+The Secret must contain a `regions.yaml` file:
+
+```yaml
+regions:
+  - name: eu
+    displayName: Europe
+    url: http://poddy-eu.poddy-eu.svc.cluster.local
+    key: <same random key as regionManager.key in the eu cluster>
+    sshHost: ssh.eu.example.com
+    sshPort: 2222
+    default: true
+  - name: us
+    displayName: United States
+    url: http://poddy-us.poddy-us.svc.cluster.local
+    key: <same random key as regionManager.key in the us cluster>
+    sshHost: ssh.us.example.com
+    sshPort: 2222
+```
+
+Region manager values:
+
+```yaml
+regionManager:
+  enabled: true
+  name: eu
+  hubUrl: https://poddy.example.com
+  existingSecret: poddy-region-key
+  keyKey: region-key
+replicaCount: 2
+ssh:
+  enabled: true
+  publicHost: ssh.eu.example.com
+  existingHostKeySecret: poddy-host-key
+```
+
+Use a private network or NetworkPolicy between the hub and region managers.
+Region keys are shared secrets: rotate them by updating the hub Secret and the
+region Secret, then restarting the region Deployment. The hub tolerates a
+region being unavailable for list/topology by returning partial data and
+logging the failure; workspace-specific requests return `502` until the region
+recovers. Cross-region placement is explicit at creation time; there is no
+automatic failover of an existing workspace between regions.
 - **Workspace namespace**: `workspaceNamespace` defaults to the release namespace. Set it to a dedicated namespace (e.g., `team-a`) to isolate teams.
   - `createWorkspaceNamespace: true` creates the namespace. **Warning**: `helm uninstall` will delete that namespace and all workspaces inside it. For production, create the namespace yourself (`kubectl create ns team-a`) and set `createWorkspaceNamespace: false`.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.

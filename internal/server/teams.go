@@ -93,16 +93,19 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	members := rbac.Normalize(req.Members)
-	if cfg.Teams == nil {
-		cfg.Teams = map[string]rbac.Team{}
-	}
-	cfg.Teams[name] = rbac.Team{Members: members}
-	if err := s.RBAC.Save(r.Context(), cfg); err != nil {
+	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
+		if cfg.Teams == nil {
+			cfg.Teams = map[string]rbac.Team{}
+		}
+		cfg.Teams[name] = rbac.Team{Members: members}
+		return nil
+	})
+	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.syncRBAC(r.Context(), cfg)
-	s.syncTemplates(r.Context(), cfg)
+	s.syncRBAC(r.Context(), updated)
+	s.syncTemplates(r.Context(), updated)
 
 	writeJSON(w, http.StatusOK, teamInfo{
 		Name:        name,
@@ -132,21 +135,24 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.PathValue("name")
-	delete(cfg.Teams, name)
-	for template, access := range cfg.Templates {
-		access.Teams = removeString(access.Teams, name)
-		if len(access.Owners) == 0 && len(access.Users) == 0 && len(access.Teams) == 0 {
-			delete(cfg.Templates, template)
-			continue
+	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
+		delete(cfg.Teams, name)
+		for template, access := range cfg.Templates {
+			access.Teams = removeString(access.Teams, name)
+			if len(access.Owners) == 0 && len(access.Users) == 0 && len(access.Teams) == 0 {
+				delete(cfg.Templates, template)
+				continue
+			}
+			cfg.Templates[template] = access
 		}
-		cfg.Templates[template] = access
-	}
-	if err := s.RBAC.Save(r.Context(), cfg); err != nil {
+		return nil
+	})
+	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.syncRBAC(r.Context(), cfg)
-	s.syncTemplates(r.Context(), cfg)
+	s.syncRBAC(r.Context(), updated)
+	s.syncTemplates(r.Context(), updated)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/metadata"
+	"poddy/internal/region"
 )
 
 const (
@@ -18,9 +19,24 @@ const (
 type identity struct {
 	User   auth.User
 	Method string
+	Admin  bool
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {
+	if s.RegionMode {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isPublic(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if _, ok := s.identify(r); !ok {
+				s.auditDenied(r, "auth.denied", "", "")
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 	if s.Token == "" && s.OIDC == nil {
 		return next
 	}
@@ -76,6 +92,7 @@ func (s *Server) cookie(token string, secure bool) *http.Cookie {
 
 func isPublic(path string) bool {
 	if path == "/healthz" || path == "/login" || path == "/logout" || path == "/api/desktop/enroll" ||
+		strings.HasPrefix(path, "/api/internal/region/") ||
 		strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/oidc/") {
 		return true
 	}
@@ -127,6 +144,17 @@ func secureRequest(r *http.Request) bool {
 }
 
 func (s *Server) identify(r *http.Request) (*identity, bool) {
+	if s.RegionMode {
+		token := r.Header.Get(region.IdentityHeader)
+		if token == "" {
+			return nil, false
+		}
+		claims, err := region.VerifyIdentity(s.RegionKey, token)
+		if err != nil {
+			return nil, false
+		}
+		return &identity{Method: "region", User: claims.User, Admin: claims.Admin}, true
+	}
 	if s.OIDC != nil {
 		if cookie, err := r.Cookie(sessionCookie); err == nil {
 			if user, err := s.OIDC.ParseSession(cookie.Value); err == nil {

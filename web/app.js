@@ -50,6 +50,14 @@ els.refresh.addEventListener("click", async () => {
   }
 });
 
+els.regionFilter.addEventListener("change", () => setRegionFilter(els.regionFilter.value));
+els.regionInfo.addEventListener("click", openRegions);
+els.regionsShowAll.addEventListener("click", () => {
+  els.regionsDialog.close();
+  setRegionFilter("");
+  showView("workspaces");
+});
+
 els.templateSelect.addEventListener("change", renderParams);
 els.createForm.addEventListener("input", () => setFormError(els.createError, ""));
 
@@ -72,6 +80,8 @@ els.createForm.addEventListener("submit", async (event) => {
     template: els.templateSelect.value,
     parameters,
   };
+  const region = String(data.get("region") || "").trim();
+  if (region) body.region = region;
 
   const original = els.createSubmit.innerHTML;
   setFormError(els.createError, "");
@@ -87,6 +97,9 @@ els.createForm.addEventListener("submit", async (event) => {
     els.createForm.reset();
     setFormError(els.createError, "");
     toast(`Workspace ${workspace.name} is being created.`, "success");
+    if (region && state.regionFilter && region !== state.regionFilter) {
+      setRegionFilter(region, { reload: false });
+    }
     await load();
   } catch (err) {
     setFormError(els.createError, err.message || "Failed to create workspace.");
@@ -168,7 +181,7 @@ els.openVSCode.addEventListener("click", () => {
   if (state.config.localVSCode) {
     launchVSCode(workspace, els.openVSCode);
   } else {
-    location.href = vscodeURL(workspace.name);
+    location.href = vscodeURL(workspace);
   }
 });
 

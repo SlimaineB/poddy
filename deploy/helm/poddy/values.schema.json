@@ -469,6 +469,86 @@
           }
         }
       }
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "key"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sshHost": {
+            "type": "string"
+          },
+          "sshPort": {
+            "type": "string"
+          },
+          "default": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "regionsExistingSecret": {
+      "type": "string"
+    },
+    "regionsKey": {
+      "type": "string"
+    },
+    "regionManager": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "hubUrl": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "keyKey": {
+          "type": "string"
+        }
+      }
+    },
+    "desktop": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string"
+        }
+      }
     }
   }
 }

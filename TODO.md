@@ -4,13 +4,14 @@ Idées notées pour plus tard.
 
 ## Multi-cluster / multi-region
 
-- [ ] Une seule UI pour plusieurs clusters Kubernetes / régions.
-- [ ] Plusieurs provisioners (un par cluster) et plusieurs SSH bastions.
-- [ ] Registre de clusters : kubeconfig/credentials, namespace, URL du bastion, région.
-- [ ] Choisir le cluster à la création d'un workspace, ou placement automatique.
-- [ ] Gérer RBAC, état des workspaces, audit et suppressions à travers les clusters.
-- [ ] Prévoir le routage terminal/VS Code/SSH vers le bon bastion.
-- [ ] Documenter le comportement en cas de cluster indisponible (failover, dégradation).
+- [x] Une seule UI pour plusieurs clusters Kubernetes / régions.
+- [x] Plusieurs provisioners (un par cluster) et plusieurs SSH bastions.
+- [x] Registre de clusters : URL du region manager, clé partagée, URL du bastion, région.
+- [x] Choisir la région à la création d'un workspace.
+- [ ] Placement automatique selon la charge ou la capacité.
+- [x] Gérer RBAC, état des workspaces, audit et suppressions à travers les clusters.
+- [x] Prévoir le routage terminal/VS Code/SSH vers le bon bastion.
+- [x] Documenter le comportement en cas de cluster indisponible (dégradation partielle, pas de failover automatique).
 
 ## Authentification
 

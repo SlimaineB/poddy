@@ -52,6 +52,10 @@ func searchQuery(r *http.Request) string {
 	return strings.TrimSpace(r.URL.Query().Get("q"))
 }
 
+func regionQuery(r *http.Request) string {
+	return strings.TrimSpace(r.URL.Query().Get("region"))
+}
+
 func paginate[T any](items []T, page, perPage int) ([]T, pageInfo) {
 	total := len(items)
 	pages := 0

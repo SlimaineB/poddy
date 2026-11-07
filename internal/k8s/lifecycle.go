@@ -19,6 +19,15 @@ func (m *Manager) Stop(ctx context.Context, name string) (Workspace, error) {
 	if err := validateName(name); err != nil {
 		return Workspace{}, err
 	}
+	release, err := m.lockWorkspace(ctx, name)
+	if err != nil {
+		return Workspace{}, err
+	}
+	defer release()
+	return m.stop(ctx, name)
+}
+
+func (m *Manager) stop(ctx context.Context, name string) (Workspace, error) {
 	pod, err := m.Get(ctx, name)
 	if apierrors.IsNotFound(err) {
 		if _, stateErr := m.State(ctx, name); stateErr == nil {
@@ -32,12 +41,10 @@ func (m *Manager) Stop(ctx context.Context, name string) (Workspace, error) {
 
 	state := m.stateForPod(ctx, pod)
 	state.StoppedAt = time.Now().UTC()
-	states, err := m.stateStore().Load(ctx)
-	if err != nil {
-		return Workspace{}, err
-	}
-	states[name] = state
-	if err := m.stateStore().Save(ctx, states); err != nil {
+	if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
+		states[name] = state
+		return nil
+	}); err != nil {
 		return Workspace{}, err
 	}
 
@@ -55,6 +62,15 @@ func (m *Manager) Start(ctx context.Context, name string) (Workspace, error) {
 	if err := validateName(name); err != nil {
 		return Workspace{}, err
 	}
+	release, err := m.lockWorkspace(ctx, name)
+	if err != nil {
+		return Workspace{}, err
+	}
+	defer release()
+	return m.start(ctx, name)
+}
+
+func (m *Manager) start(ctx context.Context, name string) (Workspace, error) {
 	if _, err := m.Get(ctx, name); err == nil {
 		return Workspace{}, fmt.Errorf("%w: %s", ErrAlreadyRunning, name)
 	} else if !apierrors.IsNotFound(err) {
@@ -73,9 +89,18 @@ func (m *Manager) Restart(ctx context.Context, name string) (Workspace, error) {
 	if err := validateName(name); err != nil {
 		return Workspace{}, err
 	}
+	release, err := m.lockWorkspace(ctx, name)
+	if err != nil {
+		return Workspace{}, err
+	}
+	defer release()
+	return m.restart(ctx, name)
+}
+
+func (m *Manager) restart(ctx context.Context, name string) (Workspace, error) {
 	pod, err := m.Get(ctx, name)
 	if apierrors.IsNotFound(err) {
-		return m.Start(ctx, name)
+		return m.start(ctx, name)
 	}
 	if err != nil {
 		return Workspace{}, err
@@ -83,12 +108,10 @@ func (m *Manager) Restart(ctx context.Context, name string) (Workspace, error) {
 
 	state := m.stateForPod(ctx, pod)
 	state.StoppedAt = time.Now().UTC()
-	states, err := m.stateStore().Load(ctx)
-	if err != nil {
-		return Workspace{}, err
-	}
-	states[name] = state
-	if err := m.stateStore().Save(ctx, states); err != nil {
+	if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
+		states[name] = state
+		return nil
+	}); err != nil {
 		return Workspace{}, err
 	}
 
@@ -136,16 +159,11 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 		return Workspace{}, err
 	}
 
-	states, err := m.stateStore().Load(ctx)
-	if err == nil {
-		if _, ok := states[name]; ok {
-			delete(states, name)
-			if saveErr := m.stateStore().Save(ctx, states); saveErr != nil {
-				log.Printf("start %s: clear stopped state: %v", name, saveErr)
-			}
-		}
-	} else {
-		log.Printf("start %s: load stopped state: %v", name, err)
+	if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
+		delete(states, name)
+		return nil
+	}); err != nil {
+		log.Printf("start %s: clear stopped state: %v", name, err)
 	}
 	return toWorkspace(created), nil
 }

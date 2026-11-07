@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
 	"poddy/internal/rbac"
+	"poddy/internal/region"
 	"poddy/internal/server"
 	"poddy/internal/sshkeys"
 	"poddy/internal/templates"
@@ -115,6 +117,10 @@ func Run(ctx context.Context, args []string) error {
 		return err
 	}
 
+	portalURL := cfg.ExternalAuthURL
+	if cfg.RegionMode && cfg.RegionHubURL != "" {
+		portalURL = cfg.RegionHubURL
+	}
 	manager := &k8s.Manager{
 		Client:          client,
 		Rest:            restConfig,
@@ -124,13 +130,39 @@ func Run(ctx context.Context, args []string) error {
 		AuthorizedKeys:  keys,
 		SSHKeys:         keyring,
 		StateConfigMap:  cfg.StateConfigMap,
-		PortalURL:       cfg.ExternalAuthURL,
+		PortalURL:       portalURL,
+		InstanceID:      cfg.InstanceID,
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
 			return externalAuth.Prepare(ctx, strings.ToLower(strings.TrimSpace(owner)), requirements)
 		}
 		manager.ExternalAuthToken = externalAuth.SignWorkspace
+	}
+	if cfg.RegionMode && cfg.RegionHubURL != "" {
+		hubClient := region.NewClient(region.Config{Name: cfg.RegionName, URL: cfg.RegionHubURL, Key: cfg.RegionKey})
+		var tokens sync.Map
+		manager.ExternalAuth = func(ctx context.Context, owner, workspace, portalURL string, requirements []templates.ExternalAuth) (map[string]string, error) {
+			response, err := hubClient.FetchExternalAuth(ctx, region.ExternalAuthRequest{
+				Owner:        owner,
+				Workspace:    workspace,
+				PortalURL:    portalURL,
+				Requirements: requirements,
+			}, region.Identity{User: auth.User{Username: "region", Subject: cfg.RegionName}, Admin: true})
+			if err != nil {
+				return nil, err
+			}
+			if response.Token != "" {
+				tokens.Store(workspace, response.Token)
+			}
+			return response.Env, nil
+		}
+		manager.ExternalAuthToken = func(workspace, _ string) (string, error) {
+			if token, ok := tokens.LoadAndDelete(workspace); ok {
+				return token.(string), nil
+			}
+			return "", nil
+		}
 	}
 
 	var metadataStore metadata.Store
@@ -187,9 +219,32 @@ func Run(ctx context.Context, args []string) error {
 		windowsKeyPath = editor.WindowsKeyPath
 	}
 
-	desktopSecret := []byte(cfg.OIDCSessionKey)
+	desktopSecret := []byte(cfg.DesktopSecret)
+	if len(desktopSecret) == 0 {
+		desktopSecret = []byte(cfg.OIDCSessionKey)
+	}
+	if len(desktopSecret) == 0 {
+		desktopSecret = []byte(cfg.ExternalAuthKey)
+	}
 	if len(desktopSecret) == 0 {
 		desktopSecret = []byte(randomSecret())
+		if cfg.Token == "" && cfg.OIDCIssuer == "" {
+			log.Printf("desktop tickets: using an ephemeral key; set PODDY_DESKTOP_SECRET for multiple replicas")
+		}
+	}
+
+	registry, err := region.Load(cfg.RegionsFile)
+	if err != nil {
+		return fmt.Errorf("regions: %w", err)
+	}
+	var hub *region.Hub
+	if len(registry.All()) > 0 {
+		if cfg.RegionMode {
+			return fmt.Errorf("regions: region mode cannot also act as a central hub")
+		}
+		hub = region.NewHub(registry)
+		log.Printf("central hub configured with %d regions", len(registry.All()))
+		go syncRegionKeys(ctx, hub, userKeyStore, 2*time.Minute)
 	}
 
 	srv := &server.Server{
@@ -203,6 +258,11 @@ func Run(ctx context.Context, args []string) error {
 		TokenAdmin:        cfg.TokenAdmin,
 		Local:             editor,
 		Forwards:          forwards,
+		Regions:           hub,
+		RegionMode:        cfg.RegionMode,
+		RegionKey:         cfg.RegionKey,
+		RegionName:        cfg.RegionName,
+		HubURL:            cfg.RegionHubURL,
 		SSHHost:           cfg.SSHPublicHost,
 		SSHPort:           cfg.SSHPublicPort,
 		SSHKeys:           keyring,
@@ -514,5 +574,38 @@ func serve(ctx context.Context, srv *http.Server) error {
 			return nil
 		}
 		return err
+	}
+}
+
+func syncRegionKeys(ctx context.Context, hub *region.Hub, store *userkeys.Store, interval time.Duration) {
+	sync := func() {
+		keys, err := store.List(ctx)
+		if err != nil {
+			log.Printf("region ssh keys: list: %v", err)
+			return
+		}
+		byOwner := map[string][]string{}
+		for _, key := range keys {
+			byOwner[key.Owner] = append(byOwner[key.Owner], key.Line)
+		}
+		identity := region.Identity{User: auth.User{Username: "hub", Subject: "hub"}, Admin: true}
+		for owner, lines := range byOwner {
+			if problems := hub.SyncSSHKeys(ctx, owner, lines, identity); len(problems) > 0 {
+				for _, problem := range problems {
+					log.Printf("region ssh keys: %v", problem)
+				}
+			}
+		}
+	}
+	sync()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sync()
+		}
 	}
 }

@@ -58,6 +58,14 @@ function renderCard(workspace) {
   template.textContent = workspace.template || "default";
   metaRow.append(template);
 
+  if (workspace.region) {
+    const region = document.createElement("span");
+    region.className = "badge neutral";
+    region.textContent = workspace.region;
+    region.title = `Region: ${workspace.region}`;
+    metaRow.append(region);
+  }
+
   if (state.me.isAdmin && workspace.owner) {
     const owner = document.createElement("span");
     owner.className = "badge owner";
@@ -199,7 +207,7 @@ function renderWorkspaceActions(workspace) {
 }
 function workspaceMatches(workspace, query) {
   if (!query) return true;
-  const haystack = [workspace.name, workspace.template, workspace.owner, workspace.phase, workspace.image]
+  const haystack = [workspace.name, workspace.template, workspace.region, workspace.owner, workspace.phase, workspace.image]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -250,9 +258,10 @@ function renderWorkspaces() {
   const workspaces = filteredWorkspaces();
   const total = state.workspaceTotal || state.workspaces.length;
   const query = state.workspaceQuery.trim();
+  const regionLabel = state.regionFilter ? ` in ${regionDisplayName(state.regionFilter)}` : "";
   els.count.textContent = query
-    ? `${total} matching workspace${total === 1 ? "" : "s"}`
-    : `${total} workspace${total === 1 ? "" : "s"}`;
+    ? `${total} matching workspace${total === 1 ? "" : "s"}${regionLabel}`
+    : `${total} workspace${total === 1 ? "" : "s"}${regionLabel}`;
 
   els.grid.replaceChildren();
   els.workspaceList.replaceChildren();
@@ -264,7 +273,10 @@ function renderWorkspaces() {
     els.empty.hidden = false;
     if (query) {
       els.emptyTitle.textContent = "No matching workspaces";
-      els.emptyText.textContent = "Try a different name, template, owner, or status.";
+      els.emptyText.textContent = "Try a different name, template, owner, status, or region.";
+    } else if (state.regionFilter) {
+      els.emptyTitle.textContent = `No workspaces in ${regionDisplayName(state.regionFilter)}`;
+      els.emptyText.textContent = "Create a workspace in this region or choose another region.";
     } else {
       els.emptyTitle.textContent = "No workspaces yet";
       els.emptyText.textContent = "Create your first development environment from a template.";
@@ -357,6 +369,9 @@ async function load({ silent = false } = {}) {
     state.loaded = true;
     state.pollError = false;
     renderWorkspaces();
+    if (state.regionFilter && typeof loadRegionSummaries === "function") {
+      loadRegionSummaries({ silent: true });
+    }
     renderPagination(els.workspacesPagination, {
       page: state.workspacePage,
       pages: state.workspacePages,
@@ -402,6 +417,9 @@ async function openCreate() {
   setFormError(els.createError, "");
   renderWorkspaceNameHint();
   els.params.replaceChildren();
+  if (state.regionFilter && configuredRegions().some((region) => region.name === state.regionFilter)) {
+    els.regionSelect.value = state.regionFilter;
+  }
   if (!els.templateSelect.value) {
     els.templateSelect.value = state.templates[0].name;
   }
@@ -430,11 +448,15 @@ function linkValue(workspace, key) {
     case "name":
       return workspace.name;
     case "alias":
-      return `poddy-${workspace.name}`;
-    case "sshHost":
-      return state.config.sshHost || "127.0.0.1";
-    case "sshPort":
-      return state.config.sshPort || "2222";
+      return sshAlias(workspace.name, workspace.region);
+    case "sshHost": {
+      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
+      return (region && region.sshHost) || state.config.sshHost || "127.0.0.1";
+    }
+    case "sshPort": {
+      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
+      return (region && region.sshPort) || state.config.sshPort || "2222";
+    }
     case "user":
       return "dev";
     case "template":
@@ -567,6 +589,9 @@ function renderDetails(ws) {
   status.append(dot, document.createTextNode(ws.phase || "Unknown"));
 
   els.detailList.append(detailRow("Status", status));
+  if (ws.region) {
+    els.detailList.append(detailRow("Region", ws.regionDisplayName || ws.region));
+  }
   els.detailList.append(detailRow("Template", ws.template || "default"));
   if (ws.image) {
     els.detailList.append(detailRow("Image", ws.image, { mono: true }));

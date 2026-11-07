@@ -28,7 +28,19 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var list []k8s.Workspace
-	if s.isAdmin(id, cfg) {
+	admin := s.isAdmin(id, cfg)
+	regionFilter := regionQuery(r)
+	if s.Regions != nil {
+		if regionFilter != "" {
+			if _, ok := s.Regions.Get(regionFilter); !ok {
+				http.Error(w, "unknown region", http.StatusBadRequest)
+				return
+			}
+			list, err = s.Regions.ListRegion(r.Context(), regionFilter, s.hubIdentity(id, admin))
+		} else {
+			list, err = s.hubList(r.Context(), s.hubIdentity(id, admin))
+		}
+	} else if admin {
 		list, err = s.Workspaces.List(r.Context())
 	} else {
 		list, err = s.Workspaces.ListByOwner(r.Context(), ownerID(id.User))
@@ -37,11 +49,20 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
 	}
+	if regionFilter != "" && s.Regions == nil {
+		filtered := make([]k8s.Workspace, 0, len(list))
+		for _, workspace := range list {
+			if workspace.Region == regionFilter {
+				filtered = append(filtered, workspace)
+			}
+		}
+		list = filtered
+	}
 	query := searchQuery(r)
 	if query != "" {
 		filtered := make([]k8s.Workspace, 0, len(list))
 		for _, workspace := range list {
-			if matchesSearch(query, workspace.Name, workspace.Template, workspace.Owner, workspace.Phase, workspace.Image) {
+			if matchesSearch(query, workspace.Name, workspace.Template, workspace.Owner, workspace.Region, workspace.Phase, workspace.Image) {
 				filtered = append(filtered, workspace)
 			}
 		}
@@ -68,6 +89,15 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.loadRBAC(r)
 	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Regions != nil {
+		details, detailErr := s.Regions.Details(r.Context(), name, s.hubIdentity(id, s.isAdmin(id, cfg)))
+		if detailErr != nil {
+			writeRegionError(w, detailErr)
+			return
+		}
+		writeJSON(w, http.StatusOK, details)
 		return
 	}
 
@@ -148,12 +178,12 @@ func (s *Server) workspaceLogs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
-	if err != nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
 		return
 	}
-	if !allowed {
+	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	if err != nil || !allowed {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
@@ -199,7 +229,7 @@ func workspaceNamePrefix(id *identity) string {
 
 func workspaceNameFor(id *identity, name string) string {
 	name = strings.TrimSpace(name)
-	if name == "" || id == nil || id.Method == "none" {
+	if name == "" || id == nil || id.Method == "none" || id.Method == "region" {
 		return name
 	}
 	prefix := workspaceNamePrefix(id)
@@ -221,11 +251,20 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req k8s.CreateRequest
+	var input struct {
+		k8s.CreateRequest
+		Region string `json:"region"`
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
+	}
+	req := input.CreateRequest
+	if id.Method != "region" {
+		req.ExternalAuthReady = false
+		req.ExternalAuthEnv = nil
+		req.WorkspaceToken = ""
 	}
 	req.Name = workspaceNameFor(id, req.Name)
 	setAuditTarget(r, req.Name)
@@ -244,6 +283,39 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Owner = ownerID(id.User)
 	req.PortalURL = s.externalAuthPortalURL(r)
+	if s.RegionMode && s.HubURL != "" {
+		req.PortalURL = s.HubURL
+	}
+
+	if s.Regions != nil {
+		if err := s.prepareRemoteCreate(r, &req, templateName); err != nil {
+			if s.writeExternalAuthRequired(w, r, err) {
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		regionName := input.Region
+		if regionName == "" {
+			if cfg, ok := s.Regions.Default(); ok {
+				regionName = cfg.Name
+			}
+		}
+		start := time.Now()
+		result := "error"
+		defer func() {
+			s.Metrics.WorkspaceOperation("create", result)
+			s.Metrics.WorkspaceCreate(templateName, result, time.Since(start))
+		}()
+		ws, err := s.Regions.Create(r.Context(), regionName, req, s.hubIdentity(id, s.isAdmin(id, cfg)))
+		if err != nil {
+			writeRegionError(w, err)
+			return
+		}
+		result = "success"
+		writeJSON(w, http.StatusCreated, ws)
+		return
+	}
 
 	start := time.Now()
 	result := "error"
@@ -275,6 +347,10 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.loadRBAC(r)
 	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
 		return
 	}
 	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
@@ -333,6 +409,10 @@ func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, acti
 	cfg, err := s.loadRBAC(r)
 	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
 		return
 	}
 	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)

@@ -42,6 +42,13 @@
         <span>poddy</span>
       </a>
       <div class="topbar-actions">
+        <div id="region-switcher" class="region-switcher" hidden>
+          <svg class="icon"><use href="#icon-server"></use></svg>
+          <select id="region-filter" aria-label="Filter by region"></select>
+          <button id="region-info" class="icon-button" type="button" title="Region details" aria-label="Region details">
+            <svg class="icon"><use href="#icon-info"></use></svg>
+          </button>
+        </div>
         <button id="manage-workspaces" class="button ghost small active" type="button">Workspaces</button>
         <button id="manage-connections" class="button ghost small" type="button" hidden>Connections</button>
         <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
@@ -77,6 +84,8 @@
       </div>
       <span id="count" class="count"></span>
     </section>
+
+    <div class="region-summary" data-region-summary hidden></div>
 
     <div class="workspace-toolbar">
       <div class="search-box">
@@ -139,6 +148,8 @@
         </div>
       </div>
     </header>
+
+    <div class="region-summary" data-region-summary hidden></div>
 
     <div class="topology-toolbar">
       <div class="topology-legend">
@@ -345,6 +356,11 @@
           <input id="workspace-name" name="name" placeholder="my-workspace" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" autocomplete="off" spellcheck="false">
           <p id="workspace-name-hint" class="hint">Lowercase letters, numbers, and dashes.</p>
         </div>
+        <div class="field" id="region-field" hidden>
+          <label for="region-select">Region</label>
+          <select id="region-select" name="region"></select>
+          <p class="hint">The workspace is provisioned in this region.</p>
+        </div>
         <div class="field">
           <label for="template-select">Template</label>
           <select id="template-select" name="template"></select>
@@ -422,6 +438,25 @@
       </section>
     </div>
     <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="regions-dialog" class="dialog dialog-wide">
+    <header class="dialog-header">
+      <div>
+        <h2>Regions</h2>
+        <p>Workspace managers connected to this portal.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <div id="regions-list" class="regions-list"></div>
+    </div>
+    <footer class="dialog-footer">
+      <button id="regions-show-all" class="button ghost" type="button">Show all regions</button>
       <button class="button ghost" type="button" data-close>Close</button>
     </footer>
   </dialog>

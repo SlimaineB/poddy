@@ -51,21 +51,39 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if s.Workspaces == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
-		return
+	sshHost := s.SSHHost
+	sshPort := s.SSHPort
+	owner := ""
+	if s.Regions != nil {
+		regionCfg, info, findErr := s.Regions.FindWorkspace(r.Context(), name, s.hubIdentity(id, s.isAdmin(id, cfg)))
+		if findErr != nil {
+			writeRegionError(w, findErr)
+			return
+		}
+		owner = info.Owner
+		if regionCfg.SSHHost != "" {
+			sshHost = regionCfg.SSHHost
+		}
+		if regionCfg.SSHPort != "" {
+			sshPort = regionCfg.SSHPort
+		}
+	} else {
+		if s.Workspaces == nil {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		pod, err := s.Workspaces.Get(r.Context(), name)
+		if err != nil {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		owner = k8s.Owner(pod)
+		if !s.isAdmin(id, cfg) && owner != ownerID(id.User) {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
 	}
-	pod, err := s.Workspaces.Get(r.Context(), name)
-	if err != nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
-		return
-	}
-	owner := k8s.Owner(pod)
-	if !s.isAdmin(id, cfg) && owner != ownerID(id.User) {
-		http.Error(w, "workspace not found", http.StatusNotFound)
-		return
-	}
-	if s.SSHHost == "" {
+	if sshHost == "" {
 		http.Error(w, "SSH is not configured", http.StatusNotImplemented)
 		return
 	}
@@ -84,8 +102,8 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		API:       requestBaseURL(r),
 		Workspace: name,
 		User:      desktopRemoteUser,
-		SSHHost:   s.SSHHost,
-		SSHPort:   s.SSHPort,
+		SSHHost:   sshHost,
+		SSHPort:   sshPort,
 		Ticket:    ticket,
 	})
 	if err != nil {
@@ -120,7 +138,17 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.Workspaces != nil {
+	if s.Regions != nil {
+		_, info, err := s.Regions.FindWorkspace(r.Context(), claims.Workspace, s.hubAdminIdentity())
+		if err != nil {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		if !strings.EqualFold(strings.TrimSpace(claims.Owner), strings.TrimSpace(info.Owner)) {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+	} else if s.Workspaces != nil {
 		pod, err := s.Workspaces.Get(r.Context(), claims.Workspace)
 		if err != nil {
 			http.Error(w, "workspace not found", http.StatusNotFound)
@@ -153,6 +181,7 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 			log.Printf("desktop: sync workspaces: %v", err)
 		}
 	}
+	s.hubSyncSSHKeys(r.Context(), claims.Owner)
 	writeJSON(w, http.StatusCreated, sshKeyInfoFor(key))
 }
 

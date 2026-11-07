@@ -285,15 +285,23 @@ func (s *Server) workspaceRequirements(r *http.Request, name string) ([]template
 		return nil, errors.New("templates are not configured")
 	}
 	templateName := ""
-	pod, err := s.Workspaces.Get(r.Context(), name)
-	if err == nil {
-		templateName = pod.Labels["poddy.io/template"]
-	} else {
-		state, stateErr := s.Workspaces.State(r.Context(), name)
-		if stateErr != nil {
+	if s.Regions != nil {
+		_, info, err := s.Regions.FindWorkspace(r.Context(), name, s.hubAdminIdentity())
+		if err != nil {
 			return nil, err
 		}
-		templateName = state.Template
+		templateName = info.Template
+	} else {
+		pod, err := s.Workspaces.Get(r.Context(), name)
+		if err == nil {
+			templateName = pod.Labels["poddy.io/template"]
+		} else {
+			state, stateErr := s.Workspaces.State(r.Context(), name)
+			if stateErr != nil {
+				return nil, err
+			}
+			templateName = state.Template
+		}
 	}
 	tmpl, err := s.Workspaces.Templates.Get(templateName)
 	if err != nil {
