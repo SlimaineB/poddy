@@ -156,9 +156,15 @@ els.templatesSearch.addEventListener("input", () => {
 
 els.copySSH.addEventListener("click", copySSHConfig);
 els.detailLogsRefresh.addEventListener("click", refreshDetails);
+els.detailPortsRefresh.addEventListener("click", refreshDetailPorts);
+els.detailPortForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  openDetailPort();
+});
 els.detailDialog.addEventListener("close", () => {
   state.detailWorkspace = null;
   state.detailRequest += 1;
+  state.detailPortsRequest += 1;
 });
 
 els.openVSCode.addEventListener("click", () => {

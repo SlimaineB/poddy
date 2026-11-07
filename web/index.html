@@ -402,7 +402,7 @@
     <header class="dialog-header">
       <div>
         <h2 id="detail-title">Workspace details</h2>
-        <p>Metadata and startup logs for this workspace.</p>
+        <p>Metadata, ports, and startup logs for this workspace.</p>
       </div>
       <button class="icon-button" type="button" data-close aria-label="Close">
         <svg class="icon"><use href="#icon-x"></use></svg>
@@ -410,6 +410,24 @@
     </header>
     <div class="dialog-body">
       <dl id="detail-list" class="detail-list"></dl>
+      <section class="workspace-ports">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Ports</h3>
+            <p>Applications listening in this workspace.</p>
+          </div>
+          <button id="detail-ports-refresh" class="button ghost small" type="button">Refresh</button>
+        </header>
+        <div id="detail-ports-body" class="workspace-ports-body"></div>
+        <form id="detail-port-form" class="port-form">
+          <div class="field">
+            <label for="detail-port-input">Open another port</label>
+            <input id="detail-port-input" type="number" min="1" max="65535" placeholder="3000" inputmode="numeric">
+          </div>
+          <button class="button primary small" type="submit">Open</button>
+        </form>
+        <p class="hint">Apps bound to 127.0.0.1 work. Absolute asset URLs may need a base path.</p>
+      </section>
       <section class="workspace-logs">
         <header class="workspace-logs-header">
           <div>

@@ -137,6 +137,11 @@ Use the buttons on the workspace card:
 - **VS Code Web** opens the browser editor on `/home/dev` in a new tab when
   browser VS Code is enabled (`browserVSCode`, default `true` for the built-in
   templates).
+- **Ports** opens the workspace details and lists TCP ports listening in the
+  pod. Click **Open** to proxy an app through the portal in a new tab, or enter
+  a port manually. HTTP, WebSocket, and HMR work when the app uses
+  relative URLs; root-relative asset URLs may need a base path. Apps bound to
+  `127.0.0.1` are supported. Use SSH `-L` for raw TCP such as a database.
 
 For the manual SSH path only, load the private key once:
 

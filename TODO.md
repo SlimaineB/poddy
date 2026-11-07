@@ -29,6 +29,10 @@ Idées notées pour plus tard.
 - [ ] Historique et éventuellement alertes sur les ressources.
 - [ ] Étudier metrics-server et/ou Prometheus comme source.
 
+## Cycle de vie des workspaces
+
+- [ ] Détecter le temps d'inactivité d'un workspace (terminal, VS Code, SSH, accès aux ports) et l'afficher dans l'UI.
+
 ## Fiabilité SSH
 
 - [ ] Rendre le process sshd plus fiable pendant les pics mémoire.
@@ -38,10 +42,13 @@ Idées notées pour plus tard.
 
 ## Port forwarding
 
-- [ ] Détecter les ports en écoute dans un workspace, ou les déclarer manuellement.
-- [ ] Ajouter un bouton "Ouvrir dans le navigateur" pour proxyfier une app HTTP/HTTPS du workspace avec authentification et RBAC.
-- [ ] Fournir une URL stable par workspace/port (sous-domaine ou path) avec TLS.
+- [x] Détecter automatiquement les ports en écoute dans le workspace et les remonter au portail (port, protocole), avec déclaration manuelle en secours.
+- [x] Ajouter une section "Ports" par workspace : liste, état, URL et bouton "Ouvrir dans le navigateur".
+- [x] Proxyfier les apps HTTP avec authentification devant chaque port et contrôle RBAC du workspace.
+- [ ] Gérer le partage : propriétaire, utilisateurs authentifiés ou public, avec audit et révocation immédiate.
+- [ ] Fournir une URL stable par workspace/port (sous-domaine `port--workspace--user` avec wildcard DNS/TLS, ou path proxy).
 - [ ] Supporter le TCP brut (base de données, serveur de dev) via tunnel SSH `-L` ou une CLI dédiée.
-- [ ] Gérer les WebSockets, le HMR et les applications qui génèrent des URLs absolues.
-- [ ] Fermer automatiquement les forwards à l'arrêt/suppression du workspace et après inactivité.
-- [ ] Documenter les limites (binding sur `127.0.0.1`, CORS, un port à la fois) et les alternatives SSH.
+- [ ] Gérer les applications qui génèrent des URLs absolues (les WebSockets et le HMR fonctionnent avec des URLs relatives).
+- [x] Fermer automatiquement les forwards à l'arrêt/suppression du workspace.
+- [ ] Fermer les forwards après inactivité.
+- [x] Documenter les limites (binding sur `127.0.0.1`, URLs absolues, sécurité) et les alternatives SSH.

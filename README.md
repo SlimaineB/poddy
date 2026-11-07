@@ -110,6 +110,7 @@ Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set 
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
 - **VS Code**: Click **VS Code** to open Remote-SSH on `/home/dev` in a new window. The first click on a machine requires installing the Poddy extension once (VSIX in `vscode-extension/`, or publish it to your marketplace); afterwards the flow is one click and needs no SSH setup.
 - **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
+- **Ports**: Click **Ports** on a running workspace to see its listening TCP ports and open an app in a new tab. The portal authenticates the request, checks workspace ownership, port-forwards to the pod, and proxies HTTP and WebSocket traffic. Apps bound to `127.0.0.1` work; apps that use root-relative asset URLs may need a base path. Use SSH `-L` for raw TCP.
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
 - **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
 
