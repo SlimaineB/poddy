@@ -22,6 +22,7 @@ type Config struct {
 	ExternalAuthURL          string
 	ExternalAuthRedirectBase string
 	Token                    string
+	TokenAdmin               bool
 	Kubeconfig               string
 	Context                  string
 	Editor                   string
@@ -37,6 +38,7 @@ type Config struct {
 	SSHPublicHost        string
 	SSHPublicPort        string
 	SSHAllowUnmappedKeys bool
+	SSHUserKeysConfigMap string
 
 	OIDCIssuer        string
 	OIDCClientID      string
@@ -67,6 +69,7 @@ func Load(args []string) (Config, error) {
 		ExternalAuthURL:          os.Getenv("PODDY_EXTERNAL_AUTH_URL"),
 		ExternalAuthRedirectBase: os.Getenv("PODDY_EXTERNAL_AUTH_REDIRECT_BASE"),
 		Token:                    os.Getenv("PODDY_TOKEN"),
+		TokenAdmin:               envBool("PODDY_TOKEN_ADMIN", false),
 		Kubeconfig:               os.Getenv("KUBECONFIG"),
 		Editor:                   env("PODDY_EDITOR", "code"),
 
@@ -81,6 +84,7 @@ func Load(args []string) (Config, error) {
 		SSHPublicHost:        env("PODDY_SSH_PUBLIC_HOST", "127.0.0.1"),
 		SSHPublicPort:        env("PODDY_SSH_PUBLIC_PORT", "2222"),
 		SSHAllowUnmappedKeys: envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
+		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
 
 		OIDCIssuer:        os.Getenv("PODDY_OIDC_ISSUER"),
 		OIDCClientID:      os.Getenv("PODDY_OIDC_CLIENT_ID"),
@@ -108,7 +112,8 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.ExternalAuthKey, "external-auth-key", cfg.ExternalAuthKey, "key used to encrypt external auth tokens and sign workspace tokens")
 	fs.StringVar(&cfg.ExternalAuthURL, "external-auth-url", cfg.ExternalAuthURL, "portal URL reachable from workspaces (defaults to the request URL)")
 	fs.StringVar(&cfg.ExternalAuthRedirectBase, "external-auth-redirect-base", cfg.ExternalAuthRedirectBase, "public base URL for external auth callbacks")
-	fs.StringVar(&cfg.Token, "token", cfg.Token, "optional shared access token")
+	fs.StringVar(&cfg.Token, "token", cfg.Token, "optional shared access token (single identity; not for multi-user SSH)")
+	fs.BoolVar(&cfg.TokenAdmin, "token-admin", cfg.TokenAdmin, "treat the shared token as a global admin (unsafe for shared tokens)")
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "path to kubeconfig")
 	fs.StringVar(&cfg.Context, "context", cfg.Context, "kubeconfig context")
 	fs.StringVar(&cfg.Editor, "editor", cfg.Editor, "editor command used to open VS Code (empty disables local launch)")
@@ -122,6 +127,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.SSHPublicHost, "ssh-public-host", cfg.SSHPublicHost, "public SSH host shown to users")
 	fs.StringVar(&cfg.SSHPublicPort, "ssh-public-port", cfg.SSHPublicPort, "public SSH port shown to users")
 	fs.BoolVar(&cfg.SSHAllowUnmappedKeys, "ssh-allow-unmapped-keys", cfg.SSHAllowUnmappedKeys, "allow SSH keys without an owner comment to access every workspace (legacy, insecure)")
+	fs.StringVar(&cfg.SSHUserKeysConfigMap, "ssh-user-keys-configmap", cfg.SSHUserKeysConfigMap, "ConfigMap storing self-service SSH keys")
 
 	fs.StringVar(&cfg.OIDCIssuer, "oidc-issuer", cfg.OIDCIssuer, "OIDC issuer URL (enables OIDC login)")
 	fs.StringVar(&cfg.OIDCClientID, "oidc-client-id", cfg.OIDCClientID, "OIDC client ID")

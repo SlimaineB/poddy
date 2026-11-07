@@ -1,7 +1,4 @@
 {{- if and .Values.ssh.enabled (not .Values.ssh.existingKeysSecret) }}
-{{- if not .Values.ssh.authorizedKeys }}
-{{- fail "ssh.authorizedKeys or ssh.existingKeysSecret is required when ssh.enabled=true" }}
-{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

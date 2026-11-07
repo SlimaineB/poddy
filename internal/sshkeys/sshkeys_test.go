@@ -84,3 +84,42 @@ func TestAllowUnmapped(t *testing.T) {
 		t.Fatal("legacy mode should allow unmapped keys")
 	}
 }
+
+func TestOwnedKeyIgnoresComment(t *testing.T) {
+	key := testKey(t, "admin")
+	set, err := Build(nil, []OwnedKey{{Owner: "alice@example.com", Line: key}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !set.Authorize(fingerprint(t, key), "alice@example.com") {
+		t.Fatal("owner-bound key should authorize its real owner")
+	}
+	if set.Authorize(fingerprint(t, key), "bob@example.com") {
+		t.Fatal("owner-bound key must ignore a forged admin comment")
+	}
+	if len(set.ForOwner("bob@example.com")) != 0 {
+		t.Fatal("bob should not receive alice's key")
+	}
+}
+
+func TestBuildRejectsDuplicateIdentity(t *testing.T) {
+	alice := testKey(t, "user:alice@example.com")
+	_, err := Build(nil, []OwnedKey{
+		{Owner: "alice@example.com", Line: alice},
+		{Owner: "bob@example.com", Line: alice},
+	}, false)
+	if err == nil {
+		t.Fatal("duplicate key assigned to two owners should fail")
+	}
+}
+
+func TestParsePublicKeyRejectsShortRSAAndOptions(t *testing.T) {
+	alice := testKey(t, "alice")
+	if _, _, _, _, err := ParsePublicKey(alice); err != nil {
+		t.Fatalf("valid key rejected: %v", err)
+	}
+	withOptions := `command="echo pwned" ` + alice
+	if _, _, _, _, err := ParsePublicKey(withOptions); err == nil {
+		t.Fatal("authorized_keys options should be rejected")
+	}
+}

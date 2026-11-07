@@ -30,6 +30,7 @@ import (
 	"poddy/internal/server"
 	"poddy/internal/sshkeys"
 	"poddy/internal/templates"
+	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
 	"poddy/web"
 )
@@ -100,6 +101,14 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	userKeyStore := userkeys.NewStore(client, cfg.Namespace, cfg.SSHUserKeysConfigMap)
+	if stored, err := userKeyStore.List(ctx); err != nil {
+		log.Printf("ssh user keys: initial load: %v", err)
+	} else if err := keyring.Update(keys, userkeys.Owned(stored), allowUnmapped); err != nil {
+		return fmt.Errorf("ssh user keys: %w", err)
+	}
+	go userkeys.Watch(ctx, userKeyStore, keyring, keys, allowUnmapped)
 
 	externalAuth, err := newExternalAuth(cfg, client)
 	if err != nil {
@@ -178,6 +187,11 @@ func Run(ctx context.Context, args []string) error {
 		windowsKeyPath = editor.WindowsKeyPath
 	}
 
+	desktopSecret := []byte(cfg.OIDCSessionKey)
+	if len(desktopSecret) == 0 {
+		desktopSecret = []byte(randomSecret())
+	}
+
 	srv := &server.Server{
 		Workspaces:        manager,
 		RBAC:              rbacStore,
@@ -186,10 +200,16 @@ func Run(ctx context.Context, args []string) error {
 		Metrics:           appMetrics,
 		WebFS:             web.FS,
 		Token:             cfg.Token,
+		TokenAdmin:        cfg.TokenAdmin,
 		Local:             editor,
 		Forwards:          forwards,
 		SSHHost:           cfg.SSHPublicHost,
 		SSHPort:           cfg.SSHPublicPort,
+		SSHKeys:           keyring,
+		SSHAdminKeys:      keys,
+		SSHAllowUnmapped:  allowUnmapped,
+		UserKeys:          userKeyStore,
+		DesktopSecret:     desktopSecret,
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
@@ -269,6 +289,9 @@ func RunBastion(ctx context.Context, args []string) error {
 		return fmt.Errorf("ssh bastion: -ssh-addr is required")
 	}
 
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
 	if err != nil {
 		return fmt.Errorf("metadata: %w", err)
@@ -287,9 +310,14 @@ func RunBastion(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if keyring.Len() == 0 {
-		return fmt.Errorf("ssh bastion: no authorized keys configured")
+
+	userKeyStore := userkeys.NewStore(client, cfg.Namespace, cfg.SSHUserKeysConfigMap)
+	if stored, err := userKeyStore.List(ctx); err != nil {
+		log.Printf("ssh user keys: initial load: %v", err)
+	} else if err := keyring.Update(keys, userkeys.Owned(stored), cfg.SSHAllowUnmappedKeys); err != nil {
+		return fmt.Errorf("ssh user keys: %w", err)
 	}
+	go userkeys.Watch(ctx, userKeyStore, keyring, keys, cfg.SSHAllowUnmappedKeys)
 
 	manager := &k8s.Manager{
 		Client:         client,
@@ -310,9 +338,6 @@ func RunBastion(ctx context.Context, args []string) error {
 		return fmt.Errorf("ssh bastion: %w", err)
 	}
 	defer sshBastion.Close()
-
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	log.Printf("ssh bastion listening on %s (namespace %s)", cfg.SSHAddr, cfg.Namespace)
 	errCh := make(chan error, 1)
@@ -383,28 +408,23 @@ func syncTemplates(ctx context.Context, namespace string, store metadata.Store, 
 	return store.SyncTemplates(ctx, namespace, catalog, cfg)
 }
 
-func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Set, *local.Local, error) {
+func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Dynamic, *local.Local, error) {
 	editor := newEditor(cfg)
 	keys, err := collectKeys(editor, cfg.SSHKeys, cfg.SSHKeysFile)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("ssh keys: %w", err)
 	}
-	keyring, err := sshkeys.Parse(keys, allowUnmapped)
+	keyring, err := sshkeys.NewDynamic(keys, nil, allowUnmapped)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("ssh keys: %w", err)
 	}
 	return keys, keyring, editor, nil
 }
 
-func startBastion(cfg config.Config, manager *k8s.Manager, keys *sshkeys.Set, audit metadata.Auditor) (*bastion.Bastion, error) {
+func startBastion(cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
 	}
-	if keys.Len() == 0 {
-		log.Printf("ssh bastion disabled: no authorized keys")
-		return nil, nil
-	}
-
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keys, cfg.SSHHostKey)
 	if err != nil {
 		return nil, fmt.Errorf("ssh bastion: %w", err)

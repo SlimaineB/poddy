@@ -41,3 +41,12 @@ bastion.replicaCount above one.
 {{- else }}
 SSH bastion is disabled.
 {{- end }}
+
+{{- if and .Values.auth.token (not .Values.oidc.enabled) }}
+WARNING: only a shared token is configured. All users share the same identity
+("token") and can reach each other's workspaces. Enable oidc for multi-user use.
+{{- end }}
+{{- if .Values.auth.tokenAdmin }}
+WARNING: auth.tokenAdmin=true grants every holder of the shared token full
+administrator access to all workspaces.
+{{- end }}

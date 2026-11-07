@@ -49,13 +49,17 @@ kubectl -n poddy-system create secret generic poddy-auth \
   --from-literal=token="$TOKEN"
 ```
 
-The token identity is `token`. It is a global admin in token mode.
+The token identity is `token`. This test sets `auth.tokenAdmin=true` so the
+operator token can administer workspaces. In a multi-user deployment leave it
+false and use OIDC.
 
 ### SSH key
 
-Generate a key for this deployment. The key comment must map the key to the
-workspace owner. With token auth the owner is `token`, so use exactly
-`user:token` (a bare `token` comment is unmapped and denied):
+For normal team use, skip this section: after signing in, open **SSH keys** in
+the portal and add your public key. For this token-based operator test, generate
+an administrator-managed key. Its comment must map it to the workspace owner;
+with token auth the owner is `token`, so use exactly `user:token` (a bare
+`token` comment is unmapped and denied):
 
 ```bash
 ssh-keygen -t ed25519 -N '' -f ~/.ssh/poddy-clean -C 'user:token'
@@ -98,6 +102,7 @@ image:
 auth:
   existingSecret: poddy-auth
   secretKey: token
+  tokenAdmin: true
 
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: false
@@ -187,19 +192,19 @@ Wait for the pod:
 kubectl -n poddy-workspaces get pod poddy-demo -w
 ```
 
-Verify the owner annotation and injected keys:
+Verify the owner annotation and per-workspace SSH Secret:
 
 ```bash
 kubectl -n poddy-workspaces get pod poddy-demo \
   -o jsonpath='{.metadata.annotations.poddy\.io/owner}{"\n"}'
-kubectl -n poddy-workspaces exec poddy-demo -- \
-  sh -lc 'printf "%s\n" "$SSH_AUTHORIZED_KEY"'
+kubectl -n poddy-workspaces get secret poddy-demo-ssh-keys \
+  -o jsonpath='{.data.authorized_keys}' | base64 -d
 ```
 
-The key comment should be `user:token`; the pod should not contain other users'
-keys. If you change the key comment later, update the Secret, restart the bastion
-(`kubectl -n poddy-system rollout restart deployment/poddy-bastion`), then
-stop/start existing workspaces to refresh their injected keys.
+The administrator-managed key comment should be `user:token`, and the pod must
+not contain other users' keys. Self-service keys added from the portal update
+this Secret automatically; existing pods pick them up without a restart because
+the file is mounted from the Secret.
 
 ## 8. SSH into the workspace
 
@@ -212,23 +217,25 @@ ssh -i ~/.ssh/poddy-clean \
   dev@poddy-demo
 ```
 
-The UI's **SSH** button produces a `Host poddy-ssh-*` `ProxyJump`
-configuration that covers all workspaces. After you install it once, the
-**VS Code** button opens Remote-SSH with the
-`vscode://vscode-remote/ssh-remote+...` URL. Keys mapped to another owner are
-rejected with `not authorized for this workspace`; keys not present in the
-Secret are rejected with `Permission denied (publickey)`.
+The **VS Code** button opens VS Code Desktop through the Poddy extension. Install
+the VSIX once with `code --install-extension poddy-remote-0.1.0.vsix`; the
+extension enrolls a machine key and writes a `# >>> poddy:<workspace>` block in
+the real `~/.ssh/config`. No manual key copy is needed. The **SSH** button
+remains a manual fallback and produces a `Host poddy-ssh-*` `ProxyJump`
+configuration. Keys mapped to another owner are rejected with
+`not authorized for this workspace`; keys not present in the Secret are
+rejected with `Permission denied (publickey)`.
 
 ### Windows / WSL
 
-Windows VS Code uses Windows OpenSSH, not WSL. Save the config from the **SSH**
-dialog in `C:\Users\<you>\.ssh\config` and copy the private key to
-`C:\Users\<you>\.ssh\`. The `Host poddy-ssh-*` block covers all workspaces,
-so new workspaces do not need another config entry. A config saved only in WSL
-is ignored by Windows VS Code, which then reports
-`Could not resolve hostname poddy-ssh-<name>`. The generated config accepts the
-bastion host key on first use and skips host-key checking for the ephemeral
-workspace pod.
+Windows VS Code uses Windows OpenSSH, not WSL. The extension installs into the
+Windows VS Code profile and writes `C:\Users\<you>\.ssh\config`, so the
+Remote-SSH window uses the same key. The first connection can take up to a
+minute while Kubernetes propagates the workspace Secret. If you use the manual
+**SSH** fallback, save that config in `C:\Users\<you>\.ssh\config` and copy
+the private key to `C:\Users\<you>\.ssh\`; a config saved only in WSL is
+ignored by Windows VS Code, which reports
+`Could not resolve hostname poddy-ssh-<name>`.
 
 ## 9. Upgrade and cleanup
 
@@ -253,10 +260,11 @@ For a production namespace, create it outside Helm and set
 
 ## Security notes
 
-- This test uses the shared token, which is a global admin. Use OIDC for real
-  multi-user deployments.
-- SSH keys are scoped to their owner by the key comment. Unmapped keys are
-  denied. Admin keys (`admin`, `*`) are break-glass and should be protected.
+- This test uses the shared token as an administrator via
+  `auth.tokenAdmin=true`. Use OIDC for real multi-user deployments.
+- Users can add self-service keys under **SSH keys**; those keys are bound to
+  their signed-in identity. Administrator-managed keys are scoped by their key
+  comment, and unmapped keys are denied.
 - Workspaces run in `poddy-workspaces`; the portal cannot access other
   namespaces. For hard tenant isolation, use one release/namespace per team.
 - Add a NetworkPolicy if the workspace namespace should not be reachable

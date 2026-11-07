@@ -55,7 +55,12 @@ kubectl create secret generic poddy-host-key \
 ```
 The key name in the secret **must** match `ssh.hostKeySecretKey` (default `ssh_host_ed25519_key`).
 
-**Authorized keys** (keys allowed to open workspaces via the bastion):
+**Authorized keys** are optional. For normal teams, leave this empty and let
+users add their public key from the portal's **SSH keys** page. Self-service
+keys are bound to the signed-in OIDC identity and cannot be reassigned through
+a comment.
+
+Administrator-managed keys remain useful for break-glass access and automation:
 ```yaml
 # In values.yaml, or create a Secret:
 ssh:
@@ -64,15 +69,15 @@ ssh:
     - "ssh-ed25519 AAAA... bob@example.com"
     - "ssh-ed25519 AAAA... admin"
 ```
-The comment at the end of each key binds it to a workspace owner:
+For these administrator-managed keys, the comment binds the key to a workspace owner:
 - `alice@example.com` or `user:alice@example.com` — may only open workspaces owned by `alice@example.com`.
 - `user:<identity>` — use this form for non-email identities, for example `user:token` with token auth or `user:alice` with an OIDC username.
 - `admin` or `*` — break-glass key that may open every workspace.
 - Any other comment (or no comment) is **denied** by default.
 
-With token auth the owner identity is `token`, so the key comment must be `user:token` (a bare `token` comment is unmapped and denied). With OIDC, use the user's email or `user:<username>`.
+With token auth the owner identity is `token`, so an administrator-managed key comment must be `user:token` (a bare `token` comment is unmapped and denied). With OIDC, use the user's email or `user:<username>`. Self-service keys do not need a comment.
 
-The bastion checks both the key and the target workspace owner on every `direct-tcpip` request. Workspace pods receive only their owner's key plus admin keys in `SSH_AUTHORIZED_KEY`.
+The bastion checks both the key and the target workspace owner on every `direct-tcpip` request. Workspace pods receive only their owner's keys plus admin keys through a per-workspace Secret mounted at `/etc/poddy/ssh/authorized_keys`. Registry changes are picked up without a workspace restart.
 
 For legacy local setups only, `ssh.allowUnmappedKeys: true` restores the old "any key can reach any workspace" behavior. Do not enable it in production. It is enabled automatically in trusted local mode with no token and no OIDC. In local editor mode, the portal also marks the SSH keys it manages as admin keys so local SSH/VS Code keeps working with token or OIDC auth.
 
@@ -116,6 +121,9 @@ image:
 
 auth:
   existingSecret: poddy-auth
+  # Keep false in multi-user deployments. A shared admin token can access
+  # every workspace.
+  tokenAdmin: false
 
 ssh:
   enabled: true
@@ -275,7 +283,8 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 | `ssh.addr` | Listen address inside the bastion pod (default `:2222`). |
 | `ssh.publicHost` | **Required** when enabled. Hostname/IP users connect to. |
 | `ssh.publicPort` | Port users connect to (default `2222`). |
-| `ssh.authorizedKeys` | List of public keys. The key comment binds it to an owner (`user:alice@example.com`) or marks it admin (`admin`, `*`). Used to create a ConfigMap. |
+| `auth.tokenAdmin` | Treat the shared token as a global admin (default `false`). Keep false with OIDC or multiple users. |
+| `ssh.authorizedKeys` | Optional administrator-managed public keys. The comment binds a key to an owner (`user:alice@example.com`) or marks it admin (`admin`, `*`). Teams normally use the portal's **SSH keys** page instead. |
 | `ssh.allowUnmappedKeys` | Allow keys without an owner comment to access every workspace (legacy, insecure; default `false`). |
 | `ssh.existingKeysSecret` | Use an existing Secret instead of ConfigMap. |
 | `ssh.existingHostKeySecret` | **Required for `bastion.replicaCount > 1`**. Secret with private host key at `ssh.hostKeySecretKey`. |
@@ -298,7 +307,7 @@ A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@examp
 - For local clusters, a NodePort works (`ssh.service.type: NodePort`); users connect to `<node-ip>:<nodePort>`.
 - Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 
-**VS Code from Windows**: Windows VS Code uses Windows OpenSSH, not WSL. Save the config from the **SSH** dialog in `C:\Users\<you>\.ssh\config`, copy your private key to `C:\Users\<you>\.ssh\`, and make sure the `IdentityFile` points to that key. The generated config uses `Host poddy-ssh-*`, so it covers all workspaces and only needs to be added once. The **VS Code** button then opens Remote-SSH through the `poddy-ssh-<name>` alias. A config saved only in WSL is not visible to Windows VS Code and produces `Could not resolve hostname poddy-ssh-<name>`. The generated config accepts the bastion host key on first use (`accept-new`) and disables host-key checking for workspace pods because their host keys are ephemeral.
+**VS Code Desktop**: the **VS Code** button targets VS Code Desktop, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from `vscode-extension/` once per machine) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows VS Code.
 
 **Changing keys**: the bastion loads `authorized_keys` at startup. If you use `ssh.existingKeysSecret`, update the Secret and run `kubectl rollout restart deployment/poddy-bastion -n poddy-system`. Existing workspace pods keep their old `SSH_AUTHORIZED_KEY` until they are restarted (stop/start or delete/recreate). The ConfigMap path already triggers a bastion rollout through the chart checksum.
 
@@ -506,7 +515,7 @@ your monitoring stack's scrape configuration.
 The chart applies:
 - **PodSecurityContext**: `runAsNonRoot: true`, `runAsUser: 65532`, `runAsGroup: 65532`, `fsGroup: 65532`, `seccompProfile: RuntimeDefault`.
 - **ContainerSecurityContext**: `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]`.
-- **SSH key isolation**: keys are mapped to owners by their `authorized_keys` comment. Unmapped keys are denied. The bastion re-checks the workspace owner for every forwarded connection, and workspace pods only receive their owner's key plus admin keys.
+- **SSH key isolation**: self-service keys are bound to the signed-in identity server-side; administrator-managed keys are mapped by their `authorized_keys` comment. Unmapped administrator keys are denied. The bastion re-checks the workspace owner for every forwarded connection, and workspace pods only receive their owner's keys plus admin keys.
 - **Admin keys are powerful**: an `admin`/`*` SSH key can reach every workspace. Protect admin private keys and rotate them like any other cluster credential.
 - **Ephemeral host key**: If `ssh.existingHostKeySecret` is not set, an `emptyDir` at `/tmp/poddy` holds a generated host key. This is fine for a single replica but **not** for HA.
 - **Network policies**: Not included; add your own to restrict pod-to-pod traffic. In particular, restrict access to the SSH Service to trusted networks.
@@ -584,11 +593,11 @@ guidance.
 | Portal pod `CrashLoopBackOff` | `kubectl logs -n poddy-system deploy/poddy` — usually missing token, SSH keys, host key, or an unreachable configured PostgreSQL URL. |
 | SSH "Host key verification failed" | `ssh.existingHostKeySecret` not set and replica restarted; or user's `known_hosts` has old key. |
 | SSH "not authorized for this workspace" | The key's comment is mapped to another owner. Use `user:<owner-identity>` (for example `user:alice@example.com` or `user:token`) or an `admin` key. |
-| SSH "unknown public key" | The key is not in `ssh.authorizedKeys` / the keys Secret. |
+| SSH "unknown public key" | The key is not registered by that user under **SSH keys**, or is not in `ssh.authorizedKeys` / the keys Secret. |
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
 | No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
-| VS Code does nothing or cannot connect | Install the SSH config from the **SSH** dialog, then retry. Cluster mode opens `vscode://` in a new window; the server-side launch endpoint is only available in local editor mode. |
+| VS Code does nothing or cannot connect | Install/update the Poddy VS Code extension (VSIX from `vscode-extension/`), then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
 | **VS Code Web** button is missing | The workspace pod has no `code-server` container. Check that the template declares `browserVSCode` with default `"true"` (or explicitly `"true"`), and that the workspace was not created with `browserVSCode: "false"`. |
 | **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |

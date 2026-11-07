@@ -57,11 +57,14 @@ func (s *Server) loadRBAC(r *http.Request) (rbac.Config, error) {
 }
 
 func (s *Server) isAdmin(id *identity, cfg rbac.Config) bool {
-	if s.RBAC == nil {
+	if id.Method == "none" {
 		return true
 	}
-	if id.Method == "token" || id.Method == "none" {
-		return true
+	if id.Method == "token" {
+		return s.TokenAdmin
+	}
+	if s.RBAC == nil {
+		return false
 	}
 	return cfg.IsAdmin(rbacIdentity(id.User))
 }

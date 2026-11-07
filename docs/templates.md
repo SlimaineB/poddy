@@ -30,20 +30,38 @@ image: ghcr.io/org/poddy-workspace-node:latest  # required
 version: "1.2.0"              # optional; ConfigMap label overrides it
 parameters:                   # optional list
   - name: cpu
+    displayName: CPU
+    type: string              # string (default), number, or boolean/bool
     description: CPU request
     default: "1"
     required: false
+    options:                  # optional; renders a dropdown instead of a free field
+      - label: 1 CPU
+        value: "1"
+      - label: 2 CPUs
+        value: "2"
   - name: memory
     description: Memory request
     default: 2Gi
+    options:
+      - label: 2 GiB
+        value: 2Gi
+      - label: 4 GiB
+        value: 4Gi
   - name: storage
-    description: PVC size (empty = ephemeral)
+    description: PVC size
     default: 10Gi
+    options:
+      - label: Ephemeral (no persistence)
+        value: ""
+      - label: 10 GiB
+        value: 10Gi
   - name: storageClass
     description: StorageClass name (empty = default)
     default: ""
   - name: browserVSCode
     description: Run VS Code in the browser
+    type: boolean
     default: "true"
 links:                        # optional list; rendered on workspace cards
   - name: JetBrains Gateway
@@ -63,6 +81,8 @@ externalAuth:                 # optional; connect external OAuth2 accounts
 **Reserved parameter names**: `name`, `template`. Using them will fail validation.
 
 All parameter values are strings. The portal passes them to the pod template as `.Parameters.<name>`. If a parameter has `required: true` and the user doesn't provide a value, creation fails.
+
+`type` accepts `string` (default), `number`, or `boolean` (alias `bool`). The portal validates `number` and `boolean` values. When `options` is set, the creation form renders a dropdown; each option needs a `label` and a `value`, values must be unique, and `default` must match one of them.
 
 `links` are validated with the template and versioned with it. See [links.md](links.md) for placeholders, icons, and security rules.
 

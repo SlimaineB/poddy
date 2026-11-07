@@ -42,8 +42,9 @@ kubectl -n poddy-system create secret generic poddy-auth \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Generate an SSH key for the bastion. The `user:token` comment binds the key to
-the token identity used by this local setup:
+For SSH/VS Code, you can either add your public key later from the portal's
+**SSH keys** page, or create an administrator-managed key now. The `user:token`
+comment binds this key to the token identity used by this local setup:
 
 ```bash
 ssh-keygen -t ed25519 -N '' -C 'user:token' -f ./poddy_key
@@ -128,14 +129,16 @@ Open <http://127.0.0.1:8080> and sign in with that token.
 Use the buttons on the workspace card:
 
 - **Terminal** opens a browser shell in the workspace user home (`/home/dev`).
-- **SSH** copies a ready-to-use SSH config. It uses the bastion as a
-  `ProxyJump`, so you do not need direct access to the pod.
-- **VS Code** opens Remote-SSH on `/home/dev` in a new window.
+- **VS Code** opens Remote-SSH on `/home/dev` in a new window. In cluster mode
+  the Poddy VS Code extension enrolls a dedicated machine key and writes the
+  SSH config automatically; install the extension once per machine.
+- **SSH** (manual fallback) copies a ready-to-use SSH config. It uses the
+  bastion as a `ProxyJump`, so you do not need direct access to the pod.
 - **VS Code Web** opens the browser editor on `/home/dev` in a new tab when
   browser VS Code is enabled (`browserVSCode`, default `true` for the built-in
   templates).
 
-For the SSH/VS Code path, load the private key once:
+For the manual SSH path only, load the private key once:
 
 ```bash
 ssh-add ./poddy_key
@@ -161,5 +164,5 @@ ssh-add ./poddy_key
 | Workspace stays in `ImagePullBackOff` | GHCR packages are private or not accessible | Make the packages public or add an image pull secret |
 | `pods is forbidden` or namespace errors | Portal points at the wrong namespace | Check `workspaceNamespace` and the RoleBinding in that namespace |
 | SSH connection refused | The SSH port-forward is not running | Start `kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222` |
-| VS Code cannot connect | The key is not loaded or the SSH config was not saved | Run `ssh-add ./poddy_key` and save the config from the **SSH** dialog |
+| VS Code cannot connect | The Poddy extension is not installed, the workspace is still propagating keys, or the SSH fallback was used without saving the config | Install the extension, retry after the workspace is `Running`, or save the config from the **SSH** dialog and run `ssh-add ./poddy_key` |
 | Login fails | Wrong token | Read the token from the `poddy-auth` secret again |

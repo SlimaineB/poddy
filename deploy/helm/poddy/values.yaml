@@ -117,7 +117,13 @@ workspaceState:
 # runtime changes to the ConfigMap, so manage them from the UI or seed them here.
 auth:
   # Shared access token. Optional when oidc.enabled=true.
+  #
+  # The token has a single identity ("token"). It is suitable for local use or
+  # automation, not for a team: enable OIDC for per-user workspaces and SSH.
   token: ""
+  # Treat the shared token as a global administrator. Keep false in
+  # multi-user deployments; a shared admin token can access every workspace.
+  tokenAdmin: false
   # Use an existing Secret instead of creating one. The Secret must live in the
   # release namespace and contain auth.secretKey.
   existingSecret: ""
@@ -193,11 +199,14 @@ ssh:
   # Hostname or IP users connect to. Required when ssh.enabled=true.
   publicHost: ""
   publicPort: 2222
-  # List of SSH public keys authorized to open workspaces through the bastion.
-  # The key comment binds a key to its owner: "alice@example.com" or
-  # "user:alice@example.com". For non-email identities use "user:<identity>"
-  # (for example "user:token"). Use "admin" or "*" for break-glass keys that
-  # may access every workspace. Unmapped keys are denied.
+  # Optional administrator-managed SSH keys. The key comment binds a key to
+  # its owner: "alice@example.com" or "user:alice@example.com". Use "admin" or
+  # "*" for break-glass keys that may access every workspace. Unmapped keys are
+  # denied.
+  #
+  # For a normal team, leave this empty and let users add their own public key
+  # from the portal ("SSH keys"). Self-service keys are bound to the signed-in
+  # OIDC identity and can never be assigned to another user by a comment.
   authorizedKeys: []
   # Legacy escape hatch: allow keys without an owner comment to access every
   # workspace. Keep false in production.

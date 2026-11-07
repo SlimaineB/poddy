@@ -98,10 +98,10 @@ The owner is stored in the pod annotation `poddy.io/owner` (not a label: emails 
 - Other users see only their own workspaces (list, delete, terminal, VS Code).
 - Template owners do **not** automatically see other users' workspaces. Only global admins do.
 - Workspaces created before this feature have no owner annotation. They remain visible to global admins only; non-admins will not see them, and only admin SSH keys can reach them.
-- SSH access follows the same owner: a key commented `alice@example.com` can only reach workspaces owned by `alice@example.com`. For non-email identities use `user:<identity>` (for example `user:token` for token auth). Admin keys (`admin` or `*`) can reach every workspace. This check is enforced by the bastion on every connection, not only by the UI.
+- SSH access follows the same owner. Self-service keys added from **SSH keys** are bound to the signed-in identity server-side. Administrator-managed keys are matched by comment: `alice@example.com` can only reach workspaces owned by `alice@example.com`; for non-email identities use `user:<identity>` (for example `user:token` for token auth). Admin keys (`admin` or `*`) can reach every workspace. This check is enforced by the bastion on every connection, not only by the UI.
 - In local editor mode, the portal marks the SSH keys it manages as admin keys. Cluster deployments run with `-editor=` and do not add local keys.
 
-The shared token and trusted local mode (no token, no OIDC) act as global admins.
+Trusted local mode (no token, no OIDC) acts as a global admin. A shared token has the single identity `token` and is not a global admin unless `auth.tokenAdmin=true`.
 
 ## UI
 

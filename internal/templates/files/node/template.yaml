@@ -4,20 +4,66 @@ description: Node.js 22 workspace with npm, pnpm, Yarn, TypeScript, tsx, and a p
 image: ghcr.io/slimaineb/poddy-workspace-node:latest
 parameters:
   - name: cpu
-    description: CPU request (Kubernetes quantity, e.g. 1)
+    displayName: CPU
+    type: string
+    description: CPU request for the workspace container.
     default: "1"
+    options:
+      - label: 250m (0.25 CPU)
+        value: "250m"
+      - label: 500m (0.5 CPU)
+        value: "500m"
+      - label: 1 CPU
+        value: "1"
+      - label: 2 CPUs
+        value: "2"
+      - label: 4 CPUs
+        value: "4"
   - name: memory
-    description: Memory request (Kubernetes quantity, e.g. 2Gi)
-    default: 2Gi
+    displayName: Memory
+    type: string
+    description: Memory request for the workspace container.
+    default: "2Gi"
+    options:
+      - label: 512 MiB
+        value: 512Mi
+      - label: 1 GiB
+        value: 1Gi
+      - label: 2 GiB
+        value: 2Gi
+      - label: 4 GiB
+        value: 4Gi
+      - label: 8 GiB
+        value: 8Gi
   - name: storage
-    description: Persistent home volume size (empty for ephemeral storage)
-    default: 10Gi
+    displayName: Home storage
+    type: string
+    description: Size of the persistent home volume.
+    default: "10Gi"
+    options:
+      - label: Ephemeral (no persistence)
+        value: ""
+      - label: 5 GiB
+        value: 5Gi
+      - label: 10 GiB
+        value: 10Gi
+      - label: 20 GiB
+        value: 20Gi
+      - label: 50 GiB
+        value: 50Gi
+      - label: 100 GiB
+        value: 100Gi
   - name: storageClass
-    description: StorageClass name (empty for the cluster default)
+    displayName: Storage class
+    type: string
+    description: StorageClass name (empty for the cluster default).
     default: ""
   - name: browserVSCode
-    description: Run VS Code in the browser (true/false)
+    displayName: VS Code in the browser
+    type: boolean
+    description: Run an OpenVSCode Server sidecar and expose it from the workspace card.
     default: "true"
+
 links:
   - name: Node.js docs
     url: https://nodejs.org/docs/latest-v22.x/api/

@@ -31,6 +31,9 @@
         "token": {
           "type": "string"
         },
+        "tokenAdmin": {
+          "type": "boolean"
+        },
         "existingSecret": {
           "type": "string"
         },

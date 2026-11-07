@@ -3,7 +3,7 @@
 poddy supports the OpenID Connect authorization code flow with PKCE. OIDC is optional and can be combined with the shared access token. When OIDC is enabled, the login page shows **Continue with SSO**.
 
 - Sessions are stateless, HMAC-signed cookies. No database is required.
-- The shared token remains valid for API automation and acts as a global admin.
+- The shared token remains valid for API automation. It is not a global admin unless `auth.tokenAdmin=true`.
 - OIDC identities are used by the RBAC model: global admins, template owners, teams, and per-template users. See [rbac.md](rbac.md).
 
 ## Local demo with Dex
@@ -53,9 +53,11 @@ If your k3s context is not named `local`, set `KUBE_CONTEXT`. If the workspace n
 5. `dave@example.com` already has direct access to `go`; `carol@example.com` (frontend) and `erin@example.com` see only `base`.
 6. Sign in as `admin@example.com` or `ops@example.com` to create teams or see every workspace.
 
-In local editor mode the portal authorizes the SSH key it manages as an admin
-key, so the **SSH** and **VS Code** buttons work for workspaces created by any
-demo user.
+Each signed-in user can add their public key under **SSH keys**. The portal
+binds it to their OIDC identity, so the key only reaches their own workspaces.
+Administrator-managed keys are optional. In local editor mode the portal also
+authorizes the SSH key it manages as an admin key, so the **SSH** and **VS Code**
+buttons work for workspaces created by any demo user.
 
 ### Stop
 
@@ -177,4 +179,4 @@ Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empt
 - Use HTTPS for the portal and the provider; the session cookie is `Secure` when TLS is detected.
 - Prefer `oidc.existingSecret` over inline secrets.
 - Set a stable random session key; rotate it to invalidate all sessions.
-- Keep the shared token only for automation; it is a global admin.
+- Keep the shared token only for automation; set `auth.tokenAdmin=true` only when that automation genuinely needs admin access.

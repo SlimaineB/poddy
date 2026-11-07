@@ -274,3 +274,63 @@ func TestLoadSources(t *testing.T) {
 		t.Fatal("expected name mismatch error")
 	}
 }
+
+func TestParameterOptionsAndTypes(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("dynamic.template.yaml", `name: dynamic
+image: example:1
+parameters:
+  - name: size
+    displayName: Workspace size
+    type: string
+    default: small
+    options:
+      - label: Small
+        value: small
+      - label: Large
+        value: large
+  - name: replicas
+    type: number
+    default: "2"
+  - name: enabled
+    type: bool
+    default: "true"
+`)
+	write("dynamic.pod.yaml", "apiVersion: v1\nkind: Pod\nspec:\n  containers:\n    - name: workspace\n      image: example:1\n")
+	catalog, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := catalog.Get("dynamic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Parameters[0].DisplayName != "Workspace size" || tmpl.Parameters[0].Options[1].Label != "Large" {
+		t.Fatalf("parameters = %+v", tmpl.Parameters)
+	}
+	if tmpl.Parameters[2].Type != "boolean" {
+		t.Fatalf("bool type = %q", tmpl.Parameters[2].Type)
+	}
+	params, err := tmpl.Resolve(map[string]string{"size": "large", "replicas": "3", "enabled": "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params["size"] != "large" || params["replicas"] != "3" || params["enabled"] != "false" {
+		t.Fatalf("params = %+v", params)
+	}
+	for name, input := range map[string]map[string]string{
+		"option": {"size": "huge"},
+		"number": {"replicas": "many"},
+		"bool":   {"enabled": "yes"},
+	} {
+		if _, err := tmpl.Resolve(input); err == nil {
+			t.Fatalf("%s: expected validation error", name)
+		}
+	}
+}

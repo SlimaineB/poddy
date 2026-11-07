@@ -1,3 +1,4 @@
 /poddy
 *.test
 /site/
+vscode-extension/*.vsix

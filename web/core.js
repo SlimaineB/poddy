@@ -8,8 +8,34 @@ const state = {
   templates: [],
   teams: [],
   workspaces: [],
+  topology: { totals: {}, users: [] },
   directory: { users: [], groups: [] },
   workspaceQuery: "",
+  workspacePage: 1,
+  workspacePerPage: 12,
+  workspaceTotal: 0,
+  workspacePages: 0,
+  topologyPage: 1,
+  topologyPerPage: 10,
+  userPage: 1,
+  userPerPage: 20,
+  userTotal: 0,
+  userPages: 0,
+  groupPage: 1,
+  groupPerPage: 20,
+  groupTotal: 0,
+  groupPages: 0,
+  teamPage: 1,
+  teamPerPage: 20,
+  teamTotal: 0,
+  teamPages: 0,
+  templatePage: 1,
+  templatePerPage: 20,
+  templateTotal: 0,
+  templatePages: 0,
+  templatePageItems: [],
+  templatePageLoaded: false,
+  topologyActive: false,
   workspaceView: (() => {
     try {
       return localStorage.getItem("poddy.workspaceView") === "list" ? "list" : "cards";
@@ -30,6 +56,7 @@ const state = {
   editingTeam: null,
   externalAuth: [],
   externalAuthEnabled: false,
+  sshKeys: [],
 };
 
 const els = {
@@ -37,13 +64,17 @@ const els = {
   workspaceListWrap: document.getElementById("workspace-list-wrap"),
   workspaceList: document.getElementById("workspace-list"),
   workspaceSearch: document.getElementById("workspace-search"),
-  workspaceViewCards: document.getElementById("workspace-view-cards"),
-  workspaceViewList: document.getElementById("workspace-view-list"),
   empty: document.getElementById("empty"),
   emptyTitle: document.getElementById("empty-title"),
   emptyText: document.getElementById("empty-text"),
   loading: document.getElementById("loading"),
   count: document.getElementById("count"),
+  workspacesPagination: document.getElementById("workspaces-pagination"),
+  topologyPagination: document.getElementById("topology-pagination"),
+  usersPagination: document.getElementById("users-pagination"),
+  groupsPagination: document.getElementById("groups-pagination"),
+  teamsPagination: document.getElementById("teams-pagination"),
+  templatesPagination: document.getElementById("templates-pagination"),
   toasts: document.getElementById("toasts"),
   sshEndpoint: document.getElementById("ssh-endpoint"),
   userChip: document.getElementById("user-chip"),
@@ -82,6 +113,16 @@ const els = {
   manageTemplates: document.getElementById("manage-templates"),
   userRole: document.getElementById("user-role"),
   workspacesView: document.getElementById("workspaces-view"),
+  topologyView: document.getElementById("topology-view"),
+  topologyCount: document.getElementById("topology-count"),
+  topologyLoading: document.getElementById("topology-loading"),
+  topologyEmpty: document.getElementById("topology-empty"),
+  topologyGraph: document.getElementById("topology-graph"),
+  topologyHint: document.getElementById("topology-hint"),
+  topologyFit: document.getElementById("topology-fit"),
+  topologyRelayout: document.getElementById("topology-relayout"),
+  topologyZoomIn: document.getElementById("topology-zoom-in"),
+  topologyZoomOut: document.getElementById("topology-zoom-out"),
   usersView: document.getElementById("users-view"),
   usersBack: document.getElementById("users-back"),
   usersSearch: document.getElementById("users-search"),
@@ -93,6 +134,15 @@ const els = {
   connectionsCount: document.getElementById("connections-count"),
   connectionsList: document.getElementById("connections-list"),
   externalAuthNotice: document.getElementById("external-auth-notice"),
+  sshKeysView: document.getElementById("ssh-keys-view"),
+  sshKeysBack: document.getElementById("ssh-keys-back"),
+  sshKeysCount: document.getElementById("ssh-keys-count"),
+  sshKeysList: document.getElementById("ssh-keys-list"),
+  sshKeyForm: document.getElementById("ssh-key-form"),
+  sshKeyInput: document.getElementById("ssh-key-input"),
+  sshKeyFile: document.getElementById("ssh-key-file"),
+  sshKeySave: document.getElementById("ssh-key-save"),
+  sshKeyError: document.getElementById("ssh-key-error"),
   teamsView: document.getElementById("teams-view"),
   teamsBack: document.getElementById("teams-back"),
   teamsCount: document.getElementById("teams-count"),
@@ -175,6 +225,44 @@ function humanize(name) {
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/^./, (c) => c.toUpperCase());
 }
+function pageURL(path, page, perPage, query = "") {
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  if (query) params.set("q", query);
+  return `${path}${path.includes("?") ? "&" : "?"}${params.toString()}`;
+}
+function renderPagination(container, meta, onPage) {
+  if (!container) return;
+  container.replaceChildren();
+  const page = Number(meta?.page) || 1;
+  const pages = Number(meta?.pages) || 0;
+  if (pages <= 1) {
+    container.hidden = true;
+    return;
+  }
+  container.hidden = false;
+
+  const info = document.createElement("span");
+  info.className = "pagination-info";
+  const total = Number(meta?.total) || 0;
+  info.textContent = meta?.summary || `${total} item${total === 1 ? "" : "s"} · page ${page} of ${pages}`;
+
+  const controls = document.createElement("span");
+  controls.className = "pagination-controls";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "button ghost small";
+  previous.textContent = "Previous";
+  previous.disabled = page <= 1;
+  previous.addEventListener("click", () => onPage(page - 1));
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "button ghost small";
+  next.textContent = "Next";
+  next.disabled = page >= pages;
+  next.addEventListener("click", () => onPage(page + 1));
+  controls.append(previous, next);
+  container.append(info, controls);
+}
 function templateByName(name) {
   return state.templates.find((t) => t.name === name);
 }
@@ -253,22 +341,51 @@ function renderParams() {
 
   for (const parameter of template.parameters || []) {
     const field = document.createElement("div");
-    field.className = "field";
+    field.className = "field param-field";
 
     const label = document.createElement("label");
     label.htmlFor = `param-${parameter.name}`;
-    label.textContent = humanize(parameter.name);
+    label.textContent = parameter.displayName || humanize(parameter.name);
 
-    const input = document.createElement("input");
-    input.id = `param-${parameter.name}`;
-    input.name = parameter.name;
-    input.value = parameter.default || "";
-    input.placeholder = parameter.required ? "Required" : "Optional";
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    if (parameter.required) input.required = true;
+    const type = String(parameter.type || "string").toLowerCase();
+    const options = Array.isArray(parameter.options) ? parameter.options : [];
+    let control;
 
-    field.append(label, input);
+    if (options.length) {
+      control = document.createElement("select");
+      for (const option of options) {
+        const choice = document.createElement("option");
+        choice.value = String(option.value ?? "");
+        choice.textContent = option.label || option.name || option.value || "Default";
+        if (option.description) choice.title = option.description;
+        control.append(choice);
+      }
+      control.value = String(parameter.default ?? "");
+      if (control.selectedIndex < 0) control.selectedIndex = 0;
+    } else if (type === "boolean" || type === "bool") {
+      control = document.createElement("select");
+      for (const [value, text] of [["true", "Enabled"], ["false", "Disabled"]]) {
+        const choice = document.createElement("option");
+        choice.value = value;
+        choice.textContent = text;
+        control.append(choice);
+      }
+      control.value = String(parameter.default || "false") === "false" ? "false" : "true";
+    } else {
+      control = document.createElement("input");
+      control.type = type === "number" ? "number" : "text";
+      if (type === "number") control.step = "any";
+      control.value = parameter.default || "";
+      control.placeholder = parameter.required ? "Required" : "Optional";
+      control.autocomplete = "off";
+      control.spellcheck = false;
+    }
+
+    control.id = `param-${parameter.name}`;
+    control.name = parameter.name;
+    if (parameter.required) control.required = true;
+
+    field.append(label, control);
     if (parameter.description) {
       const hint = document.createElement("p");
       hint.className = "hint";
@@ -278,6 +395,7 @@ function renderParams() {
     els.params.append(field);
   }
 }
+
 function closeDialog(button) {
   button.closest("dialog")?.close();
 }
@@ -484,7 +602,7 @@ async function loadMe() {
     els.logoutForm.hidden = false;
     els.userName.textContent = me.username;
     els.userAvatar.textContent = me.username.slice(0, 1).toUpperCase();
-    if (me.email) els.userChip.title = me.email;
+    if (me.email) els.userChip.title = `Account settings — ${me.email}`;
 
     const owned = Array.isArray(me.ownedTemplates) ? me.ownedTemplates : [];
     els.userRole.hidden = true;
@@ -511,12 +629,14 @@ async function loadMe() {
 }
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
+  els.topologyView.hidden = name !== "topology";
   els.connectionsView.hidden = name !== "connections";
+  els.sshKeysView.hidden = name !== "ssh-keys";
   els.usersView.hidden = name !== "users";
   els.teamsView.hidden = name !== "teams";
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
-  const active = name === "workspaces" ? els.manageWorkspaces
+  const active = name === "workspaces" || name === "topology" ? els.manageWorkspaces
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams

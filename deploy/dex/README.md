@@ -35,7 +35,7 @@ The script starts Dex, waits for discovery, applies `rbac.yaml`, builds the port
 - issuer `http://127.0.0.1:5556/dex`
 - client `poddy` / `poddy-secret`
 - redirect `http://127.0.0.1:8090/oidc/callback`
-- shared token `secret` (still a global admin)
+- shared token `secret` (available for API automation; not a global admin unless `-token-admin` is set)
 
 Open `http://127.0.0.1:8090`, choose **Continue with SSO**, and use the users above.
 

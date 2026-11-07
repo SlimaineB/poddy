@@ -52,6 +52,7 @@ spec:
             - -editor=
             - -ssh-keys-file=/etc/poddy/authorized_keys
             - -ssh-allow-unmapped-keys={{ .Values.ssh.allowUnmappedKeys }}
+            - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
             {{- if .Values.ssh.existingHostKeySecret }}
             - -ssh-host-key=/etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
             {{- else }}

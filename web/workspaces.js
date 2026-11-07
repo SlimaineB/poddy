@@ -87,7 +87,7 @@ function renderWorkspaceActions(workspace) {
   const running = workspace.phase === "Running";
 
   if (!stopped) {
-    if (state.config.localVSCode || state.config.ssh) {
+    if (state.config.ssh || state.config.localVSCode) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "button small vscode";
@@ -98,13 +98,13 @@ function renderWorkspaceActions(workspace) {
       } else if (state.config.localVSCode) {
         button.title = "Open VS Code on the portal machine";
       } else {
-        button.title = "Open Remote-SSH; requires the SSH config from the SSH button";
+        button.title = "Open VS Code Desktop (installs the Poddy extension once)";
       }
       button.addEventListener("click", () => {
         if (state.config.localVSCode) {
           launchVSCode(workspace, button);
         } else {
-          window.location.href = vscodeURL(workspace.name);
+          launchDesktop(workspace, button);
         }
       });
       actions.append(button);
@@ -214,21 +214,33 @@ function filteredWorkspaces() {
 }
 
 function syncWorkspaceViewButtons() {
-  const list = state.workspaceView === "list";
-  els.workspaceViewCards.classList.toggle("active", !list);
-  els.workspaceViewList.classList.toggle("active", list);
-  els.workspaceViewCards.setAttribute("aria-pressed", String(!list));
-  els.workspaceViewList.setAttribute("aria-pressed", String(list));
+  const active = state.topologyActive ? "topology" : state.workspaceView;
+  for (const button of document.querySelectorAll("[data-workspace-view]")) {
+    const selected = button.dataset.workspaceView === active;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
 }
 
 function setWorkspaceView(view) {
+  if (view === "topology") {
+    state.topologyActive = true;
+    if (typeof openTopology === "function") openTopology();
+    return;
+  }
+  state.topologyActive = false;
   state.workspaceView = view === "list" ? "list" : "cards";
   try {
     localStorage.setItem("poddy.workspaceView", state.workspaceView);
   } catch {
     // ignore storage failures
   }
+  showView("workspaces");
   renderWorkspaces();
+}
+
+for (const button of document.querySelectorAll("[data-workspace-view]")) {
+  button.addEventListener("click", () => setWorkspaceView(button.dataset.workspaceView));
 }
 
 function renderWorkspaces() {
@@ -236,10 +248,10 @@ function renderWorkspaces() {
   syncWorkspaceViewButtons();
 
   const workspaces = filteredWorkspaces();
-  const total = state.workspaces.length;
+  const total = state.workspaceTotal || state.workspaces.length;
   const query = state.workspaceQuery.trim();
   els.count.textContent = query
-    ? `${workspaces.length} of ${total} workspace${total === 1 ? "" : "s"}`
+    ? `${total} matching workspace${total === 1 ? "" : "s"}`
     : `${total} workspace${total === 1 ? "" : "s"}`;
 
   els.grid.replaceChildren();
@@ -329,11 +341,32 @@ async function load({ silent = false } = {}) {
   if (!silent && !state.loaded) els.loading.hidden = false;
 
   try {
-    const workspaces = await api("/api/workspaces");
-    state.workspaces = Array.isArray(workspaces) ? workspaces : [];
+    const data = await api(pageURL("/api/workspaces", state.workspacePage, state.workspacePerPage, state.workspaceQuery.trim()));
+    if (Array.isArray(data)) {
+      state.workspaces = data;
+      state.workspaceTotal = data.length;
+      state.workspacePages = data.length ? 1 : 0;
+      state.workspacePage = 1;
+    } else {
+      state.workspaces = Array.isArray(data.items) ? data.items : [];
+      state.workspaceTotal = Number(data.total) || 0;
+      state.workspacePages = Number(data.pages) || 0;
+      state.workspacePage = Number(data.page) || 1;
+      state.workspacePerPage = Number(data.perPage) || state.workspacePerPage;
+    }
     state.loaded = true;
     state.pollError = false;
     renderWorkspaces();
+    renderPagination(els.workspacesPagination, {
+      page: state.workspacePage,
+      pages: state.workspacePages,
+      total: state.workspaceTotal,
+      summary: `${state.workspaceTotal} workspace${state.workspaceTotal === 1 ? "" : "s"}`,
+    }, (page) => {
+      state.workspacePage = page;
+      load({ silent: true });
+    });
+    if (typeof refreshTopologyIfVisible === "function") refreshTopologyIfVisible();
   } catch (err) {
     if (!silent || !state.pollError) {
       toast(err.message || "Failed to load workspaces.");
@@ -639,6 +672,25 @@ function confirmDelete(workspace) {
   els.confirmText.textContent = `Delete "${workspace.name}"? This removes the pod and its persistent volume.`;
   els.confirmDialog.showModal();
 }
+async function launchDesktop(workspace, element) {
+  const original = element.innerHTML;
+  element.disabled = true;
+  element.setAttribute("aria-busy", "true");
+  element.innerHTML = `<span class="spinner small"></span>Opening`;
+
+  try {
+    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/desktop`, { method: "POST" });
+    if (!data || !data.url) throw new Error("VS Code launch is not configured");
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || "Failed to open VS Code Desktop.");
+  } finally {
+    element.disabled = false;
+    element.removeAttribute("aria-busy");
+    element.innerHTML = original;
+  }
+}
+
 async function launchVSCode(workspace, element) {
   const original = element.innerHTML;
   element.disabled = true;

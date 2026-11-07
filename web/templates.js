@@ -1,30 +1,64 @@
 "use strict";
 
-async function loadTemplates() {
-  const templates = await api("/api/templates");
-  state.templates = Array.isArray(templates) ? templates : [];
-  renderTemplateOptions();
+async function loadTemplates({ paginated = false, page = 1 } = {}) {
+  const path = paginated
+    ? pageURL("/api/templates?manageable=1", page, state.templatePerPage, state.templateQuery)
+    : "/api/templates";
+  const data = await api(path);
+  if (Array.isArray(data)) {
+    state.templates = data;
+    state.templatePageItems = [];
+    state.templatePageLoaded = false;
+    state.templateTotal = data.length;
+    state.templatePages = data.length ? 1 : 0;
+    state.templatePage = 1;
+    renderTemplateOptions();
+  } else {
+    state.templatePageItems = Array.isArray(data.items) ? data.items : [];
+    state.templatePageLoaded = true;
+    state.templateTotal = Number(data.total) || 0;
+    state.templatePages = Number(data.pages) || 0;
+    state.templatePage = Number(data.page) || 1;
+    state.templatePerPage = Number(data.perPage) || state.templatePerPage;
+  }
   renderTemplateManager();
+}
+function renderTemplatesPagination() {
+  if (!state.templatePageLoaded) {
+    els.templatesPagination.hidden = true;
+    return;
+  }
+  renderPagination(els.templatesPagination, {
+    page: state.templatePage,
+    pages: state.templatePages,
+    total: state.templateTotal,
+    summary: `${state.templateTotal} template${state.templateTotal === 1 ? "" : "s"}`,
+  }, (page) => {
+    state.templatePage = page;
+    loadTemplates({ paginated: true, page }).then(renderTemplatesPagination);
+  });
 }
 function renderTemplateManager() {
   if (!els.templatesPageList) return;
   const query = state.templateQuery.trim().toLowerCase();
-  const manageable = state.templates.filter((template) => template.canManage);
+  const source = state.templatePageLoaded ? state.templatePageItems : state.templates;
+  const manageable = source.filter((template) => template.canManage);
   const filtered = manageable.filter((template) => {
     if (!query) return true;
     return [template.name, template.displayName, template.description, template.image, template.version]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 
-  els.templatesCount.textContent = `${filtered.length} template${filtered.length === 1 ? "" : "s"}`;
+  const total = state.templatePageLoaded ? state.templateTotal : filtered.length;
+  els.templatesCount.textContent = `${total} template${total === 1 ? "" : "s"}`;
   els.templatesPageList.replaceChildren();
   if (!filtered.length) {
     els.templatesPageList.append(emptyInline(query ? "No templates match your search." : "No templates to manage."));
+    renderTemplatesPagination();
     return;
   }
 
-  const limit = 200;
-  for (const template of filtered.slice(0, limit)) {
+  for (const template of filtered) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "template-page-item";
@@ -76,17 +110,15 @@ function renderTemplateManager() {
     els.templatesPageList.append(item);
   }
 
-  if (filtered.length > limit) {
-    els.templatesPageList.append(emptyInline(`Showing the first ${limit} of ${filtered.length} templates. Refine your search to narrow the list.`));
-  }
+  renderTemplatesPagination();
 }
 async function openTemplates() {
   try {
-    await loadTemplates();
     state.templateQuery = "";
     els.templatesSearch.value = "";
+    await loadTemplates({ paginated: true, page: 1 });
     showView("templates");
-    renderTemplateManager();
+    renderTemplatesPagination();
   } catch (err) {
     toast(err.message || "Failed to load templates.");
   }
@@ -153,7 +185,7 @@ async function saveAccess(event) {
     });
     toast(`Access for ${template.displayName || template.name} saved.`, "success");
     await loadMe();
-    await loadTemplates();
+    await loadTemplates({ paginated: true, page: state.templatePage });
   } catch (err) {
     toast(err.message || "Failed to save template access.");
   } finally {

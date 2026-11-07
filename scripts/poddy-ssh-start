@@ -17,8 +17,32 @@ for file in .bashrc .profile .bash_logout; do
 done
 chown dev:dev /home/dev/.bashrc /home/dev/.profile /home/dev/.bash_logout 2>/dev/null || true
 
-printf '%s\n' "$SSH_AUTHORIZED_KEY" > /home/dev/.ssh/authorized_keys
+# The portal mounts an authoritative authorized_keys Secret at
+# /etc/poddy/ssh/authorized_keys. sshd StrictModes rejects the Secret volume
+# directory (kubelet may create it group/world writable), so copy the file into
+# the user's home with safe ownership and keep it in sync when the Secret
+# changes. Keep the legacy env-based file for deployments without the mount.
+install_keys() {
+  cp /etc/poddy/ssh/authorized_keys /home/dev/.ssh/authorized_keys.new
+  chown dev:dev /home/dev/.ssh/authorized_keys.new
+  chmod 600 /home/dev/.ssh/authorized_keys.new
+  mv /home/dev/.ssh/authorized_keys.new /home/dev/.ssh/authorized_keys
+}
+
+if [ -f /etc/poddy/ssh/authorized_keys ]; then
+  install_keys
+  (
+    while sleep 2; do
+      if ! cmp -s /etc/poddy/ssh/authorized_keys /home/dev/.ssh/authorized_keys; then
+        install_keys
+      fi
+    done
+  ) &
+else
+  printf '%s\n' "$SSH_AUTHORIZED_KEY" > /home/dev/.ssh/authorized_keys
+  chown dev:dev /home/dev/.ssh/authorized_keys
+  chmod 600 /home/dev/.ssh/authorized_keys
+fi
 chown -R dev:dev /home/dev/.ssh
 chmod 700 /home/dev/.ssh
-chmod 600 /home/dev/.ssh/authorized_keys
 exec /usr/sbin/sshd -D -e

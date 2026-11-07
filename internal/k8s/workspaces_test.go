@@ -440,6 +440,24 @@ func TestCreateWorkspaceUsesOwnerSSHKeys(t *testing.T) {
 	if strings.Contains(value, bob) {
 		t.Fatalf("bob key injected into alice workspace: %q", value)
 	}
+
+	secret, err := m.Client.CoreV1().Secrets("poddy").Get(context.Background(), "poddy-alice-ws-ssh-keys", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized := string(secret.Data["authorized_keys"])
+	if !strings.Contains(authorized, alice) || !strings.Contains(authorized, admin) || strings.Contains(authorized, bob) {
+		t.Fatalf("secret authorized_keys = %q", authorized)
+	}
+	mounted := false
+	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
+		if mount.Name == sshKeysVolumeName && mount.MountPath == sshKeysMountPath {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Fatalf("SSH keys Secret is not mounted: %+v", pod.Spec.Containers[0].VolumeMounts)
+	}
 }
 
 func TestSnapshotRunningAndStopped(t *testing.T) {
@@ -453,7 +471,7 @@ func TestSnapshotRunningAndStopped(t *testing.T) {
 	if _, err := m.Create(ctx, CreateRequest{
 		Name:       "snap",
 		Owner:      "alice@example.com",
-		Parameters: map[string]string{"storage": "7Gi"},
+		Parameters: map[string]string{"storage": "10Gi"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +480,7 @@ func TestSnapshotRunningAndStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if running.DesiredState != "running" || running.TemplateVersion != tmpl.Version || running.Parameters["storage"] != "7Gi" {
+	if running.DesiredState != "running" || running.TemplateVersion != tmpl.Version || running.Parameters["storage"] != "10Gi" {
 		t.Fatalf("running snapshot = %+v", running)
 	}
 

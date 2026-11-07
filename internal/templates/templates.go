@@ -33,11 +33,21 @@ var (
 	envName       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
+type ParameterOption struct {
+	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
+	Label       string `json:"label,omitempty" yaml:"label,omitempty"`
+	Value       string `json:"value" yaml:"value"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
 type Parameter struct {
-	Name        string `json:"name" yaml:"name"`
-	Description string `json:"description" yaml:"description"`
-	Default     string `json:"default" yaml:"default"`
-	Required    bool   `json:"required" yaml:"required"`
+	Name        string            `json:"name" yaml:"name"`
+	DisplayName string            `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Description string            `json:"description" yaml:"description"`
+	Type        string            `json:"type" yaml:"type"`
+	Default     string            `json:"default" yaml:"default"`
+	Required    bool              `json:"required" yaml:"required"`
+	Options     []ParameterOption `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
 type ExternalAuth struct {
@@ -203,6 +213,7 @@ func (c *Catalog) addTemplate(name string, data, pod []byte, version string) err
 		t.DisplayName = t.Name
 	}
 	t.Links = links.Normalize(t.Links)
+	t.normalizeParameters()
 	if err := t.validate(); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
@@ -271,6 +282,31 @@ func (c *Catalog) Snapshot() []Template {
 	return out
 }
 
+func (t *Template) normalizeParameters() {
+	for i := range t.Parameters {
+		parameter := &t.Parameters[i]
+		parameter.Type = strings.ToLower(strings.TrimSpace(parameter.Type))
+		switch parameter.Type {
+		case "":
+			parameter.Type = "string"
+		case "bool":
+			parameter.Type = "boolean"
+		}
+		for j := range parameter.Options {
+			option := &parameter.Options[j]
+			if option.Label == "" {
+				option.Label = option.Name
+			}
+			if option.Name == "" {
+				option.Name = option.Label
+			}
+			if option.Label == "" && option.Value != "" {
+				option.Label = option.Value
+			}
+		}
+	}
+}
+
 func (t *Template) validate() error {
 	if t.Image == "" {
 		return fmt.Errorf("image is required")
@@ -310,6 +346,58 @@ func (t *Template) validate() error {
 			return fmt.Errorf("duplicate parameter %q", p.Name)
 		}
 		seen[p.Name] = true
+		switch p.Type {
+		case "string", "number", "boolean":
+		default:
+			return fmt.Errorf("parameter %q has invalid type %q", p.Name, p.Type)
+		}
+		options := map[string]bool{}
+		for _, option := range p.Options {
+			if option.Label == "" {
+				return fmt.Errorf("parameter %q has an option without a label", p.Name)
+			}
+			if options[option.Value] {
+				return fmt.Errorf("parameter %q has duplicate option value %q", p.Name, option.Value)
+			}
+			options[option.Value] = true
+		}
+		if len(p.Options) > 0 {
+			if !options[p.Default] {
+				return fmt.Errorf("parameter %q default %q is not one of its options", p.Name, p.Default)
+			}
+			continue
+		}
+		if p.Default != "" {
+			if err := validateParameterValue(p, p.Default); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateParameterValue(parameter Parameter, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len(parameter.Options) > 0 {
+		for _, option := range parameter.Options {
+			if option.Value == value {
+				return nil
+			}
+		}
+		return fmt.Errorf("parameter %q must be one of its options", parameter.Name)
+	}
+	switch parameter.Type {
+	case "number":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return fmt.Errorf("parameter %q must be a number", parameter.Name)
+		}
+	case "boolean":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("parameter %q must be true or false", parameter.Name)
+		}
 	}
 	return nil
 }
@@ -362,8 +450,12 @@ func (t *Template) Resolve(input map[string]string) (map[string]string, error) {
 		params[name] = value
 	}
 	for _, p := range t.Parameters {
-		if p.Required && strings.TrimSpace(params[p.Name]) == "" {
+		value := strings.TrimSpace(params[p.Name])
+		if p.Required && value == "" {
 			return nil, fmt.Errorf("parameter %q is required", p.Name)
+		}
+		if err := validateParameterValue(p, value); err != nil {
+			return nil, err
 		}
 	}
 	return params, nil

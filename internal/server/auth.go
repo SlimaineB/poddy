@@ -75,7 +75,7 @@ func (s *Server) cookie(token string, secure bool) *http.Cookie {
 }
 
 func isPublic(path string) bool {
-	if path == "/healthz" || path == "/login" || path == "/logout" ||
+	if path == "/healthz" || path == "/login" || path == "/logout" || path == "/api/desktop/enroll" ||
 		strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/oidc/") {
 		return true
 	}

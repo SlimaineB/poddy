@@ -13,6 +13,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/portforward"]
     verbs: ["get", "create"]
+  # Self-service SSH public keys are stored in a ConfigMap and reloaded while
+  # the bastion is running.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

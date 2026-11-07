@@ -23,6 +23,9 @@ async function init() {
   }
 
   await load();
+  if (new URLSearchParams(location.search).get("view") === "topology") {
+    await openTopology();
+  }
   setInterval(() => {
     if (!document.hidden) load({ silent: true });
   }, 5000);
@@ -98,15 +101,17 @@ els.createForm.addEventListener("submit", async (event) => {
   }
 });
 
+let workspaceSearchTimer = 0;
 els.workspaceSearch.addEventListener("input", () => {
   state.workspaceQuery = els.workspaceSearch.value;
-  renderWorkspaces();
+  state.workspacePage = 1;
+  clearTimeout(workspaceSearchTimer);
+  workspaceSearchTimer = setTimeout(() => load({ silent: true }), 250);
 });
-els.workspaceViewCards.addEventListener("click", () => setWorkspaceView("cards"));
-els.workspaceViewList.addEventListener("click", () => setWorkspaceView("list"));
-
 els.manageWorkspaces.addEventListener("click", () => {
+  state.topologyActive = false;
   showView("workspaces");
+  syncWorkspaceViewButtons();
   load({ silent: true });
 });
 els.manageConnections.addEventListener("click", openConnections);
@@ -118,9 +123,18 @@ els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
 els.usersBack.addEventListener("click", () => showView("workspaces"));
 els.teamsBack.addEventListener("click", () => showView("workspaces"));
+let userSearchTimer = 0;
 els.usersSearch.addEventListener("input", () => {
   state.userQuery = els.usersSearch.value;
-  renderUsers();
+  state.userPage = 1;
+  state.groupPage = 1;
+  clearTimeout(userSearchTimer);
+  userSearchTimer = setTimeout(async () => {
+    await loadDirectory({ paginated: true, query: state.userQuery, page: 1, groupPage: 1 });
+    renderUsers();
+    renderUsersPagination();
+    renderGroupsPagination();
+  }, 250);
 });
 els.templateAccessForm.addEventListener("submit", saveAccess);
 
@@ -129,9 +143,15 @@ els.templateDetailBack.addEventListener("click", () => {
   showView("templates");
   renderTemplateManager();
 });
+let templateSearchTimer = 0;
 els.templatesSearch.addEventListener("input", () => {
   state.templateQuery = els.templatesSearch.value;
-  renderTemplateManager();
+  state.templatePage = 1;
+  clearTimeout(templateSearchTimer);
+  templateSearchTimer = setTimeout(async () => {
+    await loadTemplates({ paginated: true, page: 1 });
+    renderTemplatesPagination();
+  }, 250);
 });
 
 els.copySSH.addEventListener("click", copySSHConfig);

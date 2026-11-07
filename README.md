@@ -6,13 +6,13 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 
 ## Features
 
-- **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs; browser terminal (`xterm.js`).
+- **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs; browser terminal (`xterm.js`); a topology view grouping users, their workspaces, and attached PVC/PV storage.
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC**: global admins, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, and templates each have a dedicated page; data is stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
-- **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Keys are bound to workspace owners; users only need an SSH key.
-- **VS Code launch**: One-click opens Remote-SSH (`vscode://`) in a new window from the workspace card. In local editor mode the portal can also launch Windows VS Code directly, write `~/.ssh/config`, and copy the portal key. Workspaces with browser VS Code enabled (the built-in default) also expose **VS Code Web** in a new browser tab.
+- **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
+- **VS Code launch**: Click **VS Code** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy VS Code extension (installed once) enrolls the machine key, writes the SSH config, and opens `vscode://` without manual setup. In local editor mode the portal launches Windows VS Code directly. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap.
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, and security context.
@@ -106,13 +106,14 @@ Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set 
 
 ### 6. Connect
 - **Terminal**: Click the terminal icon for a browser shell in the workspace user home (`/home/dev`).
+- **SSH keys**: The **VS Code** button enrolls a dedicated `~/.ssh/poddy_<workspace>_ed25519` key automatically through the Poddy extension. You can also open **SSH keys** in the top bar and add any public key manually; keys are bound to your account and work for running workspaces (allow up to a minute for the Secret to reach the pod).
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
-- **VS Code**: Click **VS Code** to open Remote-SSH on the workspace user's home (`/home/dev`) in a new window.
+- **VS Code**: Click **VS Code** to open Remote-SSH on `/home/dev` in a new window. The first click on a machine requires installing the Poddy extension once (VSIX in `vscode-extension/`, or publish it to your marketplace); afterwards the flow is one click and needs no SSH setup.
 - **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
 - **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
 
-Load the SSH key once for SSH/VS Code:
+If you used an administrator-managed key instead, load it once:
 ```bash
 ssh-add ./poddy_key
 ```
@@ -254,7 +255,7 @@ Roles are stored in the `poddy-rbac` ConfigMap in the workspace namespace:
 - **Teams** group users; a team can be assigned to any number of templates.
 - **Regular users** see their own workspaces and the templates assigned to them.
 
-A template without an access entry is public. Workspace ownership is stored in the `poddy.io/owner` annotation. The shared token and trusted local mode act as global admins. See [docs/rbac.md](docs/rbac.md).
+A template without an access entry is public. Workspace ownership is stored in the `poddy.io/owner` annotation. Trusted local mode (no token and no OIDC) is a global admin. A shared token has one identity and is not admin unless `auth.tokenAdmin=true`. See [docs/rbac.md](docs/rbac.md).
 
 ## Template links
 
@@ -262,9 +263,9 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 
 ## Security notes
 
-- With a **shared token**, anyone holding it is a **global admin** and can create/delete workspaces and exec/port-forward. Prefer OIDC for team deployments; keep the token only for automation.
-- **SSH keys are scoped to owners.** The comment on an authorized key maps it to a workspace owner: `alice@example.com` or `user:alice@example.com`. For non-email identities use the `user:` prefix (for example `user:token` for token auth). The bastion rejects connections to workspaces owned by anyone else. Keys commented `admin` or `*` are break-glass keys with access to every workspace. Keys without a recognized comment are denied.
-- Workspace pods receive only the owner's key plus admin keys in `SSH_AUTHORIZED_KEY`; they no longer receive every global key.
+- With a **shared token**, everyone shares the same identity (`token`) and sees the same workspaces. The token is not a global admin by default; set `auth.tokenAdmin=true` only for trusted automation or single-operator deployments. Prefer OIDC for teams.
+- **SSH keys are scoped to owners.** The preferred flow is **SSH keys** in the portal: the server binds the key to the signed-in identity, and the key comment is ignored. Administrator-managed keys in `ssh.authorizedKeys` are bound by their comment (`alice@example.com` or `user:alice@example.com`); `admin` or `*` are break-glass keys. The bastion rejects connections to workspaces owned by anyone else.
+- Workspace pods receive only their owner's keys plus admin keys, through a read-only per-workspace Secret mounted at `/etc/poddy/ssh/authorized_keys`; they no longer receive every global key.
 - `ssh.allowUnmappedKeys: true` restores the legacy shared-gateway behavior (any key can reach any workspace). It is disabled by default and enabled automatically only in trusted local mode with no token and no OIDC.
 - In local editor mode, the portal marks the SSH keys it manages as admin keys so local SSH/VS Code keeps working with token or OIDC auth. Cluster deployments run with `-editor=` and do not add local keys.
 - Template access limits who can create workspaces from a template, not who can SSH into an existing workspace. SSH owner checks cover that separately.

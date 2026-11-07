@@ -40,6 +40,7 @@ API and only needs pod read access plus port-forward.
 | RBAC store | Admins, teams, and template access | ConfigMap |
 | Workspace state | Rendered specs of stopped workspaces | ConfigMap |
 | User directory | OIDC identities seen by the portal | ConfigMap |
+| Self-service SSH keys | Public keys bound to signed-in identities | ConfigMap `poddy-user-ssh-keys` |
 | External auth store | Encrypted OAuth2 tokens per user and provider | Secret |
 | Metadata mirror (optional) | Durable copy of control-plane metadata and append-only audit events | External PostgreSQL |
 
@@ -76,11 +77,16 @@ API and only needs pod read access plus port-forward.
 
 ### SSH and VS Code
 
-1. The user connects to the `poddy-bastion` Service with an SSH key.
-2. The key comment maps the key to an owner (`alice@example.com` or
-   `user:alice`).
-3. The bastion checks that the owner matches the target workspace.
-4. It port-forwards to the pod's port 22 through the Kubernetes API.
+1. The user adds a public key under **SSH keys**, or an administrator puts an
+   admin-managed key in `ssh.authorizedKeys`.
+2. Self-service keys are bound to the authenticated identity server-side.
+   Administrator-managed keys are mapped to an owner by their comment
+   (`alice@example.com` or `user:alice`).
+3. The user connects to the `poddy-bastion` Service. The bastion checks that
+   the key's owner matches the target workspace.
+4. It port-forwards to the pod's port 22 through the Kubernetes API. Workspace
+   pods receive their owner's keys through a read-only Secret mounted at
+   `/etc/poddy/ssh/authorized_keys`.
 5. If PostgreSQL is enabled, the bastion records `ssh.connect`.
 6. VS Code connects through `ProxyJump` using the same bastion.
 

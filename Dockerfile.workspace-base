@@ -8,7 +8,7 @@ RUN apt-get update \
  && mkdir -p /run/sshd /home/dev/.ssh /workspace \
  && chown -R dev:dev /home/dev /workspace \
  && chmod 700 /home/dev/.ssh \
- && printf 'PasswordAuthentication no\nPermitRootLogin no\nUsePAM no\n' >> /etc/ssh/sshd_config
+ && printf 'PasswordAuthentication no\nPermitRootLogin no\nUsePAM no\nAuthorizedKeysFile .ssh/authorized_keys\n' >> /etc/ssh/sshd_config
 
 COPY scripts/poddy-ssh-start /usr/local/bin/poddy-ssh-start
 COPY scripts/poddy-git-askpass /usr/local/bin/poddy-git-askpass

@@ -99,9 +99,59 @@ func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	userList := sortedKeys(users)
+	groupList := sortedKeys(groups)
+	query := searchQuery(r)
+	if query != "" {
+		filteredUsers := make([]string, 0, len(userList))
+		for _, user := range userList {
+			if matchesSearch(query, user) {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		userList = filteredUsers
+		filteredGroups := make([]string, 0, len(groupList))
+		for _, group := range groupList {
+			if matchesSearch(query, group) {
+				filteredGroups = append(filteredGroups, group)
+			}
+		}
+		groupList = filteredGroups
+	}
+	if !pagedRequest(r) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"users":  userList,
+			"groups": groupList,
+		})
+		return
+	}
+	page, perPage := pageRequest(r)
+	groupPage, groupPerPage := pageFromRequest(r, "group_page", "group_per_page")
+	pages := pageCount(len(userList), perPage)
+	if pages > 0 && page > pages {
+		page = pages
+	}
+	if page < 1 {
+		page = 1
+	}
+	groupPages := pageCount(len(groupList), groupPerPage)
+	if groupPages > 0 && groupPage > groupPages {
+		groupPage = groupPages
+	}
+	if groupPage < 1 {
+		groupPage = 1
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"users":  sortedKeys(users),
-		"groups": sortedKeys(groups),
+		"users":        pageSlice(userList, page, perPage),
+		"groups":       pageSlice(groupList, groupPage, groupPerPage),
+		"totalUsers":   len(userList),
+		"totalGroups":  len(groupList),
+		"page":         page,
+		"perPage":      perPage,
+		"pages":        pages,
+		"groupPage":    groupPage,
+		"groupPerPage": groupPerPage,
+		"groupPages":   groupPages,
 	})
 }
 

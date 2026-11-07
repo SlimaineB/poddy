@@ -69,7 +69,7 @@ name (without the leading `v`) is used.
 | `auth.token` or `auth.existingSecret` or `oidc.enabled` | Authentication is required (token and/or OIDC). |
 | `ssh.enabled` | Enable the bastion and UI SSH metadata (default `true`). |
 | `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
-| `ssh.authorizedKeys` or `ssh.existingKeysSecret` | **Required** when SSH enabled. Public keys allowed through the bastion. The key comment binds it to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token` for non-email identities) or marks it admin (`admin`, `*`). |
+| `ssh.authorizedKeys` or `ssh.existingKeysSecret` | Optional administrator-managed SSH keys. Teams normally add their own key under **SSH keys** in the portal. The comment binds an administrator-managed key to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token`) or marks it admin (`admin`, `*`). |
 | `ssh.existingHostKeySecret` | **Required** when `bastion.replicaCount > 1`. Secret with private host key. |
 
 ## Key values
@@ -89,6 +89,7 @@ name (without the leading `v`) is used.
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | ConfigMap for stopped workspace specs. |
 | `auth.existingSecret` | `""` | Use existing Secret for token. |
+| `auth.tokenAdmin` | `false` | Treat the shared token as a global admin. Keep false in multi-user deployments. |
 | `auth.secretKey` | `token` | Key in the token Secret. |
 | `oidc.enabled` | `false` | Enable OIDC / SSO login. |
 | `oidc.issuer` | `""` | OIDC issuer URL. Required when enabled. |
@@ -207,7 +208,7 @@ kubectl create secret generic poddy-oidc \
   -n poddy-system
 ```
 
-Register `https://poddy.example.com/oidc/callback` as the provider redirect URI. The login page shows **Continue with SSO**; the shared token (if configured) remains available for API automation and is a global admin.
+Register `https://poddy.example.com/oidc/callback` as the provider redirect URI. The login page shows **Continue with SSO**; the shared token (if configured) remains available for API automation and is not a global admin unless `auth.tokenAdmin=true`.
 
 See [docs/oidc.md](../../../docs/oidc.md) for claims, groups, HA sessions, and troubleshooting. A local Dex demo is in [deploy/dex](../../../deploy/dex).
 

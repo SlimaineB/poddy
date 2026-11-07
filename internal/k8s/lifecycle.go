@@ -119,6 +119,9 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 	}
 
 	pod := m.podFromState(state)
+	if err := m.applySSHKeys(ctx, pod, name, state.Owner); err != nil {
+		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
+	}
 	var requirements []templates.ExternalAuth
 	if m.Templates != nil && state.Template != "" {
 		if tmpl, tmplErr := m.Templates.Get(state.Template); tmplErr == nil {

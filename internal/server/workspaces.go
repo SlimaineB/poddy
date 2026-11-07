@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +37,25 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	query := searchQuery(r)
+	if query != "" {
+		filtered := make([]k8s.Workspace, 0, len(list))
+		for _, workspace := range list {
+			if matchesSearch(query, workspace.Name, workspace.Template, workspace.Owner, workspace.Phase, workspace.Image) {
+				filtered = append(filtered, workspace)
+			}
+		}
+		list = filtered
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name)
+	})
+	if !pagedRequest(r) {
+		writeJSON(w, http.StatusOK, list)
+		return
+	}
+	page, perPage := pageRequest(r)
+	writeJSON(w, http.StatusOK, paginateResult(list, page, perPage))
 }
 
 func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {

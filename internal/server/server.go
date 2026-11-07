@@ -13,6 +13,8 @@ import (
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
 	"poddy/internal/rbac"
+	"poddy/internal/sshkeys"
+	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
 )
 
@@ -22,6 +24,7 @@ type Server struct {
 	Workspaces *k8s.Manager
 	WebFS      fs.FS
 	Token      string
+	TokenAdmin bool
 	Local      *local.Local
 	Forwards   *Forwarder
 
@@ -31,6 +34,11 @@ type Server struct {
 	Windows           bool
 	WindowsSSHKeyPath string
 	SSHEnabled        bool
+	SSHKeys           *sshkeys.Dynamic
+	SSHAdminKeys      []string
+	SSHAllowUnmapped  bool
+	UserKeys          *userkeys.Store
+	DesktopSecret     []byte
 
 	OIDC            *auth.OIDC
 	OIDCRedirectURL string
@@ -57,6 +65,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /oidc/callback", s.oidcCallback)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /api/me", s.me)
+	mux.HandleFunc("GET /api/me/ssh-keys", s.listSSHKeys)
+	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
+	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/templates", s.templates)
 	mux.HandleFunc("GET /api/templates/{name}/access", s.templateAccess)
@@ -72,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/teams/{name}", s.updateTeam)
 	mux.HandleFunc("DELETE /api/teams/{name}", s.deleteTeam)
 	mux.HandleFunc("GET /api/workspaces", s.list)
+	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
 	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
 	mux.HandleFunc("POST /api/workspaces", s.create)
@@ -80,6 +92,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/start", s.start)
 	mux.HandleFunc("POST /api/workspaces/{name}/restart", s.restart)
 	mux.HandleFunc("POST /api/workspaces/{name}/vscode", s.vscode)
+	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
+	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)
 	mux.HandleFunc("GET /api/workspaces/{name}/code/", s.browserVSCode)
 	mux.HandleFunc("GET /ws", s.terminal)
 	return s.metricsMiddleware(s.auth(s.audit(mux)))

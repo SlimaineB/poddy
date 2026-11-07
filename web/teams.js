@@ -1,12 +1,35 @@
 "use strict";
 
-async function refreshTeams() {
-  const teams = await api("/api/teams");
-  state.teams = Array.isArray(teams) ? teams : [];
+async function refreshTeams({ paginated = false, page = 1 } = {}) {
+  const data = await api(paginated ? pageURL("/api/teams", page, state.teamPerPage) : "/api/teams");
+  if (Array.isArray(data)) {
+    state.teams = data;
+    state.teamTotal = data.length;
+    state.teamPages = data.length ? 1 : 0;
+    state.teamPage = 1;
+  } else {
+    state.teams = Array.isArray(data.items) ? data.items : [];
+    state.teamTotal = Number(data.total) || 0;
+    state.teamPages = Number(data.pages) || 0;
+    state.teamPage = Number(data.page) || 1;
+    state.teamPerPage = Number(data.perPage) || state.teamPerPage;
+  }
   renderTeams();
 }
+function renderTeamsPagination() {
+  renderPagination(els.teamsPagination, {
+    page: state.teamPage,
+    pages: state.teamPages,
+    total: state.teamTotal,
+    summary: `${state.teamTotal} team${state.teamTotal === 1 ? "" : "s"}`,
+  }, (page) => {
+    state.teamPage = page;
+    refreshTeams({ paginated: true, page }).then(renderTeamsPagination);
+  });
+}
 function renderTeams() {
-  els.teamsCount.textContent = `${state.teams.length} team${state.teams.length === 1 ? "" : "s"}`;
+  const total = state.teamPages ? state.teamTotal : state.teams.length;
+  els.teamsCount.textContent = `${total} team${total === 1 ? "" : "s"}`;
   els.teamsList.replaceChildren();
   if (!state.teams.length) {
     els.teamsList.append(emptyInline("No teams yet. Create one with New team."));
@@ -41,7 +64,8 @@ function renderTeams() {
 }
 async function openTeams() {
   try {
-    await Promise.all([refreshTeams(), loadDirectory()]);
+    await Promise.all([refreshTeams({ paginated: true, page: 1 }), loadDirectory()]);
+    renderTeamsPagination();
     showView("teams");
     newTeam();
   } catch (err) {
@@ -88,7 +112,8 @@ async function saveTeam(event) {
     els.teamFormTitle.textContent = `Edit ${name}`;
     els.teamSave.textContent = "Save team";
     saved = true;
-    await refreshTeams();
+    await refreshTeams({ paginated: true, page: state.teamPage });
+    renderTeamsPagination();
     const current = state.teams.find((team) => team.name === name);
     entryLists.teamMembers.setValues(current?.members || members);
   } catch (err) {
@@ -104,7 +129,8 @@ async function deleteTeam(team) {
     await api(`/api/teams/${encodeURIComponent(team.name)}`, { method: "DELETE" });
     toast(`Team ${team.name} deleted.`, "success");
     if (state.editingTeam === team.name) newTeam();
-    await refreshTeams();
+    await refreshTeams({ paginated: true, page: state.teamPage });
+    renderTeamsPagination();
     await loadTemplates();
   } catch (err) {
     toast(err.message || "Failed to delete team.");

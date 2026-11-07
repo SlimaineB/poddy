@@ -36,16 +36,25 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	names := cfg.TeamNames()
+	query := searchQuery(r)
 	out := make([]teamInfo, 0, len(names))
 	for _, name := range names {
 		team := cfg.Teams[name]
+		if query != "" && !matchesSearch(query, append([]string{name}, team.Members...)...) {
+			continue
+		}
 		info := teamInfo{Name: name, MemberCount: len(team.Members)}
 		if admin {
 			info.Members = nonNil(team.Members)
 		}
 		out = append(out, info)
 	}
-	writeJSON(w, http.StatusOK, out)
+	if !pagedRequest(r) {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	page, perPage := pageRequest(r)
+	writeJSON(w, http.StatusOK, paginateResult(out, page, perPage))
 }
 
 func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {

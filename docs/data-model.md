@@ -19,6 +19,7 @@ the source of truth and PostgreSQL is never read for access decisions. See
 | Templates | ConfigMaps | template name | `template.yaml`, `pod.yaml` |
 | RBAC | ConfigMap | `poddy-rbac` | `rbac.yaml` |
 | OIDC users | ConfigMap | `poddy-users` | `users.json` |
+| Self-service SSH keys | ConfigMap | `poddy-user-ssh-keys` | `keys.json` |
 | External auth tokens | Secret | `poddy-external-auth` | encrypted token document |
 | Optional metadata mirror | PostgreSQL | `poddy` schema | `migrations/0001_init.sql` |
 

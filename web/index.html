@@ -21,6 +21,8 @@
     <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
     <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
     <symbol id="icon-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+    <symbol id="icon-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></symbol>
     <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
     <symbol id="icon-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
@@ -40,17 +42,6 @@
         <span>poddy</span>
       </a>
       <div class="topbar-actions">
-        <span id="ssh-endpoint" class="pill" hidden></span>
-        <span id="user-chip" class="user-chip" hidden>
-          <span id="user-avatar" class="user-avatar"></span>
-          <span id="user-name" class="user-name"></span>
-          <span id="user-role" class="user-role" hidden></span>
-        </span>
-        <form id="logout-form" class="logout-form" method="post" action="/logout" hidden>
-          <button class="icon-button" type="submit" title="Sign out" aria-label="Sign out">
-            <svg class="icon"><use href="#icon-logout"></use></svg>
-          </button>
-        </form>
         <button id="manage-workspaces" class="button ghost small active" type="button">Workspaces</button>
         <button id="manage-connections" class="button ghost small" type="button" hidden>Connections</button>
         <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
@@ -63,6 +54,17 @@
           <svg class="icon"><use href="#icon-plus"></use></svg>
           New workspace
         </button>
+        <span id="ssh-endpoint" class="pill" hidden></span>
+        <button id="user-chip" class="user-chip" type="button" title="Account settings" hidden>
+          <span id="user-avatar" class="user-avatar"></span>
+          <span id="user-name" class="user-name"></span>
+          <span id="user-role" class="user-role" hidden></span>
+        </button>
+        <form id="logout-form" class="logout-form" method="post" action="/logout" hidden>
+          <button class="icon-button" type="submit" title="Sign out" aria-label="Sign out">
+            <svg class="icon"><use href="#icon-logout"></use></svg>
+          </button>
+        </form>
       </div>
     </div>
   </header>
@@ -82,8 +84,9 @@
         <input id="workspace-search" type="search" placeholder="Search workspaces by name, template, owner, or status" autocomplete="off">
       </div>
       <div class="view-toggle" role="group" aria-label="Workspace view">
-        <button id="workspace-view-cards" class="button ghost small active" type="button" aria-pressed="true">Cards</button>
-        <button id="workspace-view-list" class="button ghost small" type="button" aria-pressed="false">List</button>
+        <button class="button ghost small active" type="button" data-workspace-view="cards" aria-pressed="true">Cards</button>
+        <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false">List</button>
+        <button class="button ghost small" type="button" data-workspace-view="topology" aria-pressed="false">Topology</button>
       </div>
     </div>
 
@@ -118,7 +121,54 @@
         <tbody id="workspace-list"></tbody>
       </table>
     </section>
+    <div id="workspaces-pagination" class="pagination" hidden></div>
   </main>
+
+  <section id="topology-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <h1>Topology</h1>
+        <p>Users, their workspaces, and the persistent storage attached to each workspace.</p>
+      </div>
+      <div class="view-header-actions">
+        <span id="topology-count" class="count"></span>
+        <div class="view-toggle" role="group" aria-label="Workspace view">
+          <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false">Cards</button>
+          <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false">List</button>
+          <button class="button ghost small active" type="button" data-workspace-view="topology" aria-pressed="true">Topology</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="topology-toolbar">
+      <div class="topology-legend">
+        <span><span class="legend-swatch user"></span>User</span>
+        <span><span class="legend-swatch workspace"></span>Workspace</span>
+        <span><span class="legend-swatch storage"></span>Persistent volume</span>
+      </div>
+      <div class="topology-actions">
+        <button id="topology-relayout" class="button ghost small" type="button">Re-layout</button>
+        <button id="topology-fit" class="button ghost small" type="button">Fit</button>
+        <button id="topology-zoom-out" class="icon-button" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="topology-zoom-in" class="icon-button" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+
+    <section id="topology-loading" class="loading" hidden>
+      <span class="spinner"></span>
+      <span>Loading topology</span>
+    </section>
+
+    <section id="topology-empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-user"></use></svg></span>
+      <h2>No topology yet</h2>
+      <p>Create a workspace to see its owner and storage.</p>
+    </section>
+
+    <div id="topology-graph" class="topology-graph" hidden></div>
+    <p id="topology-hint" class="topology-hint" hidden>Drag to pan · Scroll to zoom · Click a workspace to open it.</p>
+    <div id="topology-pagination" class="pagination" hidden></div>
+  </section>
 
   <section id="templates-view" class="page" hidden>
     <header class="view-header">
@@ -134,6 +184,7 @@
       <input id="templates-search" type="search" placeholder="Search templates by name, description, or image" autocomplete="off">
     </div>
     <div id="templates-page-list" class="template-page-list"></div>
+    <div id="templates-pagination" class="pagination" hidden></div>
   </section>
 
   <section id="template-detail-view" class="page" hidden>
@@ -188,8 +239,10 @@
       <section class="panel directory-panel">
         <div class="panel-header"><h2>Groups</h2></div>
         <div id="groups-list" class="user-list"></div>
+        <div id="groups-pagination" class="pagination" hidden></div>
       </section>
     </div>
+    <div id="users-pagination" class="pagination" hidden></div>
   </section>
 
   <section id="teams-view" class="page" hidden>
@@ -224,6 +277,41 @@
         <div class="form-actions">
           <button id="team-save" class="button primary" type="submit">Save team</button>
         </div>
+      </form>
+    </div>
+    <div id="teams-pagination" class="pagination" hidden></div>
+  </section>
+
+  <section id="ssh-keys-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="ssh-keys-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Account settings</h1>
+        <p>Manage the SSH keys tied to your account. A key only unlocks workspaces you own.</p>
+      </div>
+      <span id="ssh-keys-count" class="count"></span>
+    </header>
+    <div class="ssh-keys-layout">
+      <section class="panel">
+        <div class="panel-header"><h2>Your keys</h2></div>
+        <div id="ssh-keys-list" class="ssh-key-list"></div>
+      </section>
+      <form id="ssh-key-form" class="panel">
+        <div class="panel-header"><h2>Add a key</h2></div>
+        <div class="field">
+          <label for="ssh-key-input">Public key</label>
+          <textarea id="ssh-key-input" name="key" rows="5" placeholder="ssh-ed25519 AAAA... you@laptop" spellcheck="false" required></textarea>
+          <p class="hint">Paste the contents of <code>~/.ssh/id_ed25519.pub</code>, or choose the file. Never paste a private key.</p>
+        </div>
+        <div class="field">
+          <label for="ssh-key-file">Or choose a public key file</label>
+          <input id="ssh-key-file" type="file" accept=".pub,text/plain">
+        </div>
+        <div id="ssh-key-error" class="form-error" role="alert" hidden></div>
+        <div class="form-actions">
+          <button id="ssh-key-save" class="button primary" type="submit">Add key</button>
+        </div>
+        <p class="hint">New keys are available immediately, including for running workspaces. Removing a key revokes it from all your workspaces.</p>
       </form>
     </div>
   </section>
@@ -265,7 +353,7 @@
         <div id="external-auth-notice" class="external-auth-notice" hidden></div>
         <div id="create-error" class="form-error" role="alert" hidden></div>
         <div class="field">
-          <label>Resources</label>
+          <label>Parameters</label>
           <div id="params" class="params"></div>
         </div>
       </div>
@@ -362,6 +450,12 @@
   <script src="/static/teams.js"></script>
   <script src="/static/users.js"></script>
   <script src="/static/connections.js"></script>
+  <script src="/static/sshkeys.js"></script>
+  <script src="/static/vendor/cytoscape.min.js"></script>
+  <script src="/static/vendor/dagre.min.js"></script>
+  <script src="/static/vendor/cytoscape-dagre.js"></script>
+  <script src="/static/vendor/cytoscape-node-html-label.js"></script>
+  <script src="/static/topology.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

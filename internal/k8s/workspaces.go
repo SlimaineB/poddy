@@ -95,7 +95,7 @@ type Manager struct {
 	Templates         *templates.Catalog
 	DefaultTemplate   string
 	AuthorizedKeys    []string
-	SSHKeys           *sshkeys.Set
+	SSHKeys           sshkeys.Keyring
 	StateConfigMap    string
 	PortalURL         string
 	ExternalAuth      ExternalAuthFunc
@@ -321,6 +321,12 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 		pod.Annotations[annotationOwner] = req.Owner
 	}
+	if err := m.applySSHKeys(ctx, pod, req.Name, req.Owner); err != nil {
+		if createdPVC {
+			_ = m.deletePVC(ctx, req.Name)
+		}
+		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
+	}
 	if pod.Spec.RestartPolicy == "" {
 		pod.Spec.RestartPolicy = corev1.RestartPolicyAlways
 	}
@@ -400,6 +406,9 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 		}
 	}
 	if err := m.deletePVC(ctx, name); err != nil {
+		return err
+	}
+	if err := m.deleteSSHKeysSecret(ctx, name); err != nil {
 		return err
 	}
 	if stateExists {

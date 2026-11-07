@@ -47,7 +47,7 @@ Example JetBrains Gateway link (adjust the query parameters to your Gateway vers
 jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/home/dev
 ```
 
-The built-in **VS Code** button is separate: in local editor mode it writes the SSH config and starts the local port-forward before launching VS Code in a new window; in cluster mode it opens `vscode://vscode-remote/ssh-remote+.../home/dev` in a new window and requires the SSH config from the **SSH** dialog. That config uses `Host poddy-ssh-*`, so one entry covers all workspaces. When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev` in a new browser tab through the portal proxy.
+The built-in **VS Code** button is separate: in local editor mode it writes the SSH config and starts the local port-forward before launching VS Code in a new window; in cluster mode it opens a short-lived signed `vscode://slimaineb.poddy-remote/...` URL. The Poddy extension enrolls the machine key and writes the SSH config automatically, so no manual `~/.ssh/config` edit is required. The **SSH** dialog remains available as a manual fallback. When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev` in a new browser tab through the portal proxy.
 
 ## Fields
 

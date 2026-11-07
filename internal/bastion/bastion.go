@@ -26,7 +26,7 @@ type Bastion struct {
 	Addr     string
 	Manager  *k8s.Manager
 	Audit    metadata.Auditor
-	keys     *sshkeys.Set
+	keys     sshkeys.Keyring
 	config   *ssh.ServerConfig
 	listener net.Listener
 }
@@ -38,9 +38,9 @@ type directTCPIP struct {
 	OriginPort uint32
 }
 
-func New(addr string, manager *k8s.Manager, keys *sshkeys.Set, hostKeyPath string) (*Bastion, error) {
-	if keys == nil || keys.Len() == 0 {
-		return nil, fmt.Errorf("no authorized keys configured")
+func New(addr string, manager *k8s.Manager, keys sshkeys.Keyring, hostKeyPath string) (*Bastion, error) {
+	if keys == nil {
+		return nil, fmt.Errorf("ssh keyring is required")
 	}
 	signer, err := loadHostKey(hostKeyPath)
 	if err != nil {

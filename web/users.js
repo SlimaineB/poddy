@@ -1,12 +1,41 @@
 "use strict";
 
-async function loadDirectory() {
+function directoryURL(page, groupPage, query = "") {
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(state.userPerPage),
+    group_page: String(groupPage),
+    group_per_page: String(state.groupPerPage),
+  });
+  if (query) params.set("q", query);
+  return `/api/users?${params.toString()}`;
+}
+async function loadDirectory({ paginated = false, query = "", page = 1, groupPage = 1 } = {}) {
   try {
-    const data = await api("/api/users");
+    const data = paginated
+      ? await api(directoryURL(page, groupPage, query.trim()))
+      : await api("/api/users");
     state.directory = {
       users: Array.isArray(data.users) ? data.users : [],
       groups: Array.isArray(data.groups) ? data.groups : [],
     };
+    if (paginated) {
+      state.userPage = Number(data.page) || 1;
+      state.userPages = Number(data.pages) || 0;
+      state.userTotal = Number(data.totalUsers) || state.directory.users.length;
+      state.groupPage = Number(data.groupPage) || 1;
+      state.groupPages = Number(data.groupPages) || 0;
+      state.groupTotal = Number(data.totalGroups) || state.directory.groups.length;
+      state.userPerPage = Number(data.perPage) || state.userPerPage;
+      state.groupPerPage = Number(data.groupPerPage) || state.groupPerPage;
+    } else {
+      state.userPage = 1;
+      state.userPages = 0;
+      state.userTotal = state.directory.users.length;
+      state.groupPage = 1;
+      state.groupPages = 0;
+      state.groupTotal = state.directory.groups.length;
+    }
   } catch {
     state.directory = { users: [], groups: [] };
   }
@@ -23,9 +52,41 @@ function renderUsers() {
   const users = state.directory.users.filter((user) => !query || user.toLowerCase().includes(query));
   const groups = state.directory.groups.filter((group) => !query || group.toLowerCase().includes(query));
 
-  els.usersCount.textContent = `${users.length} user${users.length === 1 ? "" : "s"} · ${groups.length} group${groups.length === 1 ? "" : "s"}`;
+  const totalUsers = state.userPages ? state.userTotal : users.length;
+  const totalGroups = state.groupPages ? state.groupTotal : groups.length;
+  els.usersCount.textContent = `${totalUsers} user${totalUsers === 1 ? "" : "s"} · ${totalGroups} group${totalGroups === 1 ? "" : "s"}`;
   renderDirectoryList(els.usersList, users, memberships.users, "user", query);
   renderDirectoryList(els.groupsList, groups, memberships.groups, "group", query);
+}
+function renderUsersPagination() {
+  renderPagination(els.usersPagination, {
+    page: state.userPage,
+    pages: state.userPages,
+    total: state.userTotal,
+    summary: `${state.userTotal} user${state.userTotal === 1 ? "" : "s"}`,
+  }, (page) => {
+    state.userPage = page;
+    loadDirectory({ paginated: true, query: state.userQuery, page, groupPage: state.groupPage }).then(() => {
+      renderUsers();
+      renderUsersPagination();
+      renderGroupsPagination();
+    });
+  });
+}
+function renderGroupsPagination() {
+  renderPagination(els.groupsPagination, {
+    page: state.groupPage,
+    pages: state.groupPages,
+    total: state.groupTotal,
+    summary: `${state.groupTotal} group${state.groupTotal === 1 ? "" : "s"}`,
+  }, (page) => {
+    state.groupPage = page;
+    loadDirectory({ paginated: true, query: state.userQuery, page: state.userPage, groupPage: page }).then(() => {
+      renderUsers();
+      renderUsersPagination();
+      renderGroupsPagination();
+    });
+  });
 }
 function renderDirectoryList(container, values, memberships, kind, query) {
   container.replaceChildren();
@@ -74,10 +135,14 @@ function renderDirectoryList(container, values, memberships, kind, query) {
 }
 async function openUsers() {
   try {
-    await Promise.all([loadDirectory(), refreshTeams()]);
+    state.userPage = 1;
+    state.groupPage = 1;
+    await Promise.all([loadDirectory({ paginated: true, page: 1, groupPage: 1 }), refreshTeams()]);
     state.userQuery = "";
     els.usersSearch.value = "";
     renderUsers();
+    renderUsersPagination();
+    renderGroupsPagination();
     showView("users");
   } catch (err) {
     toast(err.message || "Failed to load users.");
