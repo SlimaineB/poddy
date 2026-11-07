@@ -7,6 +7,10 @@ metadata:
   labels:
     {{- include "poddy.labels" . | nindent 4 }}
 rules:
+  # Distributed workspace locks for safe multi-replica lifecycle operations.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
   # Workspace lifecycle: list, get, create and delete workspace pods.
   - apiGroups: [""]
     resources: ["pods"]
@@ -34,7 +38,7 @@ rules:
   # External auth token store and workspace user directory.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   {{- with .Values.rbac.extraRules }}
   {{- toYaml . | nindent 2 }}
   {{- end }}

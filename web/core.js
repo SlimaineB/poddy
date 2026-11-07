@@ -17,6 +17,7 @@ const state = {
   workspacePages: 0,
   topologyPage: 1,
   topologyPerPage: 10,
+  topologyQuery: "",
   userPage: 1,
   userPerPage: 20,
   userTotal: 0,
@@ -36,6 +37,8 @@ const state = {
   templatePageItems: [],
   templatePageLoaded: false,
   topologyActive: false,
+  mapActive: false,
+  mapSelected: "",
   workspaceView: (() => {
     try {
       return localStorage.getItem("poddy.workspaceView") === "list" ? "list" : "cards";
@@ -51,12 +54,17 @@ const state = {
   pendingDelete: null,
   detailWorkspace: null,
   detailRequest: 0,
+  manifests: null,
+  manifestTab: "pod",
   accessTemplate: null,
   accessCanEditOwners: false,
   editingTeam: null,
   externalAuth: [],
   externalAuthEnabled: false,
   sshKeys: [],
+  regionFilter: new URLSearchParams(location.search).get("region") || "",
+  regionSummaries: [],
+  regionSummaryRequest: 0,
 };
 
 const els = {
@@ -71,6 +79,7 @@ const els = {
   count: document.getElementById("count"),
   workspacesPagination: document.getElementById("workspaces-pagination"),
   topologyPagination: document.getElementById("topology-pagination"),
+  topologySearch: document.getElementById("topology-search"),
   usersPagination: document.getElementById("users-pagination"),
   groupsPagination: document.getElementById("groups-pagination"),
   teamsPagination: document.getElementById("teams-pagination"),
@@ -88,6 +97,14 @@ const els = {
   createSubmit: document.getElementById("create-submit"),
   nameInput: document.getElementById("workspace-name"),
   nameHint: document.getElementById("workspace-name-hint"),
+  regionField: document.getElementById("region-field"),
+  regionSelect: document.getElementById("region-select"),
+  regionSwitcher: document.getElementById("region-switcher"),
+  regionFilter: document.getElementById("region-filter"),
+  regionInfo: document.getElementById("region-info"),
+  regionsDialog: document.getElementById("regions-dialog"),
+  regionsList: document.getElementById("regions-list"),
+  regionsShowAll: document.getElementById("regions-show-all"),
   templateSelect: document.getElementById("template-select"),
   templateDescription: document.getElementById("template-description"),
   createError: document.getElementById("create-error"),
@@ -103,6 +120,11 @@ const els = {
   detailList: document.getElementById("detail-list"),
   detailLogsBody: document.getElementById("detail-logs-body"),
   detailLogsRefresh: document.getElementById("detail-logs-refresh"),
+  detailManifests: document.getElementById("detail-manifests"),
+  detailManifestsNote: document.getElementById("detail-manifests-note"),
+  detailManifestsBody: document.getElementById("detail-manifests-body"),
+  detailManifestsRefresh: document.getElementById("detail-manifests-refresh"),
+  detailManifestsCopy: document.getElementById("detail-manifests-copy"),
   confirmDialog: document.getElementById("confirm-dialog"),
   confirmText: document.getElementById("confirm-text"),
   confirmDelete: document.getElementById("confirm-delete"),
@@ -123,6 +145,19 @@ const els = {
   topologyRelayout: document.getElementById("topology-relayout"),
   topologyZoomIn: document.getElementById("topology-zoom-in"),
   topologyZoomOut: document.getElementById("topology-zoom-out"),
+  mapView: document.getElementById("map-view"),
+  mapCount: document.getElementById("map-count"),
+  mapEmpty: document.getElementById("map-empty"),
+  mapContainer: document.getElementById("map-container"),
+  mapSvg: document.getElementById("world-map"),
+  mapGrid: document.getElementById("map-grid"),
+  mapLand: document.getElementById("map-land"),
+  mapMarkers: document.getElementById("map-markers"),
+  mapDetail: document.getElementById("map-detail"),
+  mapRegionsList: document.getElementById("map-regions-list"),
+  mapReset: document.getElementById("map-reset"),
+  mapZoomIn: document.getElementById("map-zoom-in"),
+  mapZoomOut: document.getElementById("map-zoom-out"),
   usersView: document.getElementById("users-view"),
   usersBack: document.getElementById("users-back"),
   usersSearch: document.getElementById("users-search"),
@@ -228,6 +263,7 @@ function humanize(name) {
 function pageURL(path, page, perPage, query = "") {
   const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
   if (query) params.set("q", query);
+  if (state.regionFilter) params.set("region", state.regionFilter);
   return `${path}${path.includes("?") ? "&" : "?"}${params.toString()}`;
 }
 function renderPagination(container, meta, onPage) {
@@ -284,8 +320,16 @@ function formatAge(iso) {
   }
   return "just now";
 }
-function vscodeURL(name) {
-  return `vscode://vscode-remote/ssh-remote+poddy-ssh-${encodeURIComponent(name)}/home/dev?windowId=_blank`;
+function regionSlug(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "region";
+}
+function sshAlias(name, region) {
+  return region ? `poddy-ssh-${regionSlug(region)}-${name}` : `poddy-ssh-${name}`;
+}
+function vscodeURL(workspace) {
+  const name = typeof workspace === "string" ? workspace : workspace.name;
+  const region = typeof workspace === "string" ? "" : workspace.region;
+  return `vscode://vscode-remote/ssh-remote+${sshAlias(name, region)}/home/dev?windowId=_blank`;
 }
 function browserVSCodeURL(name) {
   return `/api/workspaces/${encodeURIComponent(name)}/code/`;
@@ -293,30 +337,312 @@ function browserVSCodeURL(name) {
 function sshConfigFor() {
   const keyPath = state.config.windowsSSHKeyPath || state.config.sshKeyPath || "~/.ssh/id_ed25519";
   const nullFile = /Windows/i.test(navigator.userAgent) ? "NUL" : "/dev/null";
-  return `# Poddy: works for all workspaces
-Host poddy-ssh-*
-    User dev
-    ProxyJump poddy-portal
-    IdentityFile ${keyPath}
-    IdentitiesOnly yes
-    StrictHostKeyChecking no
-    UserKnownHostsFile ${nullFile}
-    LogLevel ERROR
-
-Host poddy-portal
-    HostName ${state.config.sshHost || "127.0.0.1"}
-    Port ${state.config.sshPort || "2222"}
-    User poddy
-    IdentityFile ${keyPath}
-    IdentitiesOnly yes
-    StrictHostKeyChecking accept-new
-    LogLevel ERROR
-`;
+  const regions = Array.isArray(state.config.regions) && state.config.regions.length
+    ? state.config.regions
+    : [{ name: "", sshHost: state.config.sshHost, sshPort: state.config.sshPort }];
+  let config = "# Poddy: works for all workspaces\n";
+  for (const region of regions) {
+    const slug = region.name ? `${regionSlug(region.name)}-` : "";
+    const proxy = region.name ? `poddy-portal-${regionSlug(region.name)}` : "poddy-portal";
+    config += `Host poddy-ssh-${slug}*\n`;
+    config += "    User dev\n";
+    config += `    ProxyJump ${proxy}\n`;
+    config += `    IdentityFile ${keyPath}\n`;
+    config += "    IdentitiesOnly yes\n    StrictHostKeyChecking no\n";
+    config += `    UserKnownHostsFile ${nullFile}\n    LogLevel ERROR\n\n`;
+  }
+  for (const region of regions) {
+    const slug = region.name ? `${regionSlug(region.name)}-` : "";
+    const proxy = region.name ? `poddy-portal-${regionSlug(region.name)}` : "poddy-portal";
+    config += `Host ${proxy}\n`;
+    config += `    HostName ${region.sshHost || state.config.sshHost || "127.0.0.1"}\n`;
+    config += `    Port ${region.sshPort || state.config.sshPort || "2222"}\n`;
+    config += "    User poddy\n";
+    config += `    IdentityFile ${keyPath}\n`;
+    config += "    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    LogLevel ERROR\n\n";
+    void slug;
+  }
+  return config;
 }
 function renderConfig() {
+  renderRegionOptions();
+  renderRegionFilter();
   if (!state.config.ssh) return;
   els.sshEndpoint.hidden = false;
-  els.sshEndpoint.textContent = `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
+  const regions = configuredRegions();
+  els.sshEndpoint.textContent = regions.length > 1
+    ? `SSH ${regions.length} regions`
+    : `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
+}
+function configuredRegions() {
+  return Array.isArray(state.config.regions) ? state.config.regions : [];
+}
+function regionDisplayName(name) {
+  const region = configuredRegions().find((item) => item.name === name);
+  return region ? region.displayName || region.name : name;
+}
+function regionSummaryFor(name) {
+  return (state.regionSummaries || []).find((item) => item.name === name) || null;
+}
+function syncRegionURL() {
+  const url = new URL(location.href);
+  if (state.regionFilter) url.searchParams.set("region", state.regionFilter);
+  else url.searchParams.delete("region");
+  history.replaceState({}, "", url);
+}
+function renderRegionFilter() {
+  if (!els.regionSwitcher || !els.regionFilter) return;
+  const regions = configuredRegions();
+  if (!regions.some((region) => region.name === state.regionFilter)) {
+    state.regionFilter = "";
+  }
+  els.regionSwitcher.hidden = regions.length === 0;
+  if (!regions.length) {
+    syncRegionURL();
+    renderRegionSummary();
+    return;
+  }
+
+  els.regionFilter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "All regions";
+  els.regionFilter.append(all);
+  for (const region of regions) {
+    const option = document.createElement("option");
+    option.value = region.name;
+    option.textContent = region.displayName || region.name;
+    els.regionFilter.append(option);
+  }
+  els.regionFilter.value = state.regionFilter;
+  syncRegionURL();
+  renderRegionSummary();
+}
+function setRegionFilter(name, { reload = true } = {}) {
+  const regions = configuredRegions();
+  state.regionFilter = regions.some((region) => region.name === name) ? name : "";
+  if (els.regionFilter) els.regionFilter.value = state.regionFilter;
+  if (state.regionFilter && els.regionSelect) els.regionSelect.value = state.regionFilter;
+  state.workspacePage = 1;
+  state.topologyPage = 1;
+  if (state.mapActive) state.mapSelected = state.regionFilter;
+  syncRegionURL();
+  renderRegionSummary();
+  if (state.mapActive) {
+    if (typeof renderMapIfVisible === "function") renderMapIfVisible();
+    if (state.regionFilter) {
+      if (typeof focusMapRegion === "function") focusMapRegion(state.regionFilter);
+    } else if (typeof resetMapView === "function") {
+      resetMapView();
+    }
+  }
+  if (!reload) return;
+  if (state.topologyActive) {
+    if (typeof loadTopology === "function") loadTopology({ silent: true });
+    return;
+  }
+  if (state.mapActive) return;
+  if (typeof load === "function") load({ silent: true });
+}
+async function loadRegionSummaries({ silent = false } = {}) {
+  const regions = configuredRegions();
+  if (!regions.length) {
+    state.regionSummaries = [];
+    renderRegionSummary();
+    return;
+  }
+  const request = ++state.regionSummaryRequest;
+  try {
+    const data = await api("/api/regions");
+    if (request !== state.regionSummaryRequest) return;
+    state.regionSummaries = Array.isArray(data) ? data : [];
+    renderRegionSummary();
+    if (typeof renderMapIfVisible === "function") renderMapIfVisible();
+    if (els.regionsDialog && els.regionsDialog.open) {
+      renderRegionsList(state.regionSummaries);
+    }
+  } catch (err) {
+    if (!silent) toast(err.message || "Failed to load region details.");
+    if (els.regionsDialog && els.regionsDialog.open && els.regionsList) {
+      els.regionsList.replaceChildren();
+      const message = document.createElement("p");
+      message.className = "hint";
+      message.textContent = err.message || "Failed to load region details.";
+      els.regionsList.append(message);
+    }
+  }
+}
+function renderRegionSummary() {
+  const nodes = document.querySelectorAll("[data-region-summary]");
+  const name = state.regionFilter;
+  for (const node of nodes) {
+    node.replaceChildren();
+    node.hidden = !name;
+  }
+  if (!name) return;
+
+  const region = configuredRegions().find((item) => item.name === name);
+  const summary = regionSummaryFor(name);
+  const displayName = region ? region.displayName || region.name : name;
+  const available = summary ? Boolean(summary.available) : null;
+
+  const head = document.createElement("div");
+  head.className = "region-summary-head";
+  const title = document.createElement("strong");
+  title.textContent = displayName;
+  const slug = document.createElement("span");
+  slug.className = "badge neutral";
+  slug.textContent = region ? region.name : name;
+  head.append(title, slug);
+  if (region && region.default) {
+    const badge = document.createElement("span");
+    badge.className = "badge neutral";
+    badge.textContent = "default";
+    head.append(badge);
+  }
+  if (available !== null) {
+    const status = document.createElement("span");
+    status.className = `region-status ${available ? "ok" : "down"}`;
+    status.textContent = available ? "Available" : "Unavailable";
+    head.append(status);
+  }
+
+  const parts = [];
+  if (summary && available) {
+    parts.push(`${summary.workspaces || 0} workspace${summary.workspaces === 1 ? "" : "s"}`);
+    parts.push(`${summary.running || 0} running`);
+    parts.push(`${summary.stopped || 0} stopped`);
+  } else if (available === false) {
+    parts.push("Region manager unavailable");
+  } else {
+    const total = Number(state.workspaceTotal) || 0;
+    parts.push(`${total} workspace${total === 1 ? "" : "s"}`);
+  }
+  const sshHost = (summary && summary.sshHost) || (region && region.sshHost) || state.config.sshHost;
+  const sshPort = (summary && summary.sshPort) || (region && region.sshPort) || state.config.sshPort;
+  if (sshHost) parts.push(`SSH ${sshHost}:${sshPort || "22"}`);
+
+  const meta = document.createElement("div");
+  meta.className = "region-summary-meta";
+  meta.textContent = parts.join(" · ");
+
+  const body = document.createElement("div");
+  body.className = "region-summary-body";
+  body.append(head, meta);
+  for (const node of nodes) node.append(body.cloneNode(true));
+}
+function renderRegionsList(summaries) {
+  if (!els.regionsList) return;
+  els.regionsList.replaceChildren();
+  const regions = configuredRegions();
+  if (!regions.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No regions are configured.";
+    els.regionsList.append(empty);
+    return;
+  }
+  if (!summaries.length) {
+    const loading = document.createElement("div");
+    loading.className = "loading-small";
+    loading.textContent = "Loading region details...";
+    els.regionsList.append(loading);
+    return;
+  }
+
+  for (const region of regions) {
+    const summary = summaries.find((item) => item.name === region.name) || {};
+    const available = Boolean(summary.available);
+    const card = document.createElement("article");
+    card.className = "region-card";
+
+    const header = document.createElement("div");
+    header.className = "region-card-header";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "region-card-title";
+    const title = document.createElement("h3");
+    title.textContent = region.displayName || region.name;
+    const slug = document.createElement("span");
+    slug.className = "badge neutral";
+    slug.textContent = region.name;
+    titleWrap.append(title, slug);
+    if (region.default) {
+      const badge = document.createElement("span");
+      badge.className = "badge neutral";
+      badge.textContent = "default";
+      titleWrap.append(badge);
+    }
+    const status = document.createElement("span");
+    status.className = `region-status ${available ? "ok" : "down"}`;
+    status.textContent = available ? "Available" : "Unavailable";
+    header.append(titleWrap, status);
+
+    const stats = document.createElement("div");
+    stats.className = "region-card-stats";
+    for (const [value, label] of [
+      [available ? summary.workspaces || 0 : "—", "workspaces"],
+      [available ? summary.running || 0 : "—", "running"],
+      [available ? summary.stopped || 0 : "—", "stopped"],
+    ]) {
+      const item = document.createElement("div");
+      const number = document.createElement("strong");
+      number.textContent = String(value);
+      const text = document.createElement("span");
+      text.textContent = label;
+      item.append(number, text);
+      stats.append(item);
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "region-card-footer";
+    const sshHost = summary.sshHost || region.sshHost || state.config.sshHost;
+    const sshPort = summary.sshPort || region.sshPort || state.config.sshPort;
+    if (sshHost) {
+      const endpoint = document.createElement("span");
+      endpoint.className = "region-card-endpoint";
+      endpoint.textContent = `SSH ${sshHost}:${sshPort || "22"}`;
+      footer.append(endpoint);
+    }
+    const view = document.createElement("button");
+    view.type = "button";
+    view.className = "button ghost small";
+    view.textContent = "View workspaces";
+    view.disabled = !available;
+    view.addEventListener("click", () => {
+      if (els.regionsDialog) els.regionsDialog.close();
+      state.topologyActive = false;
+      state.mapActive = false;
+      setRegionFilter(region.name);
+      showView("workspaces");
+      if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
+    });
+    footer.append(view);
+
+    card.append(header, stats, footer);
+    els.regionsList.append(card);
+  }
+}
+function openRegions() {
+  if (!els.regionsDialog) return;
+  renderRegionsList(state.regionSummaries);
+  els.regionsDialog.showModal();
+  loadRegionSummaries({ silent: true });
+}
+function renderRegionOptions() {
+  if (!els.regionSelect || !els.regionField) return;
+  const regions = configuredRegions();
+  els.regionSelect.replaceChildren();
+  for (const region of regions) {
+    const option = document.createElement("option");
+    option.value = region.name;
+    option.textContent = region.displayName || region.name;
+    els.regionSelect.append(option);
+  }
+  const selected = regions.find((region) => region.name === state.regionFilter)
+    || regions.find((region) => region.default)
+    || regions[0];
+  if (selected) els.regionSelect.value = selected.name;
+  els.regionField.hidden = regions.length === 0;
 }
 function renderTemplateOptions() {
   els.templateSelect.replaceChildren();
@@ -630,13 +956,14 @@ async function loadMe() {
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
   els.topologyView.hidden = name !== "topology";
+  els.mapView.hidden = name !== "map";
   els.connectionsView.hidden = name !== "connections";
   els.sshKeysView.hidden = name !== "ssh-keys";
   els.usersView.hidden = name !== "users";
   els.teamsView.hidden = name !== "teams";
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
-  const active = name === "workspaces" || name === "topology" ? els.manageWorkspaces
+  const active = name === "workspaces" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams

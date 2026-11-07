@@ -23,8 +23,11 @@ async function init() {
   }
 
   await load();
-  if (new URLSearchParams(location.search).get("view") === "topology") {
+  const initialView = new URLSearchParams(location.search).get("view");
+  if (initialView === "topology") {
     await openTopology();
+  } else if (initialView === "map") {
+    await openMap();
   }
   setInterval(() => {
     if (!document.hidden) load({ silent: true });
@@ -50,6 +53,17 @@ els.refresh.addEventListener("click", async () => {
   }
 });
 
+els.regionFilter.addEventListener("change", () => setRegionFilter(els.regionFilter.value));
+els.regionInfo.addEventListener("click", openRegions);
+els.regionsShowAll.addEventListener("click", () => {
+  els.regionsDialog.close();
+  state.topologyActive = false;
+  state.mapActive = false;
+  setRegionFilter("");
+  showView("workspaces");
+  if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
+});
+
 els.templateSelect.addEventListener("change", renderParams);
 els.createForm.addEventListener("input", () => setFormError(els.createError, ""));
 
@@ -72,6 +86,8 @@ els.createForm.addEventListener("submit", async (event) => {
     template: els.templateSelect.value,
     parameters,
   };
+  const region = String(data.get("region") || "").trim();
+  if (region) body.region = region;
 
   const original = els.createSubmit.innerHTML;
   setFormError(els.createError, "");
@@ -87,6 +103,9 @@ els.createForm.addEventListener("submit", async (event) => {
     els.createForm.reset();
     setFormError(els.createError, "");
     toast(`Workspace ${workspace.name} is being created.`, "success");
+    if (region && state.regionFilter && region !== state.regionFilter) {
+      setRegionFilter(region, { reload: false });
+    }
     await load();
   } catch (err) {
     setFormError(els.createError, err.message || "Failed to create workspace.");
@@ -108,8 +127,16 @@ els.workspaceSearch.addEventListener("input", () => {
   clearTimeout(workspaceSearchTimer);
   workspaceSearchTimer = setTimeout(() => load({ silent: true }), 250);
 });
+let topologySearchTimer = 0;
+els.topologySearch.addEventListener("input", () => {
+  state.topologyQuery = els.topologySearch.value;
+  state.topologyPage = 1;
+  clearTimeout(topologySearchTimer);
+  topologySearchTimer = setTimeout(() => loadTopology({ silent: true }), 250);
+});
 els.manageWorkspaces.addEventListener("click", () => {
   state.topologyActive = false;
+  state.mapActive = false;
   showView("workspaces");
   syncWorkspaceViewButtons();
   load({ silent: true });
@@ -156,9 +183,19 @@ els.templatesSearch.addEventListener("input", () => {
 
 els.copySSH.addEventListener("click", copySSHConfig);
 els.detailLogsRefresh.addEventListener("click", refreshDetails);
+els.detailManifestsRefresh.addEventListener("click", refreshDetails);
+els.detailManifestsCopy.addEventListener("click", copyManifests);
+document.querySelectorAll("[data-manifest-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.manifestTab = button.dataset.manifestTab;
+    renderManifests(state.manifests);
+  });
+});
 els.detailDialog.addEventListener("close", () => {
   state.detailWorkspace = null;
   state.detailRequest += 1;
+  state.manifests = null;
+  state.manifestTab = "pod";
 });
 
 els.openVSCode.addEventListener("click", () => {
@@ -168,7 +205,7 @@ els.openVSCode.addEventListener("click", () => {
   if (state.config.localVSCode) {
     launchVSCode(workspace, els.openVSCode);
   } else {
-    location.href = vscodeURL(workspace.name);
+    location.href = vscodeURL(workspace);
   }
 });
 

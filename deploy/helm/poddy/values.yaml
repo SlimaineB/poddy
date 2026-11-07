@@ -113,6 +113,39 @@ createWorkspaceNamespace: false
 workspaceState:
   configMapName: ""
 
+# Central hub only. Each entry is mounted as a YAML regions file and points the
+# hub at a region manager's portal Service. Prefer regionsExistingSecret in
+# production: it must contain regions.yaml with the same structure.
+regions: []
+# - name: eu
+#   displayName: Europe
+#   url: http://poddy-eu.poddy-eu.svc.cluster.local
+#   key: a-long-random-region-key
+#   sshHost: ssh.eu.example.com
+#   sshPort: 2222
+#   lat: 50.1109
+#   lon: 8.6821
+#   default: true
+regionsExistingSecret: ""
+regionsKey: regions.yaml
+
+# Region manager only. Enable this in each region cluster. The region manager
+# trusts signed identities from the central hub and must not be exposed without
+# network controls.
+regionManager:
+  enabled: false
+  name: ""
+  hubUrl: ""
+  key: ""
+  existingSecret: ""
+  keyKey: region-key
+
+# Stable key for signed VS Code desktop tickets. Required for replicaCount > 1
+# when OIDC and external auth do not provide a stable key.
+desktop:
+  secret: ""
+  existingSecret: ""
+  secretKey: desktop-secret
 
 # runtime changes to the ConfigMap, so manage them from the UI or seed them here.
 auth:

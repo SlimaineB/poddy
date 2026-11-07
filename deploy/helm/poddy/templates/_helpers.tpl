@@ -130,3 +130,27 @@ Secret holding the optional PostgreSQL connection string.
 {{- printf "%s-database" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "poddy.regionsSecretName" -}}
+{{- if .Values.regionsExistingSecret -}}
+{{- .Values.regionsExistingSecret -}}
+{{- else -}}
+{{- printf "%s-regions" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "poddy.regionKeySecretName" -}}
+{{- if .Values.regionManager.existingSecret -}}
+{{- .Values.regionManager.existingSecret -}}
+{{- else -}}
+{{- printf "%s-region-key" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "poddy.desktopSecretName" -}}
+{{- if .Values.desktop.existingSecret -}}
+{{- .Values.desktop.existingSecret -}}
+{{- else -}}
+{{- printf "%s-desktop" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

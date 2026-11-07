@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,14 @@ type Config struct {
 	Kubeconfig               string
 	Context                  string
 	Editor                   string
+	DesktopSecret            string
+
+	RegionMode   bool
+	RegionName   string
+	RegionKey    string
+	RegionHubURL string
+	RegionsFile  string
+	InstanceID   string
 
 	DatabaseURL         string
 	DatabaseAutoMigrate bool
@@ -72,6 +81,14 @@ func Load(args []string) (Config, error) {
 		TokenAdmin:               envBool("PODDY_TOKEN_ADMIN", false),
 		Kubeconfig:               os.Getenv("KUBECONFIG"),
 		Editor:                   env("PODDY_EDITOR", "code"),
+		DesktopSecret:            os.Getenv("PODDY_DESKTOP_SECRET"),
+
+		RegionMode:   envBool("PODDY_REGION_MODE", false),
+		RegionName:   strings.TrimSpace(os.Getenv("PODDY_REGION_NAME")),
+		RegionKey:    os.Getenv("PODDY_REGION_KEY"),
+		RegionHubURL: strings.TrimRight(os.Getenv("PODDY_REGION_HUB_URL"), "/"),
+		RegionsFile:  os.Getenv("PODDY_REGIONS_FILE"),
+		InstanceID:   os.Getenv("PODDY_INSTANCE_ID"),
 
 		DatabaseURL:         os.Getenv("PODDY_DATABASE_URL"),
 		DatabaseAutoMigrate: envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
@@ -117,6 +134,13 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "path to kubeconfig")
 	fs.StringVar(&cfg.Context, "context", cfg.Context, "kubeconfig context")
 	fs.StringVar(&cfg.Editor, "editor", cfg.Editor, "editor command used to open VS Code (empty disables local launch)")
+	fs.StringVar(&cfg.DesktopSecret, "desktop-secret", cfg.DesktopSecret, "secret used to sign VS Code desktop tickets (set in HA)")
+	fs.BoolVar(&cfg.RegionMode, "region-mode", cfg.RegionMode, "run as a region manager trusted by a central hub")
+	fs.StringVar(&cfg.RegionName, "region-name", cfg.RegionName, "region identifier")
+	fs.StringVar(&cfg.RegionKey, "region-key", cfg.RegionKey, "shared secret used to verify the central hub")
+	fs.StringVar(&cfg.RegionHubURL, "region-hub-url", cfg.RegionHubURL, "central hub public URL")
+	fs.StringVar(&cfg.RegionsFile, "regions-file", cfg.RegionsFile, "central hub regions configuration file")
+	fs.StringVar(&cfg.InstanceID, "instance-id", cfg.InstanceID, "unique instance identifier used for distributed locks")
 	fs.StringVar(&cfg.DatabaseURL, "database-url", cfg.DatabaseURL, "PostgreSQL URL for optional metadata mirror and audit events")
 	fs.BoolVar(&cfg.DatabaseAutoMigrate, "database-auto-migrate", cfg.DatabaseAutoMigrate, "apply embedded PostgreSQL migrations on startup")
 	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
@@ -146,6 +170,15 @@ func Load(args []string) (Config, error) {
 		return cfg, err
 	}
 	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
+	if cfg.RegionMode {
+		cfg.RegionName = strings.TrimSpace(cfg.RegionName)
+		if cfg.RegionName == "" {
+			cfg.RegionName = "region"
+		}
+		if cfg.RegionKey == "" {
+			return cfg, fmt.Errorf("region-key is required in region mode")
+		}
+	}
 	return cfg, nil
 }
 

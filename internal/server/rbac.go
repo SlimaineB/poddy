@@ -43,6 +43,9 @@ func (s *Server) currentIdentity(r *http.Request) (*identity, bool) {
 	if id, ok := s.identify(r); ok {
 		return id, true
 	}
+	if s.RegionMode {
+		return nil, false
+	}
 	if s.Token == "" && s.OIDC == nil {
 		return &identity{Method: "none", User: auth.User{Username: "local"}}, true
 	}
@@ -57,6 +60,9 @@ func (s *Server) loadRBAC(r *http.Request) (rbac.Config, error) {
 }
 
 func (s *Server) isAdmin(id *identity, cfg rbac.Config) bool {
+	if id.Method == "region" {
+		return id.Admin
+	}
 	if id.Method == "none" {
 		return true
 	}
@@ -196,20 +202,27 @@ func (s *Server) updateTemplateAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if len(owners) == 0 && len(users) == 0 && len(teams) == 0 {
-		delete(cfg.Templates, name)
-	} else {
+	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
+		if !admin {
+			access, _ := cfg.Access(name)
+			owners = access.Owners
+		}
+		if len(owners) == 0 && len(users) == 0 && len(teams) == 0 {
+			delete(cfg.Templates, name)
+			return nil
+		}
 		if cfg.Templates == nil {
 			cfg.Templates = map[string]rbac.Access{}
 		}
 		cfg.Templates[name] = rbac.Access{Owners: owners, Users: users, Teams: teams}
-	}
-	if err := s.RBAC.Save(r.Context(), cfg); err != nil {
+		return nil
+	})
+	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.syncRBAC(r.Context(), cfg)
-	s.syncTemplates(r.Context(), cfg)
+	s.syncRBAC(r.Context(), updated)
+	s.syncTemplates(r.Context(), updated)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"template":      name,

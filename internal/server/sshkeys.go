@@ -95,6 +95,7 @@ func (s *Server) addSSHKey(w http.ResponseWriter, r *http.Request) {
 			log.Printf("ssh keys: sync workspaces after add: %v", err)
 		}
 	}
+	s.hubSyncSSHKeys(r.Context(), ownerID(id.User))
 	writeJSON(w, http.StatusCreated, sshKeyInfoFor(key))
 }
 
@@ -124,6 +125,7 @@ func (s *Server) removeSSHKey(w http.ResponseWriter, r *http.Request) {
 			log.Printf("ssh keys: sync workspaces after remove: %v", err)
 		}
 	}
+	s.hubSyncSSHKeys(r.Context(), ownerID(id.User))
 	w.WriteHeader(http.StatusNoContent)
 }
 

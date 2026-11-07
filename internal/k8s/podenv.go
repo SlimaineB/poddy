@@ -3,7 +3,6 @@ package k8s
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -26,27 +25,52 @@ func (m *Manager) applyExternalAuth(ctx context.Context, pod *corev1.Pod, owner,
 	if len(env) == 0 {
 		return nil
 	}
+	token := ""
+	if m.ExternalAuthToken != nil {
+		var tokenErr error
+		token, tokenErr = m.ExternalAuthToken(workspace, owner)
+		if tokenErr != nil {
+			return tokenErr
+		}
+	}
+	applyExternalAuthEnv(pod, owner, workspace, portalURL, requirements, env, token)
+	return nil
+}
+
+func applyExternalAuthEnv(pod *corev1.Pod, owner, workspace, portalURL string, requirements []templates.ExternalAuth, env map[string]string, token string) {
+	if len(env) == 0 && token == "" {
+		return
+	}
 	container := containerByName(pod, ContainerName)
 	if container == nil {
-		return fmt.Errorf("template must define a container named %q", ContainerName)
+		return
+	}
+	if env == nil {
+		env = map[string]string{}
 	}
 	ids := make([]string, 0, len(requirements))
 	for _, requirement := range requirements {
 		ids = append(ids, requirement.ID)
 	}
-	env[envPortalURL] = portalURL
-	env[envWorkspaceName] = workspace
-	env[envExternalAuthIDs] = strings.Join(ids, ",")
-	env[envGitAskpass] = "/usr/local/bin/poddy-git-askpass"
-	env[envGitPrompt] = "0"
-	if m.ExternalAuthToken != nil {
-		token, tokenErr := m.ExternalAuthToken(workspace, owner)
-		if tokenErr != nil {
-			return tokenErr
-		}
+	if portalURL == "" {
+		portalURL = env[envPortalURL]
+	}
+	if portalURL != "" {
+		env[envPortalURL] = portalURL
+	}
+	if workspace != "" {
+		env[envWorkspaceName] = workspace
+	}
+	if len(ids) > 0 {
+		env[envExternalAuthIDs] = strings.Join(ids, ",")
+	}
+	if len(env) > 0 {
+		env[envGitAskpass] = "/usr/local/bin/poddy-git-askpass"
+		env[envGitPrompt] = "0"
+	}
+	if token != "" {
 		env[envWorkspaceToken] = token
 	}
-
 	names := make([]string, 0, len(env))
 	for name, value := range env {
 		setEnv(container, name, value)
@@ -55,13 +79,12 @@ func (m *Manager) applyExternalAuth(ctx context.Context, pod *corev1.Pod, owner,
 	sort.Strings(names)
 	raw, err := json.Marshal(names)
 	if err != nil {
-		return err
+		return
 	}
 	if pod.Annotations == nil {
 		pod.Annotations = map[string]string{}
 	}
 	pod.Annotations[annotationExternalAuthEnv] = string(raw)
-	return nil
 }
 
 func externalAuthEnvNames(pod *corev1.Pod) []string {

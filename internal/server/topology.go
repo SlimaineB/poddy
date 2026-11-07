@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"poddy/internal/k8s"
+	"poddy/internal/region"
 )
 
 type topologyResource struct {
@@ -63,13 +64,66 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if s.Workspaces == nil {
-		http.Error(w, "workspaces are not configured", http.StatusNotImplemented)
-		return
-	}
 	cfg, err := s.loadRBAC(r)
 	if err != nil {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Regions != nil {
+		regionFilter := regionQuery(r)
+		var topology region.Topology
+		if regionFilter != "" {
+			if _, ok := s.Regions.Get(regionFilter); !ok {
+				http.Error(w, "unknown region", http.StatusBadRequest)
+				return
+			}
+			topology, err = s.Regions.TopologyRegion(r.Context(), regionFilter, s.hubIdentity(id, s.isAdmin(id, cfg)))
+			if err != nil {
+				writeRegionError(w, err)
+				return
+			}
+		} else {
+			var problems []error
+			topology, problems = s.Regions.Topology(r.Context(), s.hubIdentity(id, s.isAdmin(id, cfg)))
+			for _, problem := range problems {
+				log.Printf("topology: %v", problem)
+			}
+		}
+		query := searchQuery(r)
+		if query != "" {
+			filtered := make([]region.TopologyUser, 0, len(topology.Users))
+			for _, user := range topology.Users {
+				values := []string{user.Identity, user.Name}
+				for _, workspace := range user.Workspaces {
+					values = append(values, workspace.Name, workspace.Region)
+				}
+				if matchesSearch(query, values...) {
+					filtered = append(filtered, user)
+				}
+			}
+			topology.Users = filtered
+			topology.Totals = region.TopologyTotals{}
+			for _, user := range filtered {
+				topology.Totals.Users++
+				topology.Totals.Workspaces += user.WorkspaceCount
+				topology.Totals.Volumes += user.VolumeCount
+				topology.Totals.StorageBytes += user.StorageBytes
+			}
+		}
+		if pagedRequest(r) {
+			page, perPage := pageRequest(r)
+			items, info := paginate(topology.Users, page, perPage)
+			topology.Users = items
+			topology.Total = info.Total
+			topology.Page = info.Page
+			topology.PerPage = info.PerPage
+			topology.Pages = info.Pages
+		}
+		writeJSON(w, http.StatusOK, topology)
+		return
+	}
+	if s.Workspaces == nil {
+		http.Error(w, "workspaces are not configured", http.StatusNotImplemented)
 		return
 	}
 
@@ -189,6 +243,13 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp.Users = filtered
+	}
+	resp.Totals = topologyTotals{}
+	for _, user := range resp.Users {
+		resp.Totals.Users++
+		resp.Totals.Workspaces += user.WorkspaceCount
+		resp.Totals.Volumes += user.VolumeCount
+		resp.Totals.StorageBytes += user.StorageBytes
 	}
 	if !pagedRequest(r) {
 		writeJSON(w, http.StatusOK, resp)

@@ -77,6 +77,10 @@ func (f *Forwarder) Close() {
 
 func (s *Server) vscode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
+		return
+	}
 	id, ok := s.currentIdentity(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

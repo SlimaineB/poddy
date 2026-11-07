@@ -65,6 +65,13 @@
             <svg class="icon"><use href="#icon-logout"></use></svg>
           </button>
         </form>
+        <div id="region-switcher" class="region-switcher" hidden>
+          <svg class="icon"><use href="#icon-server"></use></svg>
+          <select id="region-filter" aria-label="Filter by region"></select>
+          <button id="region-info" class="icon-button" type="button" title="Region details" aria-label="Region details">
+            <svg class="icon"><use href="#icon-info"></use></svg>
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -78,6 +85,8 @@
       <span id="count" class="count"></span>
     </section>
 
+    <div class="region-summary" data-region-summary hidden></div>
+
     <div class="workspace-toolbar">
       <div class="search-box">
         <svg class="icon"><use href="#icon-search"></use></svg>
@@ -87,6 +96,7 @@
         <button class="button ghost small active" type="button" data-workspace-view="cards" aria-pressed="true">Cards</button>
         <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false">List</button>
         <button class="button ghost small" type="button" data-workspace-view="topology" aria-pressed="false">Topology</button>
+        <button class="button ghost small" type="button" data-workspace-view="map" aria-pressed="false">Map</button>
       </div>
     </div>
 
@@ -136,11 +146,18 @@
           <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false">Cards</button>
           <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false">List</button>
           <button class="button ghost small active" type="button" data-workspace-view="topology" aria-pressed="true">Topology</button>
+          <button class="button ghost small" type="button" data-workspace-view="map" aria-pressed="false">Map</button>
         </div>
       </div>
     </header>
 
+    <div class="region-summary" data-region-summary hidden></div>
+
     <div class="topology-toolbar">
+      <div class="search-box topology-search">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="topology-search" type="search" placeholder="Search users, workspaces, or regions" aria-label="Search topology" autocomplete="off">
+      </div>
       <div class="topology-legend">
         <span><span class="legend-swatch user"></span>User</span>
         <span><span class="legend-swatch workspace"></span>Workspace</span>
@@ -168,6 +185,62 @@
     <div id="topology-graph" class="topology-graph" hidden></div>
     <p id="topology-hint" class="topology-hint" hidden>Drag to pan · Scroll to zoom · Click a workspace to open it.</p>
     <div id="topology-pagination" class="pagination" hidden></div>
+  </section>
+
+  <section id="map-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <h1>World map</h1>
+        <p>Workspaces and users across every connected region.</p>
+      </div>
+      <div class="view-header-actions">
+        <span id="map-count" class="count"></span>
+        <div class="view-toggle" role="group" aria-label="Workspace view">
+          <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false">Cards</button>
+          <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false">List</button>
+          <button class="button ghost small" type="button" data-workspace-view="topology" aria-pressed="false">Topology</button>
+          <button class="button ghost small active" type="button" data-workspace-view="map" aria-pressed="true">Map</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="map-toolbar">
+      <div class="map-legend">
+        <span><span class="map-legend-dot"></span>Workspaces in bubble</span>
+        <span>Users in label</span>
+      </div>
+      <div class="topology-actions">
+        <button id="map-reset" class="button ghost small" type="button">Reset view</button>
+        <button id="map-zoom-out" class="icon-button" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="map-zoom-in" class="icon-button" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+
+    <section id="map-empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-server"></use></svg></span>
+      <h2>No regions configured</h2>
+      <p>Add regions to the portal configuration to see the world map.</p>
+    </section>
+
+    <div class="map-layout">
+      <section class="panel map-panel">
+        <div id="map-container" class="world-map-container" hidden>
+          <svg id="world-map" class="world-map" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World map of Poddy regions">
+            <g id="map-grid" class="map-grid"></g>
+            <path id="map-land" class="map-land" fill-rule="evenodd"></path>
+            <g id="map-markers" class="map-markers"></g>
+          </svg>
+          <p class="map-hint">Drag to pan · Scroll or use +/− to zoom</p>
+        </div>
+      </section>
+      <aside class="map-side">
+        <section id="map-detail" class="panel map-detail" hidden></section>
+        <section class="panel map-regions-panel">
+          <div class="panel-header"><h2>Regions</h2></div>
+          <div id="map-regions-list" class="map-regions-list"></div>
+        </section>
+      </aside>
+    </div>
   </section>
 
   <section id="templates-view" class="page" hidden>
@@ -345,6 +418,11 @@
           <input id="workspace-name" name="name" placeholder="my-workspace" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" autocomplete="off" spellcheck="false">
           <p id="workspace-name-hint" class="hint">Lowercase letters, numbers, and dashes.</p>
         </div>
+        <div class="field" id="region-field" hidden>
+          <label for="region-select">Region</label>
+          <select id="region-select" name="region"></select>
+          <p class="hint">The workspace is provisioned in this region.</p>
+        </div>
         <div class="field">
           <label for="template-select">Template</label>
           <select id="template-select" name="template"></select>
@@ -402,7 +480,7 @@
     <header class="dialog-header">
       <div>
         <h2 id="detail-title">Workspace details</h2>
-        <p>Metadata and startup logs for this workspace.</p>
+        <p>Metadata, rendered manifests, and startup logs for this workspace.</p>
       </div>
       <button class="icon-button" type="button" data-close aria-label="Close">
         <svg class="icon"><use href="#icon-x"></use></svg>
@@ -410,6 +488,23 @@
     </header>
     <div class="dialog-body">
       <dl id="detail-list" class="detail-list"></dl>
+      <section id="detail-manifests" class="workspace-manifests" hidden>
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Kubernetes manifests</h3>
+            <p id="detail-manifests-note">Rendered Pod and PVC definitions. Sensitive environment values are redacted.</p>
+          </div>
+          <div class="manifest-actions">
+            <button id="detail-manifests-refresh" class="button ghost small" type="button">Refresh</button>
+            <button id="detail-manifests-copy" class="button ghost small" type="button">Copy</button>
+          </div>
+        </header>
+        <div class="manifest-tabs" role="group" aria-label="Manifest">
+          <button class="button ghost small active" type="button" data-manifest-tab="pod" aria-pressed="true">Pod</button>
+          <button class="button ghost small" type="button" data-manifest-tab="pvc" aria-pressed="false">PVC</button>
+        </div>
+        <pre id="detail-manifests-body" class="log-output manifest-output"><code></code></pre>
+      </section>
       <section class="workspace-logs">
         <header class="workspace-logs-header">
           <div>
@@ -422,6 +517,25 @@
       </section>
     </div>
     <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="regions-dialog" class="dialog dialog-wide">
+    <header class="dialog-header">
+      <div>
+        <h2>Regions</h2>
+        <p>Workspace managers connected to this portal.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <div id="regions-list" class="regions-list"></div>
+    </div>
+    <footer class="dialog-footer">
+      <button id="regions-show-all" class="button ghost" type="button">Show all regions</button>
       <button class="button ghost" type="button" data-close>Close</button>
     </footer>
   </dialog>
@@ -456,6 +570,8 @@
   <script src="/static/vendor/cytoscape-dagre.js"></script>
   <script src="/static/vendor/cytoscape-node-html-label.js"></script>
   <script src="/static/topology.js"></script>
+  <script src="/static/world-map.js"></script>
+  <script src="/static/map.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

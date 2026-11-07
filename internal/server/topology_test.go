@@ -8,6 +8,40 @@ import (
 	"poddy/internal/auth"
 )
 
+func TestTopologySearchRecalculatesTotals(t *testing.T) {
+	s := newRBACServer(t, rbacTestConfig())
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	bob := sessionFor(t, s, auth.User{Username: "bob", Email: "bob@example.com"})
+	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})
+
+	for _, item := range []struct {
+		cookie *http.Cookie
+		name   string
+	}{
+		{alice, "alice-ws"},
+		{bob, "bob-ws"},
+	} {
+		if rec := requestAs(t, s, item.cookie, http.MethodPost, "/api/workspaces", map[string]any{"name": item.name, "template": "base"}); rec.Code != http.StatusCreated {
+			t.Fatalf("create %s = %d, body = %s", item.name, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := requestAs(t, s, admin, http.MethodGet, "/api/topology?q=alice&page=1&per_page=10", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("topology search = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp topologyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Users) != 1 || resp.Users[0].Identity != "alice@example.com" {
+		t.Fatalf("users = %+v", resp.Users)
+	}
+	if resp.Total != 1 || resp.Totals.Users != 1 || resp.Totals.Workspaces != 1 || resp.Totals.Volumes != 1 {
+		t.Fatalf("filtered totals = %+v (total %d)", resp.Totals, resp.Total)
+	}
+}
+
 func TestTopologyGroupsByUserAndIncludesVolumes(t *testing.T) {
 	s := newRBACServer(t, rbacTestConfig())
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})

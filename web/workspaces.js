@@ -58,6 +58,14 @@ function renderCard(workspace) {
   template.textContent = workspace.template || "default";
   metaRow.append(template);
 
+  if (workspace.region) {
+    const region = document.createElement("span");
+    region.className = "badge neutral";
+    region.textContent = workspace.region;
+    region.title = `Region: ${workspace.region}`;
+    metaRow.append(region);
+  }
+
   if (state.me.isAdmin && workspace.owner) {
     const owner = document.createElement("span");
     owner.className = "badge owner";
@@ -199,7 +207,7 @@ function renderWorkspaceActions(workspace) {
 }
 function workspaceMatches(workspace, query) {
   if (!query) return true;
-  const haystack = [workspace.name, workspace.template, workspace.owner, workspace.phase, workspace.image]
+  const haystack = [workspace.name, workspace.template, workspace.region, workspace.owner, workspace.phase, workspace.image]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -214,7 +222,7 @@ function filteredWorkspaces() {
 }
 
 function syncWorkspaceViewButtons() {
-  const active = state.topologyActive ? "topology" : state.workspaceView;
+  const active = state.mapActive ? "map" : state.topologyActive ? "topology" : state.workspaceView;
   for (const button of document.querySelectorAll("[data-workspace-view]")) {
     const selected = button.dataset.workspaceView === active;
     button.classList.toggle("active", selected);
@@ -225,10 +233,18 @@ function syncWorkspaceViewButtons() {
 function setWorkspaceView(view) {
   if (view === "topology") {
     state.topologyActive = true;
+    state.mapActive = false;
     if (typeof openTopology === "function") openTopology();
     return;
   }
+  if (view === "map") {
+    state.topologyActive = false;
+    state.mapActive = true;
+    if (typeof openMap === "function") openMap();
+    return;
+  }
   state.topologyActive = false;
+  state.mapActive = false;
   state.workspaceView = view === "list" ? "list" : "cards";
   try {
     localStorage.setItem("poddy.workspaceView", state.workspaceView);
@@ -250,9 +266,10 @@ function renderWorkspaces() {
   const workspaces = filteredWorkspaces();
   const total = state.workspaceTotal || state.workspaces.length;
   const query = state.workspaceQuery.trim();
+  const regionLabel = state.regionFilter ? ` in ${regionDisplayName(state.regionFilter)}` : "";
   els.count.textContent = query
-    ? `${total} matching workspace${total === 1 ? "" : "s"}`
-    : `${total} workspace${total === 1 ? "" : "s"}`;
+    ? `${total} matching workspace${total === 1 ? "" : "s"}${regionLabel}`
+    : `${total} workspace${total === 1 ? "" : "s"}${regionLabel}`;
 
   els.grid.replaceChildren();
   els.workspaceList.replaceChildren();
@@ -264,7 +281,10 @@ function renderWorkspaces() {
     els.empty.hidden = false;
     if (query) {
       els.emptyTitle.textContent = "No matching workspaces";
-      els.emptyText.textContent = "Try a different name, template, owner, or status.";
+      els.emptyText.textContent = "Try a different name, template, owner, status, or region.";
+    } else if (state.regionFilter) {
+      els.emptyTitle.textContent = `No workspaces in ${regionDisplayName(state.regionFilter)}`;
+      els.emptyText.textContent = "Create a workspace in this region or choose another region.";
     } else {
       els.emptyTitle.textContent = "No workspaces yet";
       els.emptyText.textContent = "Create your first development environment from a template.";
@@ -357,6 +377,9 @@ async function load({ silent = false } = {}) {
     state.loaded = true;
     state.pollError = false;
     renderWorkspaces();
+    if ((state.regionFilter || state.mapActive) && typeof loadRegionSummaries === "function") {
+      loadRegionSummaries({ silent: true });
+    }
     renderPagination(els.workspacesPagination, {
       page: state.workspacePage,
       pages: state.workspacePages,
@@ -402,6 +425,9 @@ async function openCreate() {
   setFormError(els.createError, "");
   renderWorkspaceNameHint();
   els.params.replaceChildren();
+  if (state.regionFilter && configuredRegions().some((region) => region.name === state.regionFilter)) {
+    els.regionSelect.value = state.regionFilter;
+  }
   if (!els.templateSelect.value) {
     els.templateSelect.value = state.templates[0].name;
   }
@@ -430,11 +456,15 @@ function linkValue(workspace, key) {
     case "name":
       return workspace.name;
     case "alias":
-      return `poddy-${workspace.name}`;
-    case "sshHost":
-      return state.config.sshHost || "127.0.0.1";
-    case "sshPort":
-      return state.config.sshPort || "2222";
+      return sshAlias(workspace.name, workspace.region);
+    case "sshHost": {
+      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
+      return (region && region.sshHost) || state.config.sshHost || "127.0.0.1";
+    }
+    case "sshPort": {
+      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
+      return (region && region.sshPort) || state.config.sshPort || "2222";
+    }
     case "user":
       return "dev";
     case "template":
@@ -453,9 +483,13 @@ function resolveLink(link, workspace) {
 }
 async function showDetails(workspace) {
   state.detailWorkspace = workspace;
+  state.manifests = null;
+  state.manifestTab = "pod";
   els.detailTitle.textContent = workspace.name;
   els.detailList.replaceChildren();
   els.detailLogsBody.replaceChildren();
+  els.detailManifests.hidden = !(state.me && state.me.isAdmin);
+  if (!els.detailManifests.hidden) setManifestsMessage("Loading manifests...");
 
   const loading = document.createElement("div");
   loading.className = "loading-small";
@@ -472,9 +506,13 @@ async function refreshDetails() {
   if (!workspace) return;
   const request = ++state.detailRequest;
   els.detailLogsRefresh.disabled = true;
-  await Promise.all([loadDetails(workspace, request), loadLogs(workspace, request)]);
+  els.detailManifestsRefresh.disabled = true;
+  const jobs = [loadDetails(workspace, request), loadLogs(workspace, request)];
+  if (state.me && state.me.isAdmin) jobs.push(loadManifests(workspace, request));
+  await Promise.all(jobs);
   if (request === state.detailRequest) {
     els.detailLogsRefresh.disabled = false;
+    els.detailManifestsRefresh.disabled = false;
   }
 }
 
@@ -508,6 +546,92 @@ function setLogsMessage(message) {
   note.className = "hint";
   note.textContent = message;
   els.detailLogsBody.append(note);
+}
+
+async function loadManifests(workspace, request) {
+  if (!state.me || !state.me.isAdmin) return;
+  setManifestsMessage("Loading manifests...");
+  try {
+    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/manifests`);
+    if (request !== state.detailRequest) return;
+    renderManifests(data);
+  } catch (err) {
+    if (request !== state.detailRequest) return;
+    setManifestsMessage(err.message || "Failed to load manifests.");
+  }
+}
+
+function setManifestsMessage(message) {
+  state.manifests = null;
+  els.detailManifestsNote.textContent = message;
+  els.detailManifestsBody.querySelector("code").textContent = message;
+  syncManifestTabs();
+}
+
+function renderManifests(data) {
+  state.manifests = data || null;
+  const pod = data && data.pod ? data.pod : "";
+  const pvc = data && data.pvc ? data.pvc : "";
+  const pvcTab = document.querySelector('[data-manifest-tab="pvc"]');
+  if (pvcTab) {
+    pvcTab.disabled = !pvc;
+    pvcTab.title = pvc ? "" : "No persistent volume claim for this workspace";
+  }
+  if (state.manifestTab === "pvc" && !pvc) state.manifestTab = "pod";
+
+  const yaml = state.manifestTab === "pvc" ? pvc : pod;
+  const fallback = state.manifestTab === "pvc"
+    ? "No PersistentVolumeClaim for this workspace."
+    : "No Pod manifest available.";
+  els.detailManifestsBody.querySelector("code").textContent = yaml || fallback;
+
+  const notes = [];
+  if (data) {
+    notes.push(data.podSource === "stopped-state"
+      ? "Rendered from the saved stopped-workspace state."
+      : "Live Pod from the cluster.");
+    if (data.template) {
+      notes.push(`Template ${data.template}${data.templateVersion ? ` @ ${data.templateVersion}` : ""}.`);
+    }
+    if (Array.isArray(data.redactedEnv) && data.redactedEnv.length) {
+      notes.push(`Redacted environment values: ${data.redactedEnv.join(", ")}.`);
+    } else {
+      notes.push("Sensitive environment values are redacted.");
+    }
+  }
+  els.detailManifestsNote.textContent = notes.join(" ") || "Rendered Pod and PVC definitions.";
+  syncManifestTabs();
+}
+
+function syncManifestTabs() {
+  for (const button of document.querySelectorAll("[data-manifest-tab]")) {
+    const active = button.dataset.manifestTab === state.manifestTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+
+async function copyManifests() {
+  if (!state.manifests) {
+    toast("No manifest to copy.");
+    return;
+  }
+  const text = state.manifestTab === "pvc" ? state.manifests.pvc : state.manifests.pod;
+  if (!text) {
+    toast("No manifest to copy.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Manifest copied.", "success");
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents(els.detailManifestsBody);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    toast("Press Ctrl+C to copy the manifest.");
+  }
 }
 
 function renderLogs(logs) {
@@ -567,6 +691,9 @@ function renderDetails(ws) {
   status.append(dot, document.createTextNode(ws.phase || "Unknown"));
 
   els.detailList.append(detailRow("Status", status));
+  if (ws.region) {
+    els.detailList.append(detailRow("Region", ws.regionDisplayName || ws.region));
+  }
   els.detailList.append(detailRow("Template", ws.template || "default"));
   if (ws.image) {
     els.detailList.append(detailRow("Image", ws.image, { mono: true }));

@@ -15,8 +15,10 @@ const topologyCardSize = {
 
 async function openTopology() {
   state.topologyActive = true;
+  state.mapActive = false;
   showView("topology");
   if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
+  if (els.topologySearch) els.topologySearch.value = state.topologyQuery;
   if (topologyCy) topologyCy.resize();
   await loadTopology();
 }
@@ -39,7 +41,7 @@ async function loadTopology({ silent = false } = {}) {
     els.topologyHint.hidden = true;
   }
   try {
-    const data = await api(pageURL("/api/topology", state.topologyPage, state.topologyPerPage));
+    const data = await api(pageURL("/api/topology", state.topologyPage, state.topologyPerPage, state.topologyQuery.trim()));
     if (request !== topologyRequest) return;
     state.topology = data && typeof data === "object" ? data : { totals: {}, users: [] };
     state.topologyPage = Number(data.page) || 1;
@@ -81,7 +83,8 @@ function renderTopology() {
     `${totals.volumes || 0} volume${totals.volumes === 1 ? "" : "s"}`,
   ];
   if (totals.storageBytes) parts.push(formatStorage(totals.storageBytes));
-  els.topologyCount.textContent = parts.join(" · ");
+  const regionLabel = state.regionFilter ? ` · ${regionDisplayName(state.regionFilter)}` : "";
+  els.topologyCount.textContent = parts.join(" · ") + regionLabel;
 
   const workspaces = users.reduce((sum, user) => sum + (user.workspaceCount || 0), 0);
   if (!users.length || (!workspaces && !users.some((user) => user.current))) {
@@ -131,6 +134,7 @@ function buildTopologyModel(users) {
           image: workspace.image || "",
           createdAt: workspace.createdAt || "",
           browserVSCode: Boolean(workspace.browserVSCode),
+          region: workspace.region || "",
           pvcCount: resources.filter((resource) => resource.kind !== "Ephemeral").length,
         },
       });
@@ -415,6 +419,7 @@ function topologyWorkspaceCard(data) {
   const phase = data.phase || "Unknown";
   const phaseClass = topologyPhaseClass(phase);
   const meta = [`<span class="status"><span class="dot ${phaseClass}"></span>${escapeTopologyHTML(phase)}</span>`];
+  if (data.region) meta.push(`<span class="badge neutral">${escapeTopologyHTML(data.region)}</span>`);
   if (data.template) meta.push(`<span class="badge neutral">${escapeTopologyHTML(data.template)}</span>`);
   if (data.pvcCount) meta.push(`<span class="badge neutral">${Number(data.pvcCount)} PVC</span>`);
   if (data.browserVSCode) meta.push('<span class="badge neutral">VS Code Web</span>');

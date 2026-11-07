@@ -61,6 +61,15 @@ spec:
         {{- end }}
       annotations:
         checksum/ssh-keys: {{ include (print $.Template.BasePath "/configmap-ssh-keys.yaml") . | sha256sum }}
+        {{- if .Values.regions }}
+        checksum/regions: {{ include (print $.Template.BasePath "/secret-regions.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.regionManager.enabled }}
+        checksum/region-key: {{ include (print $.Template.BasePath "/secret-region-key.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if or .Values.desktop.secret .Values.desktop.existingSecret }}
+        checksum/desktop: {{ include (print $.Template.BasePath "/secret-desktop.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -93,6 +102,12 @@ spec:
             - -ssh-addr=
             - -ssh-enabled={{ .Values.ssh.enabled }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
+            {{- if .Values.regionManager.enabled }}
+            - -region-mode=true
+            - -region-name={{ .Values.regionManager.name }}
+            - -region-hub-url={{ .Values.regionManager.hubUrl }}
+            - -instance-id=$(PODDY_INSTANCE_ID)
+            {{- end }}
             {{- if .Values.ssh.enabled }}
             - -ssh-public-host={{ required "ssh.publicHost is required when ssh.enabled=true" .Values.ssh.publicHost }}
             - -ssh-public-port={{ .Values.ssh.publicPort }}
@@ -110,6 +125,34 @@ spec:
             {{- end }}
             - name: PODDY_TOKEN_ADMIN
               value: {{ .Values.auth.tokenAdmin | quote }}
+            - name: PODDY_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if .Values.regionManager.enabled }}
+            - name: PODDY_REGION_MODE
+              value: "true"
+            - name: PODDY_REGION_NAME
+              value: {{ .Values.regionManager.name | quote }}
+            - name: PODDY_REGION_HUB_URL
+              value: {{ .Values.regionManager.hubUrl | quote }}
+            - name: PODDY_REGION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.regionKeySecretName" . }}
+                  key: {{ .Values.regionManager.keyKey }}
+            {{- end }}
+            {{- if or .Values.regions .Values.regionsExistingSecret }}
+            - name: PODDY_REGIONS_FILE
+              value: /etc/poddy/regions/{{ .Values.regionsKey }}
+            {{- end }}
+            {{- if or .Values.desktop.secret .Values.desktop.existingSecret }}
+            - name: PODDY_DESKTOP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.desktopSecretName" . }}
+                  key: {{ .Values.desktop.secretKey }}
+            {{- end }}
             {{- if or .Values.database.url .Values.database.existingSecret }}
             - name: PODDY_DATABASE_URL
               valueFrom:
@@ -300,6 +343,11 @@ spec:
               subPath: {{ .Values.ssh.keysSecretKey }}
               readOnly: true
             {{- end }}
+            {{- if or .Values.regions .Values.regionsExistingSecret }}
+            - name: regions
+              mountPath: /etc/poddy/regions
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -313,6 +361,11 @@ spec:
           configMap:
             name: {{ include "poddy.sshKeysName" . }}
           {{- end }}
+        {{- end }}
+        {{- if or .Values.regions .Values.regionsExistingSecret }}
+        - name: regions
+          secret:
+            secretName: {{ include "poddy.regionsSecretName" . }}
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

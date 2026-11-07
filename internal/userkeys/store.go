@@ -164,6 +164,52 @@ func (s *Store) Remove(ctx context.Context, owner, id string) error {
 	})
 }
 
+// ReplaceForOwner replaces every key owned by owner. It is used by a central
+// hub to keep region-local keyrings identical to the hub registry.
+func (s *Store) ReplaceForOwner(ctx context.Context, owner string, lines []string) error {
+	owner = normalizeOwner(owner)
+	if owner == "" {
+		return fmt.Errorf("owner is required")
+	}
+	if len(lines) > MaxKeysPerOwner {
+		return fmt.Errorf("%w (%d)", ErrLimit, MaxKeysPerOwner)
+	}
+	next := make([]Key, 0, len(lines))
+	seen := map[string]bool{}
+	for _, line := range lines {
+		normalized, fingerprint, id, keyType, err := sshkeys.ParsePublicKey(line)
+		if err != nil {
+			return err
+		}
+		if seen[fingerprint] {
+			continue
+		}
+		seen[fingerprint] = true
+		next = append(next, Key{
+			Owner:       owner,
+			Line:        normalized + " user:" + owner,
+			Fingerprint: fingerprint,
+			ID:          id,
+			Type:        keyType,
+			AddedAt:     time.Now().UTC(),
+		})
+	}
+	return s.update(ctx, func(keys []Key) ([]Key, error) {
+		for _, existing := range keys {
+			if existing.Owner != owner && seen[existing.Fingerprint] {
+				return keys, ErrDuplicate
+			}
+		}
+		out := make([]Key, 0, len(keys)+len(next))
+		for _, existing := range keys {
+			if existing.Owner != owner {
+				out = append(out, existing)
+			}
+		}
+		return append(out, next...), nil
+	})
+}
+
 // Owned converts registry keys to the owner-bound input expected by sshkeys.
 func Owned(keys []Key) []sshkeys.OwnedKey {
 	out := make([]sshkeys.OwnedKey, 0, len(keys))

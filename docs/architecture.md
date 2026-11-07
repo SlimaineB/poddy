@@ -29,6 +29,29 @@ The portal and bastion are separate Deployments built from the same container
 image. The portal never listens for SSH in cluster mode; the bastion has no HTTP
 API and only needs pod read access plus port-forward.
 
+## Multi-region
+
+A central portal can front one or more regions. Each region runs the same image
+in region-manager mode (`-region-mode`) plus its own bastion. The central
+portal keeps auth, RBAC, users, templates, metadata, and the UI; regions keep
+workspace pods, PVCs, and local state.
+
+The central portal calls a region manager with an HMAC-signed identity header
+(`X-Poddy-Region-Identity`) that expires after two minutes. Region managers
+accept only that header in region mode; they do not trust cookies or bearer
+tokens. Workspace names are globally unique across regions. The hub checks
+every region before creating a workspace, proxies lifecycle, logs, terminal,
+browser VS Code, and desktop requests to the owning region, and aggregates
+topology (with server-side pagination, search, and region filtering),
+per-region workspace/user counts, and SSH key state. The UI includes a World
+map view that plots each region from its configured `lat`/`lon` and shows
+workspace and user counts, with pan and zoom.
+
+Self-service SSH keys are pushed to every region on change and periodically.
+External-auth tokens are created by the central portal and sent with remote
+creates; starting a stopped remote workspace refreshes them through an
+internal region-authenticated endpoint.
+
 ## Components
 
 | Component | Responsibility | Where it runs |
@@ -66,6 +89,15 @@ API and only needs pod read access plus port-forward.
    regular containers through the Kubernetes `pods/log` subresource.
 4. A container that is waiting or has no output reports its state and error
    inline; a stopped workspace asks the user to start it first.
+
+### Admin workspace manifests
+
+Administrators can inspect the rendered Pod and PVC definitions from the
+workspace details dialog without cluster access. `GET
+/api/workspaces/<name>/manifests` is admin-only and proxies to the owning
+region. It reads the live pod when the workspace is running or the saved spec
+when it is stopped, removes runtime-only metadata, and redacts sensitive
+environment values. The action is audited as `workspace.manifests.view`.
 
 ### Browser terminal
 

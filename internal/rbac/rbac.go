@@ -99,21 +99,35 @@ func (s *Store) Load(ctx context.Context) (Config, error) {
 	return Parse(cm.Data[DataKey])
 }
 
-// Save replaces the RBAC document. The write is serialized per process and
-// retried on conflicts so that two owners editing different templates do not
-// lose updates.
-func (s *Store) Save(ctx context.Context, cfg Config) error {
+// Update applies mutate to the latest RBAC document. The write is serialized
+// per process and retried on conflicts so concurrent changes on different
+// replicas do not lose updates.
+func (s *Store) Update(ctx context.Context, mutate func(*Config) error) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	raw, err := cfg.Marshal()
-	if err != nil {
-		return err
-	}
-
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	var out Config
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cm, err := s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, s.name, metav1.GetOptions{})
-		if apierrors.IsNotFound(err) {
+		notFound := apierrors.IsNotFound(err)
+		if err != nil && !notFound {
+			return err
+		}
+		cfg := Config{}
+		if err == nil {
+			cfg, err = Parse(cm.Data[DataKey])
+			if err != nil {
+				return err
+			}
+		}
+		if err := mutate(&cfg); err != nil {
+			return err
+		}
+		raw, err := cfg.Marshal()
+		if err != nil {
+			return err
+		}
+		if notFound {
 			_, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: s.name},
 				Data:       map[string]string{DataKey: raw},
@@ -121,22 +135,31 @@ func (s *Store) Save(ctx context.Context, cfg Config) error {
 			if apierrors.IsAlreadyExists(err) {
 				return apierrors.NewConflict(corev1.Resource("configmaps"), s.name, err)
 			}
-			return err
+		} else {
+			if cm.Data == nil {
+				cm.Data = map[string]string{}
+			}
+			cm.Data[DataKey] = raw
+			_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, cm, metav1.UpdateOptions{})
 		}
-		if err != nil {
-			return err
+		if err == nil {
+			out = cfg
 		}
-		if cm.Data == nil {
-			cm.Data = map[string]string{}
-		}
-		cm.Data[DataKey] = raw
-		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, cm, metav1.UpdateOptions{})
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("save rbac configmap %s: %w", s.name, err)
+		return Config{}, fmt.Errorf("update rbac configmap %s: %w", s.name, err)
 	}
-	return nil
+	return out, nil
+}
+
+// Save replaces the RBAC document.
+func (s *Store) Save(ctx context.Context, cfg Config) error {
+	_, err := s.Update(ctx, func(target *Config) error {
+		*target = cfg
+		return nil
+	})
+	return err
 }
 
 // Parse decodes the YAML document. An empty document is valid.

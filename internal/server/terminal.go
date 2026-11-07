@@ -26,6 +26,10 @@ type controlMessage struct {
 
 func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
+		return
+	}
 	if name == "" {
 		http.Error(w, "missing workspace name", http.StatusBadRequest)
 		return

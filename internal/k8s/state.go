@@ -84,22 +84,37 @@ func (s *StateStore) Load(ctx context.Context) (map[string]WorkspaceState, error
 	return doc.Workspaces, nil
 }
 
-// Save replaces the stopped workspace document.
-func (s *StateStore) Save(ctx context.Context, states map[string]WorkspaceState) error {
+// Update applies mutate to the latest version of the stopped workspace
+// document. Concurrent updates to different workspaces are preserved.
+func (s *StateStore) Update(ctx context.Context, mutate func(map[string]WorkspaceState) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if states == nil {
-		states = map[string]WorkspaceState{}
-	}
-	raw, err := yaml.Marshal(stateDocument{Workspaces: states})
-	if err != nil {
-		return fmt.Errorf("marshal workspace state: %w", err)
-	}
-
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cm, err := s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, s.name, metav1.GetOptions{})
-		if apierrors.IsNotFound(err) {
+		notFound := apierrors.IsNotFound(err)
+		states := map[string]WorkspaceState{}
+		if err == nil {
+			var doc stateDocument
+			if raw := strings.TrimSpace(cm.Data[stateDataKey]); raw != "" {
+				if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+					return fmt.Errorf("parse workspace state: %w", err)
+				}
+			}
+			if doc.Workspaces != nil {
+				states = doc.Workspaces
+			}
+		} else if !notFound {
+			return err
+		}
+		if err := mutate(states); err != nil {
+			return err
+		}
+		raw, err := yaml.Marshal(stateDocument{Workspaces: states})
+		if err != nil {
+			return fmt.Errorf("marshal workspace state: %w", err)
+		}
+		if notFound {
 			_, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: s.name},
 				Data:       map[string]string{stateDataKey: string(raw)},
@@ -107,9 +122,6 @@ func (s *StateStore) Save(ctx context.Context, states map[string]WorkspaceState)
 			if apierrors.IsAlreadyExists(err) {
 				return apierrors.NewConflict(corev1.Resource("configmaps"), s.name, err)
 			}
-			return err
-		}
-		if err != nil {
 			return err
 		}
 		if cm.Data == nil {
@@ -120,9 +132,25 @@ func (s *StateStore) Save(ctx context.Context, states map[string]WorkspaceState)
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("save workspace state %s: %w", s.name, err)
+		return fmt.Errorf("update workspace state %s: %w", s.name, err)
 	}
 	return nil
+}
+
+// Save replaces the stopped workspace document.
+func (s *StateStore) Save(ctx context.Context, states map[string]WorkspaceState) error {
+	if states == nil {
+		states = map[string]WorkspaceState{}
+	}
+	return s.Update(ctx, func(target map[string]WorkspaceState) error {
+		for key := range target {
+			delete(target, key)
+		}
+		for key, state := range states {
+			target[key] = state
+		}
+		return nil
+	})
 }
 
 func marshalState(state WorkspaceState) (string, error) {

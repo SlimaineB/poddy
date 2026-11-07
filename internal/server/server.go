@@ -13,6 +13,7 @@ import (
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
 	"poddy/internal/rbac"
+	"poddy/internal/region"
 	"poddy/internal/sshkeys"
 	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
@@ -27,6 +28,11 @@ type Server struct {
 	TokenAdmin bool
 	Local      *local.Local
 	Forwards   *Forwarder
+	Regions    *region.Hub
+	RegionMode bool
+	RegionKey  string
+	RegionName string
+	HubURL     string
 
 	SSHHost           string
 	SSHPort           string
@@ -69,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
 	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)
 	mux.HandleFunc("GET /api/config", s.config)
+	mux.HandleFunc("GET /api/regions", s.regionSummaries)
 	mux.HandleFunc("GET /api/templates", s.templates)
 	mux.HandleFunc("GET /api/templates/{name}/access", s.templateAccess)
 	mux.HandleFunc("PUT /api/templates/{name}/access", s.updateTemplateAccess)
@@ -78,6 +85,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /external-auth/{id}/callback", s.externalAuthCallback)
 	mux.HandleFunc("GET /api/workspaces/{name}/external-auth/{id}/token", s.workspaceExternalAuthToken)
 	mux.HandleFunc("GET /api/workspaces/{name}/git-askpass", s.workspaceGitAskpass)
+	mux.HandleFunc("PUT /api/internal/ssh-keys/{owner}", s.regionReplaceSSHKeys)
+	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)
 	mux.HandleFunc("GET /api/users", s.users)
 	mux.HandleFunc("GET /api/teams", s.teams)
 	mux.HandleFunc("PUT /api/teams/{name}", s.updateTeam)
@@ -86,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
 	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
+	mux.HandleFunc("GET /api/workspaces/{name}/manifests", s.workspaceManifests)
 	mux.HandleFunc("POST /api/workspaces", s.create)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.remove)
 	mux.HandleFunc("POST /api/workspaces/{name}/stop", s.stop)
@@ -112,6 +122,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
+	regions := []map[string]any{}
+	if s.Regions != nil {
+		for _, cfg := range s.Regions.Configs() {
+			regions = append(regions, regionConfigInfo(cfg))
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ssh":               s.SSHEnabled,
 		"sshHost":           s.SSHHost,
@@ -120,6 +136,9 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"windows":           s.Windows,
 		"windowsSSHKeyPath": s.WindowsSSHKeyPath,
 		"localVSCode":       s.Local != nil,
+		"regionMode":        s.RegionMode,
+		"regionName":        s.RegionName,
+		"regions":           regions,
 	})
 }
 

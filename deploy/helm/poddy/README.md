@@ -88,6 +88,16 @@ name (without the leading `v`) is used.
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | ConfigMap for stopped workspace specs. |
+| `regions` | `[]` | Central hub only. Region list with `name`, `url`, `key`, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
+| `regionsExistingSecret` | `""` | Existing Secret containing `regionsKey` instead of inline `regions`. |
+| `regionsKey` | `regions.yaml` | Key in the regions Secret. |
+| `regionManager.enabled` | `false` | Run this release as a region manager trusted by a central hub. |
+| `regionManager.name` | `""` | Region identifier. Required when enabled. |
+| `regionManager.hubUrl` | `""` | Central hub public URL used by workspace pods for external auth. Required when enabled. |
+| `regionManager.key` | `""` | Shared key used to verify hub identities. Required unless `regionManager.existingSecret` is set. |
+| `regionManager.existingSecret` | `""` | Existing Secret containing `regionManager.keyKey`. |
+| `desktop.secret` | `""` | Stable key for VS Code desktop tickets. Recommended for `replicaCount > 1`. |
+| `desktop.existingSecret` | `""` | Existing Secret containing `desktop.secretKey`. |
 | `auth.existingSecret` | `""` | Use existing Secret for token. |
 | `auth.tokenAdmin` | `false` | Treat the shared token as a global admin. Keep false in multi-user deployments. |
 | `auth.secretKey` | `token` | Key in the token Secret. |
@@ -328,6 +338,14 @@ The portal scales on HTTP load. The bastion scales on SSH connections. The
 bastion uses `ssh.existingHostKeySecret`, so SSH clients see a stable host key
 across replicas.
 
+## Multi-region
+
+Use one central hub and one `regionManager.enabled=true` release per region. The
+hub owns auth/RBAC/templates/external auth and routes workspace traffic to the
+region manager selected at creation. See the main
+[multi-region documentation](../../docs/deploy.md#multi-region) for the Secret
+format and network requirements.
+
 ## RBAC
 
 The portal gets a Role in `workspaceNamespace` with:
@@ -338,6 +356,7 @@ The portal gets a Role in `workspaceNamespace` with:
 - `persistentvolumeclaims` (get, list, create, delete)
 - `configmaps` (get, list, watch, create, update, patch)
 - `secrets` (get, list, watch, create, update, patch) for external auth tokens
+- `leases` (get, create, update) for distributed workspace lifecycle locks
 
 Add extra rules via `rbac.extraRules`.
 

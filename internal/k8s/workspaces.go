@@ -62,6 +62,7 @@ type Workspace struct {
 	Owner         string    `json:"owner,omitempty"`
 	Persistent    bool      `json:"persistent"`
 	BrowserVSCode bool      `json:"browserVSCode,omitempty"`
+	Region        string    `json:"region,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -78,6 +79,10 @@ type CreateRequest struct {
 	// Owner and PortalURL are set by the portal from the authenticated request.
 	Owner     string `json:"-"`
 	PortalURL string `json:"-"`
+
+	ExternalAuthReady bool              `json:"externalAuthReady,omitempty"`
+	ExternalAuthEnv   map[string]string `json:"externalAuthEnv,omitempty"`
+	WorkspaceToken    string            `json:"workspaceToken,omitempty"`
 }
 
 // ExternalAuthFunc returns the environment variables injected into a workspace.
@@ -97,6 +102,7 @@ type Manager struct {
 	AuthorizedKeys    []string
 	SSHKeys           sshkeys.Keyring
 	StateConfigMap    string
+	InstanceID        string
 	PortalURL         string
 	ExternalAuth      ExternalAuthFunc
 	ExternalAuthToken WorkspaceTokenFunc
@@ -234,6 +240,19 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 	if err := validateName(req.Name); err != nil {
 		return Workspace{}, err
 	}
+	release, err := m.lockWorkspace(ctx, req.Name)
+	if err != nil {
+		return Workspace{}, err
+	}
+	defer release()
+	return m.create(ctx, req)
+}
+
+func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	if err := validateName(req.Name); err != nil {
+		return Workspace{}, err
+	}
 	if _, err := m.GetWorkspace(ctx, req.Name); err == nil {
 		return Workspace{}, fmt.Errorf("workspace %q already exists", req.Name)
 	} else if !apierrors.IsNotFound(err) {
@@ -333,7 +352,9 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, err
 	if pod.Annotations == nil {
 		pod.Annotations = map[string]string{}
 	}
-	if err := m.applyExternalAuth(ctx, pod, req.Owner, req.Name, req.PortalURL, tmpl.ExternalAuth); err != nil {
+	if req.ExternalAuthReady {
+		applyExternalAuthEnv(pod, req.Owner, req.Name, req.PortalURL, tmpl.ExternalAuth, req.ExternalAuthEnv, req.WorkspaceToken)
+	} else if err := m.applyExternalAuth(ctx, pod, req.Owner, req.Name, req.PortalURL, tmpl.ExternalAuth); err != nil {
 		if createdPVC {
 			_ = m.deletePVC(ctx, req.Name)
 		}
@@ -380,7 +401,15 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 	if err := validateName(name); err != nil {
 		return err
 	}
+	release, err := m.lockWorkspace(ctx, name)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return m.delete(ctx, name)
+}
 
+func (m *Manager) delete(ctx context.Context, name string) error {
 	pod, err := m.Get(ctx, name)
 	podExists := err == nil
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -412,8 +441,10 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 		return err
 	}
 	if stateExists {
-		delete(states, name)
-		if err := m.stateStore().Save(ctx, states); err != nil {
+		if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
+			delete(states, name)
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
