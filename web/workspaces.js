@@ -711,6 +711,16 @@ function renderDetails(ws) {
     els.detailList.append(detailRow("Pod Phase", ws.podPhase));
   }
   els.detailList.append(detailRow("Storage", ws.persistent ? "Persistent volume" : "Ephemeral"));
+  if (Array.isArray(ws.volumes) && ws.volumes.length) {
+    const volumesEl = document.createElement("div");
+    volumesEl.className = "volumes";
+    for (const v of ws.volumes) {
+      const row = document.createElement("div");
+      row.textContent = `${v.name || v.volumeName || "volume"} · ${v.capacity || "?"} · ${v.storageClass || "default"} · ${v.phase || ""}`;
+      volumesEl.append(row);
+    }
+    els.detailList.append(detailRow("Volumes", volumesEl));
+  }
   if (ws.createdAt) {
     const date = new Date(ws.createdAt);
     const value = Number.isNaN(date.getTime())

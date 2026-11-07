@@ -76,8 +76,7 @@ els.createForm.addEventListener("submit", async (event) => {
 
   if (template) {
     for (const parameter of template.parameters || []) {
-      const value = String(data.get(parameter.name) || "").trim();
-      if (value !== "") parameters[parameter.name] = value;
+      parameters[parameter.name] = String(data.get(parameter.name) || "").trim();
     }
   }
 
