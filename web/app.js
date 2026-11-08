@@ -76,8 +76,7 @@ els.createForm.addEventListener("submit", async (event) => {
 
   if (template) {
     for (const parameter of template.parameters || []) {
-      const value = String(data.get(parameter.name) || "").trim();
-      if (value !== "") parameters[parameter.name] = value;
+      parameters[parameter.name] = String(data.get(parameter.name) || "").trim();
     }
   }
 
@@ -191,11 +190,26 @@ document.querySelectorAll("[data-manifest-tab]").forEach((button) => {
     renderManifests(state.manifests);
   });
 });
+els.detailPortsRefresh.addEventListener("click", refreshDetailPorts);
+els.detailPortForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  openDetailPort();
+});
 els.detailDialog.addEventListener("close", () => {
   state.detailWorkspace = null;
   state.detailRequest += 1;
   state.manifests = null;
   state.manifestTab = "pod";
+  state.detailPortsRequest += 1;
+});
+els.portsRefresh.addEventListener("click", refreshPorts);
+els.portsForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  openPortsDialogPort();
+});
+els.portsDialog.addEventListener("close", () => {
+  state.portsWorkspace = null;
+  state.portsRequest += 1;
 });
 
 els.openVSCode.addEventListener("click", () => {

@@ -147,6 +147,14 @@ function renderWorkspaceActions(workspace) {
       actions.append(button);
     }
 
+    const ports = document.createElement("button");
+    ports.type = "button";
+    ports.className = "button small";
+    ports.innerHTML = `${icon("server")}Ports`;
+    ports.title = "Open an application running in this workspace";
+    ports.addEventListener("click", () => showPorts(workspace));
+    actions.append(ports);
+
     const terminal = document.createElement("a");
     terminal.className = "button small terminal";
     terminal.href = withToken(`/terminal?name=${encodeURIComponent(workspace.name)}`);
@@ -490,12 +498,15 @@ async function showDetails(workspace) {
   els.detailLogsBody.replaceChildren();
   els.detailManifests.hidden = !(state.me && state.me.isAdmin);
   if (!els.detailManifests.hidden) setManifestsMessage("Loading manifests...");
+  els.detailPortsBody.replaceChildren();
+  els.detailPortInput.value = "";
 
   const loading = document.createElement("div");
   loading.className = "loading-small";
   loading.textContent = "Loading details...";
   els.detailList.append(loading);
   setLogsMessage("Loading startup logs...");
+  setPortsMessage(els.detailPortsBody, "Detecting listening ports...");
   els.detailDialog.showModal();
 
   await refreshDetails();
@@ -505,15 +516,151 @@ async function refreshDetails() {
   const workspace = state.detailWorkspace;
   if (!workspace) return;
   const request = ++state.detailRequest;
+  const portsRequest = ++state.detailPortsRequest;
   els.detailLogsRefresh.disabled = true;
   els.detailManifestsRefresh.disabled = true;
-  const jobs = [loadDetails(workspace, request), loadLogs(workspace, request)];
+  els.detailPortsRefresh.disabled = true;
+  const jobs = [
+    loadDetails(workspace, request),
+    loadLogs(workspace, request),
+    loadPorts(workspace, portsRequest, els.detailPortsBody, () => state.detailPortsRequest),
+  ];
   if (state.me && state.me.isAdmin) jobs.push(loadManifests(workspace, request));
   await Promise.all(jobs);
   if (request === state.detailRequest) {
     els.detailLogsRefresh.disabled = false;
     els.detailManifestsRefresh.disabled = false;
   }
+  if (portsRequest === state.detailPortsRequest) {
+    els.detailPortsRefresh.disabled = false;
+  }
+}
+
+async function refreshDetailPorts() {
+  const workspace = state.detailWorkspace;
+  if (!workspace) return;
+  const request = ++state.detailPortsRequest;
+  els.detailPortsRefresh.disabled = true;
+  try {
+    await loadPorts(workspace, request, els.detailPortsBody, () => state.detailPortsRequest);
+  } finally {
+    if (request === state.detailPortsRequest) {
+      els.detailPortsRefresh.disabled = false;
+    }
+  }
+}
+
+function showPorts(workspace) {
+  state.portsWorkspace = workspace;
+  els.portsTitle.textContent = "Ports";
+  els.portsSubtitle.textContent = `Applications listening in ${workspace.name}.`;
+  els.portsBody.replaceChildren();
+  els.portsInput.value = "";
+  setPortsMessage(els.portsBody, "Detecting listening ports...");
+  if (!els.portsDialog.open) els.portsDialog.showModal();
+  refreshPorts();
+}
+
+async function refreshPorts() {
+  const workspace = state.portsWorkspace;
+  if (!workspace) return;
+  const request = ++state.portsRequest;
+  els.portsRefresh.disabled = true;
+  try {
+    await loadPorts(workspace, request, els.portsBody, () => state.portsRequest);
+  } finally {
+    if (request === state.portsRequest) {
+      els.portsRefresh.disabled = false;
+    }
+  }
+}
+
+function setPortsMessage(body, message) {
+  body.replaceChildren();
+  const note = document.createElement("p");
+  note.className = "hint";
+  note.textContent = message;
+  body.append(note);
+}
+
+function workspacePortURL(name, port) {
+  return `/api/workspaces/${encodeURIComponent(name)}/ports/${encodeURIComponent(port)}/`;
+}
+
+async function loadPorts(workspace, request, body, currentRequest) {
+  try {
+    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/ports`);
+    if (request !== currentRequest()) return;
+    renderPorts(workspace, data || {}, body);
+  } catch (err) {
+    if (request !== currentRequest()) return;
+    setPortsMessage(body, err.message || "Could not load ports.");
+  }
+}
+
+function renderPorts(workspace, data, body) {
+  body.replaceChildren();
+  const ports = Array.isArray(data.ports) ? data.ports : [];
+  const message = String(data.message || "").trim();
+
+  if (!ports.length) {
+    setPortsMessage(body, message || "No listening TCP ports detected. Start a server in the workspace or enter a port below.");
+    return;
+  }
+
+  if (message) {
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = message;
+    body.append(note);
+  }
+
+  for (const item of ports) {
+    const port = Number(item.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
+
+    const row = document.createElement("div");
+    row.className = "port-row";
+
+    const main = document.createElement("div");
+    main.className = "port-main";
+    const number = document.createElement("span");
+    number.className = "port-number";
+    number.textContent = `:${port}`;
+    const address = document.createElement("span");
+    address.className = "port-address";
+    address.textContent = [item.protocol || "tcp", item.address].filter(Boolean).join(" · ");
+    main.append(number, address);
+
+    const open = document.createElement("a");
+    open.className = "button small";
+    open.textContent = "Open";
+    open.href = withToken(item.url || workspacePortURL(workspace.name, port));
+    open.target = "_blank";
+    open.rel = "noopener";
+    open.title = `Open port ${port} in a new tab`;
+
+    row.append(main, open);
+    body.append(row);
+  }
+}
+
+function openPort(workspace, input) {
+  if (!workspace) return;
+  const port = Number(input.value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    toast("Enter a port between 1 and 65535.");
+    return;
+  }
+  window.open(withToken(workspacePortURL(workspace.name, port)), "_blank", "noopener");
+}
+
+function openDetailPort() {
+  openPort(state.detailWorkspace, els.detailPortInput);
+}
+
+function openPortsDialogPort() {
+  openPort(state.portsWorkspace, els.portsInput);
 }
 
 async function loadDetails(workspace, request) {
@@ -711,6 +858,16 @@ function renderDetails(ws) {
     els.detailList.append(detailRow("Pod Phase", ws.podPhase));
   }
   els.detailList.append(detailRow("Storage", ws.persistent ? "Persistent volume" : "Ephemeral"));
+  if (Array.isArray(ws.volumes) && ws.volumes.length) {
+    const volumesEl = document.createElement("div");
+    volumesEl.className = "volumes";
+    for (const v of ws.volumes) {
+      const row = document.createElement("div");
+      row.textContent = `${v.name || v.volumeName || "volume"} · ${v.capacity || "?"} · ${v.storageClass || "default"} · ${v.phase || ""}`;
+      volumesEl.append(row);
+    }
+    els.detailList.append(detailRow("Volumes", volumesEl));
+  }
   if (ws.createdAt) {
     const date = new Date(ws.createdAt);
     const value = Number.isNaN(date.getTime())

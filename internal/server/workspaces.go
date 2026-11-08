@@ -148,6 +148,16 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Volumes attached to this workspace (owner/admin only, already authorized above)
+	var volumes []k8s.Volume
+	if allVolumes, lerr := s.Workspaces.ListVolumes(r.Context()); lerr == nil {
+		for _, v := range allVolumes {
+			if v.Workspace == ws.Name {
+				volumes = append(volumes, v)
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":        ws.Name,
 		"template":    ws.Template,
@@ -159,6 +169,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"podIP":       podIP,
 		"nodeName":    nodeName,
 		"podPhase":    podPhase,
+		"volumes":     volumes,
 		"owners":      nonNil(owners),
 		"users":       nonNil(users),
 		"teams":       nonNil(teams),
