@@ -182,3 +182,31 @@ func TestHubRegionFilterAndSummaries(t *testing.T) {
 		}
 	}
 }
+
+func TestHubProxiesWorkspacePorts(t *testing.T) {
+	regionServer := newTestServer("")
+	regionServer.RegionMode = true
+	regionServer.RegionKey = "shared"
+	regionServer.RegionName = "eu"
+	backend := httptest.NewServer(regionServer.Handler())
+	defer backend.Close()
+
+	hub := newHubServer(t, backend.URL)
+	rec := request(t, hub, http.MethodPost, "/api/workspaces", map[string]any{"name": "app", "region": "eu"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = request(t, hub, http.MethodGet, "/api/workspaces/app/ports", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ports status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	ports, ok := payload["ports"].([]any)
+	if !ok || len(ports) != 0 {
+		t.Fatalf("ports = %#v", payload["ports"])
+	}
+}
