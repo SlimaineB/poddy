@@ -76,7 +76,9 @@ const state = {
   volumeBackupVolume: null,
   volumeBackupRequest: 0,
   volumeBackups: [],
+  volumeRestoreTargets: [],
   volumeRestoreKey: "",
+  volumeRestoreName: "",
   volumeRestoreClean: false,
   pendingVolumeDelete: null,
 };
@@ -180,6 +182,8 @@ const els = {
   volumeBackupStatus: document.getElementById("volume-backup-status"),
   restoreDialog: document.getElementById("restore-dialog"),
   restoreText: document.getElementById("restore-text"),
+  restoreTarget: document.getElementById("restore-target"),
+  restoreTargetHint: document.getElementById("restore-target-hint"),
   restoreClean: document.getElementById("restore-clean"),
   restoreConfirm: document.getElementById("restore-confirm"),
   restoreError: document.getElementById("restore-error"),

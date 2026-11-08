@@ -157,9 +157,9 @@ func (h *Hub) VolumesRegion(ctx context.Context, region string, identity Identit
 	return response.Volumes, response.Backup, err
 }
 
-func (h *Hub) FindVolumeRegion(ctx context.Context, name string, identity Identity) (string, error) {
+func (h *Hub) FindVolume(ctx context.Context, name string, identity Identity) (Config, k8s.Volume, error) {
 	if h == nil {
-		return "", errors.New("no regions configured")
+		return Config{}, k8s.Volume{}, errors.New("no regions configured")
 	}
 	var problems []error
 	for _, cfg := range h.Configs() {
@@ -174,14 +174,46 @@ func (h *Hub) FindVolumeRegion(ctx context.Context, name string, identity Identi
 		}
 		for _, volume := range volumes {
 			if volume.Name == name {
-				return cfg.Name, nil
+				return cfg, volume, nil
 			}
 		}
 	}
 	if len(problems) > 0 {
-		return "", errors.Join(problems...)
+		return Config{}, k8s.Volume{}, errors.Join(problems...)
 	}
-	return "", &HTTPError{Status: 404, Message: "volume not found"}
+	return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "volume not found"}
+}
+
+func (h *Hub) FindVolumeInRegion(ctx context.Context, region, name string, identity Identity) (Config, k8s.Volume, error) {
+	if region == "" {
+		return h.FindVolume(ctx, name, identity)
+	}
+	cfg, ok := h.Get(region)
+	if !ok {
+		return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "region not found"}
+	}
+	client := h.Client(cfg.Name)
+	if client == nil {
+		return Config{}, k8s.Volume{}, fmt.Errorf("region %s is not configured", region)
+	}
+	volumes, err := client.Volumes(ctx, identity)
+	if err != nil {
+		return Config{}, k8s.Volume{}, err
+	}
+	for _, volume := range volumes {
+		if volume.Name == name {
+			return cfg, volume, nil
+		}
+	}
+	return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "volume not found"}
+}
+
+func (h *Hub) FindVolumeRegion(ctx context.Context, name string, identity Identity) (string, error) {
+	cfg, _, err := h.FindVolume(ctx, name, identity)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Name, nil
 }
 
 func (h *Hub) FindWorkspace(ctx context.Context, name string, identity Identity) (Config, WorkspaceInfo, error) {

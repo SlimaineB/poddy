@@ -3110,7 +3110,8 @@ select {
   color: #15803d;
 }
 
-.volume-backup-note.blocked {
+.volume-backup-note.blocked,
+.volume-backup-note.warning {
   border-color: rgba(180, 83, 9, 0.22);
   background: rgba(180, 83, 9, 0.06);
   color: #b45309;

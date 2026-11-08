@@ -34,9 +34,15 @@ Backups and restores require:
   and delete objects under it.
 - Network access from the region manager to the S3 endpoint.
 - The volume to be `Bound`.
-- For a volume assigned to a workspace, the workspace must be **Stopped**. This
-  avoids mounting a `ReadWriteOnce` volume in two pods and prevents a backup
-  from changing while it is being archived.
+- Restore requires the target workspace to be **Stopped**. A live restore would
+  overwrite files under the running application.
+- Backup can run while the workspace is **Running**. The helper is pinned to the
+  workspace node and mounts the volume read-only, so a `ReadWriteOnce` volume
+  can be read while the workspace uses it. The archive is crash-consistent at
+  best: files being written during the backup can be inconsistent. Quiesce the
+  application or stop the workspace if you need a fully consistent archive.
+- Live backup is not supported for `ReadWriteOncePod` volumes; stop the
+  workspace first.
 
 Poddy runs a short-lived helper pod for each backup or restore. The helper
 image must contain `sh`, `tar`, and `gzip`; the default `busybox:1.36` is
@@ -142,16 +148,25 @@ All regions can share one bucket and prefix. Object keys include the volume
 name, which is unique within the cluster. Use a separate prefix per region if
 you want independent lifecycle rules or retention policies.
 
+Copying a backup to a volume in another region requires the source and target
+regions to use the same bucket and prefix, because the restore is performed by
+the target region. The hub checks access to the source volume and the target
+region checks access to the target volume.
+
 ## Create, restore, and delete backups
 
 1. Open **Volumes** and select **Backups** on a volume.
-2. If the volume belongs to a running workspace, stop the workspace first.
-3. **Create backup** streams a gzip tar archive of the volume root to S3. The
-   object key is
+2. **Create backup** streams a gzip tar archive of the volume root to S3. If the
+   workspace is running, the dialog shows a live-backup warning; the helper is
+   scheduled on the same node and mounts the volume read-only. The object key is
    `<prefix>/<volume>/<YYYYMMDDTHHMMSSZ>.tar.gz`.
-4. **Restore** extracts an archive back into the volume. **Delete existing
-   files before restoring** removes everything in the volume first; without it,
-   the archive is extracted over the current contents and extra files are kept.
+3. **Restore** opens a dialog with a **Restore into** selector. The target must
+   be `Bound`; if it belongs to a workspace, that workspace must be **Stopped**.
+   The selector defaults to the source volume but can point at another volume,
+   which copies the archive into that volume without changing the backup object.
+4. **Delete existing files before restoring** removes everything in the target
+   volume first; without it, the archive is extracted over the current contents
+   and extra files are kept.
 5. **Delete backup** removes only the selected object from S3.
 
 The archive contains the whole volume root, including dotfiles. Restored files
@@ -169,18 +184,23 @@ The UI uses the same API:
 | `GET` | `/api/volumes/{name}/backups` | List backups for a volume. |
 | `POST` | `/api/volumes/{name}/backups` | Create a backup. |
 | `DELETE` | `/api/volumes/{name}/backups?key=...` | Delete a backup object. |
-| `POST` | `/api/volumes/{name}/restore` | Restore `{"key": "...", "clean": true}`. |
+| `POST` | `/api/volumes/{name}/restore` | Restore `{"key": "...", "clean": true}`. Add `"target": "other-volume", "targetRegion": "us"` to copy the backup into another volume. |
 
-Volume actions accept `?region=<name>`; without it, the hub locates the region
-that owns the volume.
+Volume actions accept `?region=<name>` for the source volume; without it, the
+hub locates the source region. For a copy, set `targetRegion` to the target
+volume's region.
 
 ## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
 | `501 volume backups are not configured` | Set the endpoint, bucket, access key, and secret key; check the portal startup log. |
-| `409 stop the workspace before backing up or restoring` | Stop the workspace and wait for its phase to become `Stopped`. |
-| `502` / `region unavailable` | Check S3 DNS, TLS, endpoint scheme, credentials, and bucket existence from the region manager pod. |
+| `409 stop the workspace before restoring` | Restore always requires a stopped target workspace. |
+| `400 invalid backup key` | The key does not belong to the source volume prefix. |
+| `404 target volume not found` | The target volume is missing or not visible to your account. |
+| `409 wait for the workspace to be running or stopped` | The workspace is pending, terminating, or failed; wait for it to settle before backing up. |
+| `409 live backup is not supported for ReadWriteOncePod volumes` | Stop the workspace; live backup cannot mount an RWOP volume a second time. |
+| Live backup fails to schedule or mount | Check that the workspace node has room for the helper pod and that the CSI driver allows a second read-only mount on the same node. |
 | Helper pod stuck in `ErrImagePull` | Set `backup.helperImage` to an image available to the cluster, or allow the node to pull `busybox:1.36`. |
 | Archive is empty or very small | The helper cannot read the volume. Check PVC ownership and that the helper pod mounted the expected claim. |
 | Restore cannot overwrite files | Enable **Delete existing files before restoring**, or ensure the helper can write the existing file ownership. |

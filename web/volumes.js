@@ -224,6 +224,7 @@ function openVolumeBackups(volume) {
   state.volumeBackupVolume = volume;
   state.volumeBackups = [];
   state.volumeBackupRequest += 1;
+  state.volumeRestoreTargets = Array.isArray(state.volumes) ? state.volumes.slice() : [];
   els.volumeBackupsTitle.textContent = `Backups · ${volume.name}`;
   els.volumeBackupsSubtitle.textContent = volume.assigned
     ? `Persistent volume for workspace ${volume.workspace}.`
@@ -233,20 +234,112 @@ function openVolumeBackups(volume) {
   renderVolumeBackupStatus();
   if (!els.volumeBackupsDialog.open) els.volumeBackupsDialog.showModal();
   loadVolumeBackups();
+  loadVolumeRestoreTargets();
+}
+
+function volumeBackupAllowed(volume) {
+  if (volume.phase && volume.phase !== "Bound") return false;
+  if (!volume.assigned) return true;
+  if (volume.workspacePhase === "Stopped") return true;
+  if (volume.workspacePhase !== "Running") return false;
+  return !(Array.isArray(volume.accessModes) && volume.accessModes.includes("ReadWriteOncePod"));
+}
+
+function volumeRestoreAllowed(volume) {
+  if (volume.phase && volume.phase !== "Bound") return false;
+  return !volume.assigned || volume.workspacePhase === "Stopped";
+}
+
+function restoreTargetOptions() {
+  const source = state.volumeBackupVolume;
+  const volumes = state.volumeRestoreTargets.length
+    ? state.volumeRestoreTargets
+    : Array.isArray(state.volumes)
+      ? state.volumes
+      : [];
+  if (!source) return volumes;
+  const found = volumes.some(
+    (volume) => volume.name === source.name && (volume.region || "") === (source.region || "")
+  );
+  return found ? volumes : [source, ...volumes];
+}
+
+async function loadVolumeRestoreTargets() {
+  if (!state.regionFilter) return;
+  const source = state.volumeBackupVolume;
+  if (!source) return;
+  try {
+    const data = await api("/api/volumes");
+    if (state.volumeBackupVolume !== source) return;
+    state.volumeRestoreTargets = Array.isArray(data) ? data : Array.isArray(data.volumes) ? data.volumes : [];
+    renderVolumeBackups();
+  } catch {
+    // The currently loaded region still provides a usable target list.
+  }
+}
+
+function restoreTargetLabel(volume) {
+  const region = volume.region || "local";
+  if (!volume.assigned) return `${volume.name} · ${region} · unassigned`;
+  const phase = volume.workspacePhase || "unknown";
+  return `${volume.name} · ${region} · ${volume.workspace} (${phase})`;
+}
+
+function selectedRestoreTarget() {
+  const index = els.restoreTarget.selectedIndex;
+  const option = index >= 0 ? els.restoreTarget.options[index] : null;
+  if (!option) return null;
+  return { name: option.value, region: option.dataset.region || "" };
+}
+
+function updateRestoreTarget() {
+  const source = state.volumeBackupVolume;
+  const target = selectedRestoreTarget();
+  if (!source || !target) {
+    els.restoreConfirm.disabled = true;
+    els.restoreTargetHint.textContent = "No eligible target volume. Stop a workspace before restoring into its volume.";
+    return;
+  }
+  els.restoreText.textContent = `Restore ${state.volumeRestoreName || state.volumeRestoreKey} into ${target.name}?`;
+  const volume = restoreTargetOptions().find(
+    (item) => item.name === target.name && (item.region || "") === target.region
+  );
+  if (volume && volumeRestoreAllowed(volume)) {
+    els.restoreConfirm.disabled = false;
+    els.restoreTargetHint.textContent = volume.assigned
+      ? `The target workspace ${volume.workspace} is stopped.`
+      : "The target volume is unassigned.";
+  } else {
+    els.restoreConfirm.disabled = true;
+    els.restoreTargetHint.textContent = "Stop the target workspace before restoring into its volume.";
+  }
 }
 
 function renderVolumeBackupStatus() {
   const volume = state.volumeBackupVolume;
   els.volumeBackupStatus.replaceChildren();
   if (!volume) return;
-  const ready = !volume.assigned || volume.workspacePhase === "Stopped";
   const note = document.createElement("p");
-  note.className = `volume-backup-note${ready ? " ready" : " blocked"}`;
-  note.textContent = ready
-    ? "Ready. Backups run in a temporary helper pod and do not change the workspace."
-    : `Stop the workspace first. The volume is currently attached to a ${volume.workspacePhase || "running"} workspace.`;
+  if (!volume.assigned) {
+    note.className = "volume-backup-note ready";
+    note.textContent = "Ready. Backups run in a temporary helper pod and do not change the workspace.";
+  } else if (volume.workspacePhase === "Stopped") {
+    note.className = "volume-backup-note ready";
+    note.textContent = "Ready. The workspace is stopped, so this is an offline backup.";
+  } else if (volume.workspacePhase === "Running") {
+    if (volumeBackupAllowed(volume)) {
+      note.className = "volume-backup-note warning";
+      note.textContent = "Workspace is running. The live backup may be crash-consistent: files being written can be inconsistent. Restore still requires stopping the workspace.";
+    } else {
+      note.className = "volume-backup-note blocked";
+      note.textContent = "This volume uses ReadWriteOncePod. Stop the workspace before creating a backup.";
+    }
+  } else {
+    note.className = "volume-backup-note blocked";
+    note.textContent = `Wait for the workspace to be Running or Stopped before backing up its volume. Current phase: ${volume.workspacePhase || "unknown"}.`;
+  }
   els.volumeBackupStatus.append(note);
-  els.volumeBackupCreate.disabled = !ready || !state.volumeBackupEnabled;
+  els.volumeBackupCreate.disabled = !volumeBackupAllowed(volume) || !state.volumeBackupEnabled;
 }
 
 async function loadVolumeBackups() {
@@ -304,6 +397,10 @@ function renderVolumeBackups() {
     restore.type = "button";
     restore.className = "button ghost small";
     restore.textContent = "Restore";
+    restore.disabled = !restoreTargetOptions().some(volumeRestoreAllowed);
+    restore.title = restore.disabled
+      ? "Stop a target workspace before restoring a backup"
+      : "Restore into this or another volume";
     restore.addEventListener("click", () => openRestoreBackup(backup));
     const remove = document.createElement("button");
     remove.type = "button";
@@ -341,18 +438,44 @@ async function createVolumeBackup() {
 function openRestoreBackup(backup) {
   const volume = state.volumeBackupVolume;
   if (!volume) return;
+  const targets = restoreTargetOptions();
+  const eligible = targets.filter(volumeRestoreAllowed);
+  if (!eligible.length) {
+    toast("Stop a target workspace before restoring a backup.");
+    return;
+  }
   state.volumeRestoreKey = backup.key;
-  state.volumeRestoreClean = false;
-  els.restoreText.textContent = `Restore ${backup.name || backup.key} into ${volume.name}?`;
+  state.volumeRestoreName = backup.name || backup.key;
+  els.restoreTarget.replaceChildren();
+  for (const target of targets) {
+    const option = document.createElement("option");
+    option.value = target.name;
+    option.dataset.region = target.region || "";
+    option.textContent = restoreTargetLabel(target);
+    option.disabled = !volumeRestoreAllowed(target);
+    els.restoreTarget.append(option);
+  }
+  const preferred =
+    eligible.find(
+      (target) => target.name === volume.name && (target.region || "") === (volume.region || "")
+    ) || eligible[0];
+  for (const option of els.restoreTarget.options) {
+    if (option.value === preferred.name && (option.dataset.region || "") === (preferred.region || "")) {
+      els.restoreTarget.selectedIndex = option.index;
+      break;
+    }
+  }
   els.restoreClean.checked = false;
   els.restoreError.hidden = true;
+  updateRestoreTarget();
   els.restoreDialog.showModal();
 }
 
 async function confirmRestoreBackup() {
   const volume = state.volumeBackupVolume;
   const key = state.volumeRestoreKey;
-  if (!volume || !key) return;
+  const target = selectedRestoreTarget();
+  if (!volume || !key || !target) return;
   const original = els.restoreConfirm.innerHTML;
   els.restoreConfirm.disabled = true;
   els.restoreConfirm.innerHTML = `<span class="spinner small"></span>Restoring`;
@@ -360,17 +483,24 @@ async function confirmRestoreBackup() {
   try {
     await api(volumeActionURL(volume, "/restore"), {
       method: "POST",
-      body: JSON.stringify({ key, clean: els.restoreClean.checked }),
+      body: JSON.stringify({
+        key,
+        clean: els.restoreClean.checked,
+        target: target.name,
+        targetRegion: target.region,
+      }),
     });
     els.restoreDialog.close();
-    toast(`Backup restored into ${volume.name}.`, "success");
-    await loadVolumeBackups();
+    toast(`Backup restored into ${target.name}.`, "success");
+    if (target.name === volume.name && (target.region || "") === (volume.region || "")) {
+      await loadVolumeBackups();
+    }
   } catch (err) {
     els.restoreError.hidden = false;
     els.restoreError.textContent = err.message || "Failed to restore backup.";
   } finally {
-    els.restoreConfirm.disabled = false;
     els.restoreConfirm.innerHTML = original;
+    updateRestoreTarget();
   }
 }
 
@@ -436,15 +566,20 @@ document.querySelectorAll("[data-volume-filter]").forEach((button) => {
 });
 els.volumeBackupsRefresh.addEventListener("click", loadVolumeBackups);
 els.volumeBackupCreate.addEventListener("click", createVolumeBackup);
+els.restoreTarget.addEventListener("change", updateRestoreTarget);
 els.restoreConfirm.addEventListener("click", confirmRestoreBackup);
 els.volumeDeleteConfirm.addEventListener("click", confirmVolumeDelete);
 els.volumeBackupsDialog.addEventListener("close", () => {
   state.volumeBackupVolume = null;
   state.volumeBackupRequest += 1;
   state.volumeBackups = [];
+  state.volumeRestoreTargets = [];
 });
 els.restoreDialog.addEventListener("close", () => {
   state.volumeRestoreKey = "";
+  state.volumeRestoreName = "";
+  els.restoreTarget.replaceChildren();
+  els.restoreTargetHint.textContent = "";
   els.restoreError.hidden = true;
 });
 els.volumeDeleteDialog.addEventListener("close", () => {

@@ -180,6 +180,15 @@ func (c *Client) Volumes(ctx context.Context, identity Identity) ([]k8s.Volume, 
 	return response.Volumes, nil
 }
 
+func (c *Client) RestoreFrom(ctx context.Context, target, source, key string, clean bool, identity Identity) error {
+	body := struct {
+		Source string `json:"source"`
+		Key    string `json:"key"`
+		Clean  bool   `json:"clean"`
+	}{Source: source, Key: key, Clean: clean}
+	return c.doJSON(ctx, http.MethodPost, "/api/volumes/"+url.PathEscape(target)+"/restore-from", identity, body, nil)
+}
+
 func (c *Client) Topology(ctx context.Context, identity Identity) (Topology, error) {
 	var out Topology
 	if err := c.doJSON(ctx, http.MethodGet, "/api/topology", identity, nil, &out); err != nil {

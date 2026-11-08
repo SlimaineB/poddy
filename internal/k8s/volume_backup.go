@@ -42,8 +42,10 @@ func (m *Manager) helperImage() string {
 
 // CreateVolumeHelper starts a short-lived pod that mounts a volume so the
 // portal can stream tar archives in and out of it. The pod name is derived from
-// the volume name and acts as a cross-replica operation lock.
-func (m *Manager) CreateVolumeHelper(ctx context.Context, volume string, readOnly bool) (string, error) {
+// the volume name and acts as a cross-replica operation lock. When nodeName is
+// set the helper is pinned to that node, which allows a read-only mount while a
+// ReadWriteOnce volume is still attached to a running workspace.
+func (m *Manager) CreateVolumeHelper(ctx context.Context, volume string, readOnly bool, nodeName string) (string, error) {
 	name := backupPodName(volume)
 	existing, err := m.Client.CoreV1().Pods(m.Namespace).Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
@@ -68,6 +70,7 @@ func (m *Manager) CreateVolumeHelper(ctx context.Context, volume string, readOnl
 			},
 		},
 		Spec: corev1.PodSpec{
+			NodeName:                     nodeName,
 			RestartPolicy:                corev1.RestartPolicyNever,
 			AutomountServiceAccountToken: ptr.To(false),
 			SecurityContext: &corev1.PodSecurityContext{
@@ -209,12 +212,31 @@ func (m *Manager) ExecStreamPod(ctx context.Context, podName, container string, 
 	})
 }
 
+// volumeNode returns the node running the workspace that owns a volume. Pinning
+// the helper to the same node lets a ReadWriteOnce volume be mounted read-only
+// while the workspace is still running.
+func (m *Manager) volumeNode(ctx context.Context, volume string) string {
+	pvc, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Get(ctx, volume, metav1.GetOptions{})
+	if err != nil {
+		return ""
+	}
+	workspace := pvc.Labels[labelWorkspace]
+	if workspace == "" {
+		return ""
+	}
+	pod, err := m.Client.CoreV1().Pods(m.Namespace).Get(ctx, PodName(workspace), metav1.GetOptions{})
+	if err != nil || pod.DeletionTimestamp != nil {
+		return ""
+	}
+	return pod.Spec.NodeName
+}
+
 // BackupVolume streams a gzip tar archive of the volume to the backup store.
 func (m *Manager) BackupVolume(ctx context.Context, volume, key string, store *backup.Store) error {
 	if !store.Enabled() {
 		return fmt.Errorf("backup storage is not configured")
 	}
-	pod, err := m.CreateVolumeHelper(ctx, volume, true)
+	pod, err := m.CreateVolumeHelper(ctx, volume, true, m.volumeNode(ctx, volume))
 	if err != nil {
 		return err
 	}
@@ -256,7 +278,7 @@ func (m *Manager) RestoreVolume(ctx context.Context, volume, key string, store *
 	}
 	defer reader.Close()
 
-	pod, err := m.CreateVolumeHelper(ctx, volume, false)
+	pod, err := m.CreateVolumeHelper(ctx, volume, false, "")
 	if err != nil {
 		return err
 	}

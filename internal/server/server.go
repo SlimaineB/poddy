@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/volumes/{name}/backups", s.createVolumeBackup)
 	mux.HandleFunc("DELETE /api/volumes/{name}/backups", s.deleteVolumeBackup)
 	mux.HandleFunc("POST /api/volumes/{name}/restore", s.restoreVolume)
+	mux.HandleFunc("POST /api/volumes/{name}/restore-from", s.restoreVolumeFrom)
 	mux.HandleFunc("GET /api/workspaces", s.list)
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)

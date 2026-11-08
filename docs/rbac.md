@@ -136,7 +136,9 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 users see only volumes assigned to their own workspaces, and unassigned volumes
 are admin-only. Volume deletion is admin-only and restricted to unassigned
 volumes. Volume backup and restore endpoints are available to admins and to the
-owner of an assigned volume; the workspace must be stopped first. See
+owner of an assigned volume. Live backup is allowed with a consistency warning;
+restore requires the target workspace to be stopped. Copying a backup into
+another volume requires access to both the source and target volumes. See
 [Volumes and backups](volumes.md).
 
 ## Helm

@@ -199,7 +199,7 @@ func (s *Server) createVolumeBackup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "volume not found", http.StatusNotFound)
 		return
 	}
-	if !volumeReadyForArchive(w, volume) {
+	if !volumeReadyForBackup(w, volume) {
 		return
 	}
 
@@ -249,8 +249,92 @@ func (s *Server) deleteVolumeBackup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type restoreVolumeRequest struct {
+	Key          string `json:"key"`
+	Clean        bool   `json:"clean"`
+	Target       string `json:"target"`
+	TargetRegion string `json:"targetRegion"`
+}
+
 func (s *Server) restoreVolume(w http.ResponseWriter, r *http.Request) {
-	if s.proxyVolume(w, r) {
+	var req restoreVolumeRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	source := r.PathValue("name")
+	target := strings.TrimSpace(req.Target)
+	if target == "" {
+		target = source
+	}
+	if s.Regions != nil {
+		s.restoreVolumeHub(w, r, source, target, strings.TrimSpace(req.TargetRegion), req.Key, req.Clean)
+		return
+	}
+	id, cfg, ok := s.volumeRequest(w, r)
+	if !ok {
+		return
+	}
+	if !s.backupEnabled(w) {
+		return
+	}
+	s.restoreVolumeInto(w, r, id, cfg, source, target, req.Key, req.Clean)
+}
+
+// restoreVolumeHub routes a restore to the region that owns the target volume.
+// The backup key still belongs to the source volume, so source access is
+// checked on the hub before the target region extracts the archive.
+func (s *Server) restoreVolumeHub(w http.ResponseWriter, r *http.Request, source, target, targetRegion, key string, clean bool) {
+	id, cfg, ok := s.volumeRequest(w, r)
+	if !ok {
+		return
+	}
+	admin := s.isAdmin(id, cfg)
+	identity := s.hubIdentity(id, admin)
+	sourceCfg, sourceVolume, err := s.Regions.FindVolumeInRegion(r.Context(), regionQuery(r), source, identity)
+	if err != nil {
+		writeVolumeRegionError(w, err)
+		return
+	}
+	if !volumeAllowed(sourceVolume, id, cfg, admin) {
+		http.Error(w, "source volume not found", http.StatusNotFound)
+		return
+	}
+	if targetRegion == "" {
+		if target == source {
+			targetRegion = sourceCfg.Name
+		} else {
+			targetRegion, err = s.Regions.FindVolumeRegion(r.Context(), target, identity)
+			if err != nil {
+				writeVolumeRegionError(w, err)
+				return
+			}
+		}
+	}
+	if _, ok := s.Regions.Get(targetRegion); !ok {
+		http.Error(w, "unknown target region", http.StatusBadRequest)
+		return
+	}
+	client := s.Regions.Client(targetRegion)
+	if client == nil {
+		http.Error(w, "region unavailable", http.StatusBadGateway)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel()
+	if err := client.RestoreFrom(ctx, target, source, key, clean, identity); err != nil {
+		writeVolumeRegionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// restoreVolumeFrom is called by the hub on the region that owns the target
+// volume. The hub has already checked access to the source volume.
+func (s *Server) restoreVolumeFrom(w http.ResponseWriter, r *http.Request) {
+	if !s.RegionMode {
+		http.NotFound(w, r)
 		return
 	}
 	id, cfg, ok := s.volumeRequest(w, r)
@@ -261,35 +345,76 @@ func (s *Server) restoreVolume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Key   string `json:"key"`
-		Clean bool   `json:"clean"`
+		Source string `json:"source"`
+		Key    string `json:"key"`
+		Clean  bool   `json:"clean"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	name := r.PathValue("name")
-	volume, allowed, err := s.findVolume(r.Context(), name, id, cfg)
+	target := r.PathValue("name")
+	source := strings.TrimSpace(req.Source)
+	if source == "" {
+		source = target
+	}
+	targetVolume, allowed, err := s.findVolume(r.Context(), target, id, cfg)
 	if err != nil {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
 	}
 	if !allowed {
-		http.Error(w, "volume not found", http.StatusNotFound)
+		http.Error(w, "target volume not found", http.StatusNotFound)
 		return
 	}
-	if !s.validVolumeKey(volume.Name, req.Key) {
+	if !s.validVolumeKey(source, req.Key) {
 		http.Error(w, "invalid backup key", http.StatusBadRequest)
 		return
 	}
-	if !volumeReadyForArchive(w, volume) {
+	if !volumeReadyForRestore(w, targetVolume) {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
-	if err := s.Workspaces.RestoreVolume(ctx, volume.Name, req.Key, s.Backups, req.Clean); err != nil {
+	if err := s.Workspaces.RestoreVolume(ctx, targetVolume.Name, req.Key, s.Backups, req.Clean); err != nil {
+		writeVolumeOperationError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) restoreVolumeInto(w http.ResponseWriter, r *http.Request, id *identity, cfg rbac.Config, source, target, key string, clean bool) {
+	sourceVolume, allowed, err := s.findVolume(r.Context(), source, id, cfg)
+	if err != nil {
+		writeK8sError(w, err, http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
+		http.Error(w, "source volume not found", http.StatusNotFound)
+		return
+	}
+	targetVolume, allowed, err := s.findVolume(r.Context(), target, id, cfg)
+	if err != nil {
+		writeK8sError(w, err, http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
+		http.Error(w, "target volume not found", http.StatusNotFound)
+		return
+	}
+	if !s.validVolumeKey(sourceVolume.Name, key) {
+		http.Error(w, "invalid backup key", http.StatusBadRequest)
+		return
+	}
+	if !volumeReadyForRestore(w, targetVolume) {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel()
+	if err := s.Workspaces.RestoreVolume(ctx, targetVolume.Name, key, s.Backups, clean); err != nil {
 		writeVolumeOperationError(w, err)
 		return
 	}
@@ -338,16 +463,48 @@ func (s *Server) validVolumeKey(volume, key string) bool {
 	return s.Backups.ValidKey(key) && strings.HasPrefix(key, s.Backups.VolumePrefix(volume))
 }
 
-func volumeReadyForArchive(w http.ResponseWriter, volume k8s.Volume) bool {
+func volumeReadyForBackup(w http.ResponseWriter, volume k8s.Volume) bool {
+	if volume.Phase != "" && volume.Phase != "Bound" {
+		http.Error(w, "volume is not bound yet", http.StatusConflict)
+		return false
+	}
+	if !volume.Assigned {
+		return true
+	}
+	switch volume.WorkspacePhase {
+	case "Stopped":
+		return true
+	case "Running":
+		if hasAccessMode(volume.AccessModes, "ReadWriteOncePod") {
+			http.Error(w, "live backup is not supported for ReadWriteOncePod volumes; stop the workspace first", http.StatusConflict)
+			return false
+		}
+		return true
+	default:
+		http.Error(w, "wait for the workspace to be running or stopped before backing up its volume", http.StatusConflict)
+		return false
+	}
+}
+
+func volumeReadyForRestore(w http.ResponseWriter, volume k8s.Volume) bool {
 	if volume.Phase != "" && volume.Phase != "Bound" {
 		http.Error(w, "volume is not bound yet", http.StatusConflict)
 		return false
 	}
 	if volume.Assigned && volume.WorkspacePhase != "Stopped" {
-		http.Error(w, "stop the workspace before backing up or restoring its volume", http.StatusConflict)
+		http.Error(w, "stop the workspace before restoring its volume", http.StatusConflict)
 		return false
 	}
 	return true
+}
+
+func hasAccessMode(modes []string, want string) bool {
+	for _, mode := range modes {
+		if mode == want {
+			return true
+		}
+	}
+	return false
 }
 
 func writeVolumeOperationError(w http.ResponseWriter, err error) {
@@ -366,6 +523,10 @@ func writeVolumeRegionError(w http.ResponseWriter, err error) {
 	if errors.As(err, &httpErr) {
 		if httpErr.Status == http.StatusNotFound {
 			http.Error(w, "volume not found", http.StatusNotFound)
+			return
+		}
+		if httpErr.Status == http.StatusNotImplemented {
+			http.Error(w, httpErr.Message, http.StatusNotImplemented)
 			return
 		}
 		if httpErr.Status >= 400 && httpErr.Status < 500 {
