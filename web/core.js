@@ -68,6 +68,19 @@ const state = {
   regionFilter: new URLSearchParams(location.search).get("region") || "",
   regionSummaries: [],
   regionSummaryRequest: 0,
+  volumes: [],
+  volumeSummary: {},
+  volumeQuery: "",
+  volumeFilter: "all",
+  volumeBackupEnabled: false,
+  volumeBackupVolume: null,
+  volumeBackupRequest: 0,
+  volumeBackups: [],
+  volumeRestoreTargets: [],
+  volumeRestoreKey: "",
+  volumeRestoreName: "",
+  volumeRestoreClean: false,
+  pendingVolumeDelete: null,
 };
 
 const els = {
@@ -143,12 +156,40 @@ const els = {
   confirmText: document.getElementById("confirm-text"),
   confirmDelete: document.getElementById("confirm-delete"),
   manageWorkspaces: document.getElementById("manage-workspaces"),
+  manageVolumes: document.getElementById("manage-volumes"),
   manageConnections: document.getElementById("manage-connections"),
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
   manageTemplates: document.getElementById("manage-templates"),
   userRole: document.getElementById("user-role"),
   workspacesView: document.getElementById("workspaces-view"),
+  volumesView: document.getElementById("volumes-view"),
+  volumesBack: document.getElementById("volumes-back"),
+  volumesRefresh: document.getElementById("volumes-refresh"),
+  volumesSearch: document.getElementById("volumes-search"),
+  volumesSummary: document.getElementById("volumes-summary"),
+  volumesCount: document.getElementById("volumes-count"),
+  volumesLoading: document.getElementById("volumes-loading"),
+  volumesEmpty: document.getElementById("volumes-empty"),
+  volumesListWrap: document.getElementById("volumes-list-wrap"),
+  volumesList: document.getElementById("volumes-list"),
+  volumeBackupsDialog: document.getElementById("volume-backups-dialog"),
+  volumeBackupsTitle: document.getElementById("volume-backups-title"),
+  volumeBackupsSubtitle: document.getElementById("volume-backups-subtitle"),
+  volumeBackupsList: document.getElementById("volume-backups-list"),
+  volumeBackupsRefresh: document.getElementById("volume-backups-refresh"),
+  volumeBackupCreate: document.getElementById("volume-backup-create"),
+  volumeBackupStatus: document.getElementById("volume-backup-status"),
+  restoreDialog: document.getElementById("restore-dialog"),
+  restoreText: document.getElementById("restore-text"),
+  restoreTarget: document.getElementById("restore-target"),
+  restoreTargetHint: document.getElementById("restore-target-hint"),
+  restoreClean: document.getElementById("restore-clean"),
+  restoreConfirm: document.getElementById("restore-confirm"),
+  restoreError: document.getElementById("restore-error"),
+  volumeDeleteDialog: document.getElementById("volume-delete-dialog"),
+  volumeDeleteText: document.getElementById("volume-delete-text"),
+  volumeDeleteConfirm: document.getElementById("volume-delete-confirm"),
   topologyView: document.getElementById("topology-view"),
   topologyCount: document.getElementById("topology-count"),
   topologyLoading: document.getElementById("topology-loading"),
@@ -456,6 +497,10 @@ function setRegionFilter(name, { reload = true } = {}) {
     return;
   }
   if (state.mapActive) return;
+  if (els.volumesView && !els.volumesView.hidden) {
+    if (typeof loadVolumes === "function") loadVolumes({ silent: true });
+    return;
+  }
   if (typeof load === "function") load({ silent: true });
 }
 async function loadRegionSummaries({ silent = false } = {}) {
@@ -969,6 +1014,7 @@ async function loadMe() {
 }
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
+  els.volumesView.hidden = name !== "volumes";
   els.topologyView.hidden = name !== "topology";
   els.mapView.hidden = name !== "map";
   els.connectionsView.hidden = name !== "connections";
@@ -978,12 +1024,13 @@ function showView(name) {
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
   const active = name === "workspaces" || name === "topology" || name === "map" ? els.manageWorkspaces
+    : name === "volumes" ? els.manageVolumes
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams
     : (name === "templates" || name === "template") ? els.manageTemplates
     : null;
-  for (const button of [els.manageWorkspaces, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates]) {
+  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

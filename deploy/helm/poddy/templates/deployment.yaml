@@ -129,6 +129,30 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- if .Values.backup.enabled }}
+            - name: PODDY_BACKUP_S3_ENDPOINT
+              value: {{ .Values.backup.s3.endpoint | quote }}
+            - name: PODDY_BACKUP_S3_REGION
+              value: {{ .Values.backup.s3.region | quote }}
+            - name: PODDY_BACKUP_S3_BUCKET
+              value: {{ .Values.backup.s3.bucket | quote }}
+            - name: PODDY_BACKUP_S3_PREFIX
+              value: {{ .Values.backup.s3.prefix | quote }}
+            - name: PODDY_BACKUP_S3_USE_SSL
+              value: {{ .Values.backup.s3.useSSL | quote }}
+            - name: PODDY_BACKUP_HELPER_IMAGE
+              value: {{ .Values.backup.helperImage | quote }}
+            - name: PODDY_BACKUP_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.backupSecretName" . }}
+                  key: {{ .Values.backup.s3.accessKeyKey }}
+            - name: PODDY_BACKUP_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.backupSecretName" . }}
+                  key: {{ .Values.backup.s3.secretKeyKey }}
+            {{- end }}
             {{- if .Values.regionManager.enabled }}
             - name: PODDY_REGION_MODE
               value: "true"

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"poddy/internal/auth"
+	"poddy/internal/backup"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
@@ -53,6 +54,7 @@ type Server struct {
 	Users    *userstore.Store
 	Metadata metadata.Store
 	Metrics  *metrics.Metrics
+	Backups  *backup.Store
 
 	ExternalAuth             *externalauth.Manager
 	ExternalAuthURL          string
@@ -91,6 +93,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/teams", s.teams)
 	mux.HandleFunc("PUT /api/teams/{name}", s.updateTeam)
 	mux.HandleFunc("DELETE /api/teams/{name}", s.deleteTeam)
+	mux.HandleFunc("GET /api/volumes", s.volumes)
+	mux.HandleFunc("DELETE /api/volumes/{name}", s.deleteVolume)
+	mux.HandleFunc("GET /api/volumes/{name}/backups", s.volumeBackups)
+	mux.HandleFunc("POST /api/volumes/{name}/backups", s.createVolumeBackup)
+	mux.HandleFunc("DELETE /api/volumes/{name}/backups", s.deleteVolumeBackup)
+	mux.HandleFunc("POST /api/volumes/{name}/restore", s.restoreVolume)
+	mux.HandleFunc("POST /api/volumes/{name}/restore-from", s.restoreVolumeFrom)
 	mux.HandleFunc("GET /api/workspaces", s.list)
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)

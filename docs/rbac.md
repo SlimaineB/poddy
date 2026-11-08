@@ -124,8 +124,22 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `GET /api/teams` | admin or template owner | team names; members only for admins |
 | `PUT /api/teams/{name}` | admin | body `{"members":[]}` |
 | `DELETE /api/teams/{name}` | admin | delete and detach from templates |
+| `GET /api/volumes` | authenticated | volumes, summary, and backup availability; filtered by ownership for non-admins |
+| `DELETE /api/volumes/{name}` | admin | delete an unassigned volume |
+| `GET/POST /api/volumes/{name}/backups` | owner or admin | list or create backups for a volume |
+| `DELETE /api/volumes/{name}/backups` | owner or admin | delete a backup object |
+| `POST /api/volumes/{name}/restore` | owner or admin | restore a backup into the source volume or, with `target`/`targetRegion`, another volume the caller can access |
 
 `GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local VS Code launch endpoint require ownership or admin.
+
+`GET /api/volumes` follows the same ownership model: admins see every volume,
+users see only volumes assigned to their own workspaces, and unassigned volumes
+are admin-only. Volume deletion is admin-only and restricted to unassigned
+volumes. Volume backup and restore endpoints are available to admins and to the
+owner of an assigned volume. Live backup is allowed with a consistency warning;
+restore requires the target workspace to be stopped. Copying a backup into
+another volume requires access to both the source and target volumes. See
+[Volumes and backups](volumes.md).
 
 ## Helm
 

@@ -101,6 +101,121 @@ func (h *Hub) ListRegion(ctx context.Context, region string, identity Identity) 
 	return client.List(ctx, identity)
 }
 
+func (h *Hub) Volumes(ctx context.Context, identity Identity) ([]k8s.Volume, bool, []error) {
+	if h == nil {
+		return nil, false, nil
+	}
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		volumes  []k8s.Volume
+		backup   bool
+		problems []error
+	)
+	for _, cfg := range h.Configs() {
+		client := h.clients[cfg.Name]
+		if client == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(cfg Config, client *Client) {
+			defer wg.Done()
+			response, err := client.VolumesResponse(ctx, identity)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+				return
+			}
+			backup = backup || response.Backup
+			volumes = append(volumes, response.Volumes...)
+		}(cfg, client)
+	}
+	wg.Wait()
+	sort.Slice(volumes, func(i, j int) bool {
+		if volumes[i].Region == volumes[j].Region {
+			if volumes[i].Workspace == volumes[j].Workspace {
+				return volumes[i].Name < volumes[j].Name
+			}
+			return volumes[i].Workspace < volumes[j].Workspace
+		}
+		return volumes[i].Region < volumes[j].Region
+	})
+	return volumes, backup, problems
+}
+
+func (h *Hub) VolumesRegion(ctx context.Context, region string, identity Identity) ([]k8s.Volume, bool, error) {
+	cfg, ok := h.Get(region)
+	if !ok {
+		return nil, false, fmt.Errorf("unknown region %q", region)
+	}
+	client := h.Client(cfg.Name)
+	if client == nil {
+		return nil, false, fmt.Errorf("region %s is not configured", region)
+	}
+	response, err := client.VolumesResponse(ctx, identity)
+	return response.Volumes, response.Backup, err
+}
+
+func (h *Hub) FindVolume(ctx context.Context, name string, identity Identity) (Config, k8s.Volume, error) {
+	if h == nil {
+		return Config{}, k8s.Volume{}, errors.New("no regions configured")
+	}
+	var problems []error
+	for _, cfg := range h.Configs() {
+		client := h.clients[cfg.Name]
+		if client == nil {
+			continue
+		}
+		volumes, err := client.Volumes(ctx, identity)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+			continue
+		}
+		for _, volume := range volumes {
+			if volume.Name == name {
+				return cfg, volume, nil
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return Config{}, k8s.Volume{}, errors.Join(problems...)
+	}
+	return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "volume not found"}
+}
+
+func (h *Hub) FindVolumeInRegion(ctx context.Context, region, name string, identity Identity) (Config, k8s.Volume, error) {
+	if region == "" {
+		return h.FindVolume(ctx, name, identity)
+	}
+	cfg, ok := h.Get(region)
+	if !ok {
+		return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "region not found"}
+	}
+	client := h.Client(cfg.Name)
+	if client == nil {
+		return Config{}, k8s.Volume{}, fmt.Errorf("region %s is not configured", region)
+	}
+	volumes, err := client.Volumes(ctx, identity)
+	if err != nil {
+		return Config{}, k8s.Volume{}, err
+	}
+	for _, volume := range volumes {
+		if volume.Name == name {
+			return cfg, volume, nil
+		}
+	}
+	return Config{}, k8s.Volume{}, &HTTPError{Status: 404, Message: "volume not found"}
+}
+
+func (h *Hub) FindVolumeRegion(ctx context.Context, name string, identity Identity) (string, error) {
+	cfg, _, err := h.FindVolume(ctx, name, identity)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Name, nil
+}
+
 func (h *Hub) FindWorkspace(ctx context.Context, name string, identity Identity) (Config, WorkspaceInfo, error) {
 	if h == nil {
 		return Config{}, WorkspaceInfo{}, errors.New("no regions configured")

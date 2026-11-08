@@ -64,8 +64,9 @@ never need a kubeconfig.
   Deployments, so HTTP/API and SSH capacity scale independently.
 - **Four ways to work.** Browser terminal, browser VS Code, SSH through a
   bastion, or VS Code Remote-SSH.
-- **Real dev containers.** Persistent volumes, custom images, and templates that
-  declare CPU, memory, storage, and links.
+- **Real dev containers.** Persistent volumes with optional S3 backup/restore,
+  including live backups and copies between volumes, custom images, and
+  templates that declare CPU, memory, storage, and links.
 - **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
   per-template access.
 - **No database required.** Kubernetes ConfigMaps and Secrets are the source of
@@ -103,6 +104,7 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 | Run it in production | [Kubernetes deployment](deploy.md) |
 | Run it on Amazon EKS with ALB and EFS | [Amazon EKS](eks.md) |
 | Add my own workspace image | [Workspace templates](templates.md) |
+| Back up, restore, or copy workspace volumes | [Volumes and backups](volumes.md) |
 | Build poddy from source | [Development](development.md) |
 | Enable PostgreSQL metadata, audit, and backups | [PostgreSQL schema](postgres-schema.md) |
 | Connect GitHub or GitLab inside a workspace | [External authentication](external-auth.md) |

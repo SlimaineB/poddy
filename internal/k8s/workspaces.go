@@ -30,6 +30,7 @@ const (
 	labelManagedBy = "app.kubernetes.io/managed-by"
 	labelWorkspace = "poddy.io/workspace"
 	labelTemplate  = "poddy.io/template"
+	labelVolume    = "poddy.io/volume"
 
 	// annotationOwner holds the authenticated owner. It is an annotation rather
 	// than a label because email addresses (and some usernames) are not valid
@@ -104,6 +105,8 @@ type Manager struct {
 	StateConfigMap    string
 	InstanceID        string
 	PortalURL         string
+	Region            string
+	HelperImage       string
 	ExternalAuth      ExternalAuthFunc
 	ExternalAuthToken WorkspaceTokenFunc
 }

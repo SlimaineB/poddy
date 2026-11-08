@@ -53,7 +53,10 @@ metadata:
 
 A persistent workspace gets a PVC named after the pod. Stopping a workspace
 deletes the pod but keeps the PVC and writes the rendered spec to the state
-ConfigMap.
+ConfigMap. Optional volume backups are stored outside Kubernetes in
+S3-compatible object storage as gzip tar archives. Backups can be taken from
+running or stopped workspaces and restored into the same or another volume; see
+[Volumes and backups](volumes.md).
 
 ## Stopped workspace state
 

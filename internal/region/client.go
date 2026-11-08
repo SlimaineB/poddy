@@ -153,6 +153,42 @@ func (c *Client) Create(ctx context.Context, req k8s.CreateRequest, identity Ide
 	return out, nil
 }
 
+type VolumesResponse struct {
+	Volumes []k8s.Volume
+	Backup  bool
+}
+
+func (c *Client) VolumesResponse(ctx context.Context, identity Identity) (VolumesResponse, error) {
+	var response struct {
+		Volumes []k8s.Volume `json:"volumes"`
+		Backup  bool         `json:"backup"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/volumes", identity, nil, &response); err != nil {
+		return VolumesResponse{}, err
+	}
+	for i := range response.Volumes {
+		response.Volumes[i].Region = c.cfg.Name
+	}
+	return VolumesResponse{Volumes: response.Volumes, Backup: response.Backup}, nil
+}
+
+func (c *Client) Volumes(ctx context.Context, identity Identity) ([]k8s.Volume, error) {
+	response, err := c.VolumesResponse(ctx, identity)
+	if err != nil {
+		return nil, err
+	}
+	return response.Volumes, nil
+}
+
+func (c *Client) RestoreFrom(ctx context.Context, target, source, key string, clean bool, identity Identity) error {
+	body := struct {
+		Source string `json:"source"`
+		Key    string `json:"key"`
+		Clean  bool   `json:"clean"`
+	}{Source: source, Key: key, Clean: clean}
+	return c.doJSON(ctx, http.MethodPost, "/api/volumes/"+url.PathEscape(target)+"/restore-from", identity, body, nil)
+}
+
 func (c *Client) Topology(ctx context.Context, identity Identity) (Topology, error) {
 	var out Topology
 	if err := c.doJSON(ctx, http.MethodGet, "/api/topology", identity, nil, &out); err != nil {

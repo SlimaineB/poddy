@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -60,17 +61,28 @@ func (m *Manager) deletePVC(ctx context.Context, name string) error {
 	return err
 }
 
+// ErrVolumeAssigned is returned when deleting a volume that still belongs to a
+// workspace.
+var ErrVolumeAssigned = errors.New("volume is assigned to a workspace")
+
+// ErrVolumeBusy is returned when a backup or restore already uses a volume.
+var ErrVolumeBusy = errors.New("volume is busy with another operation")
+
 // Volume describes a workspace persistent volume claim and the PV bound to it.
 type Volume struct {
-	Workspace    string   `json:"workspace"`
-	Name         string   `json:"name"`
-	Phase        string   `json:"phase,omitempty"`
-	StorageClass string   `json:"storageClass,omitempty"`
-	Capacity     string   `json:"capacity,omitempty"`
-	Requested    string   `json:"requested,omitempty"`
-	Bytes        int64    `json:"bytes,omitempty"`
-	AccessModes  []string `json:"accessModes,omitempty"`
-	VolumeName   string   `json:"volumeName,omitempty"`
+	Workspace      string   `json:"workspace,omitempty"`
+	Name           string   `json:"name"`
+	Phase          string   `json:"phase,omitempty"`
+	StorageClass   string   `json:"storageClass,omitempty"`
+	Capacity       string   `json:"capacity,omitempty"`
+	Requested      string   `json:"requested,omitempty"`
+	Bytes          int64    `json:"bytes,omitempty"`
+	AccessModes    []string `json:"accessModes,omitempty"`
+	VolumeName     string   `json:"volumeName,omitempty"`
+	Region         string   `json:"region,omitempty"`
+	Assigned       bool     `json:"assigned"`
+	Owner          string   `json:"owner,omitempty"`
+	WorkspacePhase string   `json:"workspacePhase,omitempty"`
 }
 
 // ListVolumes returns the PVCs managed for workspaces in the manager namespace.
@@ -80,6 +92,15 @@ func (m *Manager) ListVolumes(ctx context.Context) ([]Volume, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	workspaces, err := m.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	owners := make(map[string]Workspace, len(workspaces))
+	for _, workspace := range workspaces {
+		owners[workspace.Name] = workspace
 	}
 
 	out := make([]Volume, 0, len(claims.Items))
@@ -109,6 +130,12 @@ func (m *Manager) ListVolumes(ctx context.Context) ([]Volume, error) {
 			StorageClass: class,
 			AccessModes:  accessModes,
 			VolumeName:   pvc.Spec.VolumeName,
+			Region:       m.Region,
+		}
+		if ws, ok := owners[workspace]; ok && workspace != "" {
+			volume.Assigned = true
+			volume.Owner = ws.Owner
+			volume.WorkspacePhase = ws.Phase
 		}
 		if capacity != nil {
 			volume.Capacity = capacity.String()
@@ -126,4 +153,45 @@ func (m *Manager) ListVolumes(ctx context.Context) ([]Volume, error) {
 		return out[i].Workspace < out[j].Workspace
 	})
 	return out, nil
+}
+
+// DeleteVolume deletes an unassigned volume claim. Volumes that still belong to
+// a workspace are protected so a user cannot remove a running home directory.
+func (m *Manager) DeleteVolume(ctx context.Context, name string) error {
+	pvc, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if pvc.Labels[labelName] != AppName {
+		return apierrors.NewNotFound(corev1.Resource("persistentvolumeclaims"), name)
+	}
+	volumes, err := m.ListVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	for _, volume := range volumes {
+		if volume.Name != name {
+			continue
+		}
+		if volume.Assigned {
+			return ErrVolumeAssigned
+		}
+		break
+	}
+
+	pods, err := m.Client.CoreV1().Pods(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelVolume + "=" + name,
+	})
+	if err != nil {
+		return err
+	}
+	if len(pods.Items) > 0 {
+		return ErrVolumeBusy
+	}
+
+	err = m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }

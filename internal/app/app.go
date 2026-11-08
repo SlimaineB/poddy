@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"poddy/internal/auth"
+	"poddy/internal/backup"
 	"poddy/internal/bastion"
 	"poddy/internal/config"
 	"poddy/internal/externalauth"
@@ -132,6 +133,8 @@ func Run(ctx context.Context, args []string) error {
 		StateConfigMap:  cfg.StateConfigMap,
 		PortalURL:       portalURL,
 		InstanceID:      cfg.InstanceID,
+		Region:          cfg.RegionName,
+		HelperImage:     cfg.BackupHelperImage,
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
@@ -247,8 +250,26 @@ func Run(ctx context.Context, args []string) error {
 		go syncRegionKeys(ctx, hub, userKeyStore, 2*time.Minute)
 	}
 
+	var backups *backup.Store
+	backups, err = backup.New(backup.Config{
+		Endpoint:  cfg.BackupS3Endpoint,
+		Region:    cfg.BackupS3Region,
+		Bucket:    cfg.BackupS3Bucket,
+		AccessKey: cfg.BackupS3AccessKey,
+		SecretKey: cfg.BackupS3SecretKey,
+		Prefix:    cfg.BackupS3Prefix,
+		UseSSL:    cfg.BackupS3UseSSL,
+	})
+	if err != nil {
+		return fmt.Errorf("volume backups: %w", err)
+	}
+	if backups != nil {
+		log.Printf("volume backups enabled (S3 bucket %s)", cfg.BackupS3Bucket)
+	}
+
 	srv := &server.Server{
 		Workspaces:        manager,
+		Backups:           backups,
 		RBAC:              rbacStore,
 		Users:             userStore,
 		Metadata:          metadataStore,
