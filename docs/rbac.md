@@ -128,7 +128,7 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `DELETE /api/volumes/{name}` | admin | delete an unassigned volume |
 | `GET/POST /api/volumes/{name}/backups` | owner or admin | list or create backups for a volume |
 | `DELETE /api/volumes/{name}/backups` | owner or admin | delete a backup object |
-| `POST /api/volumes/{name}/restore` | owner or admin | restore a backup into a volume |
+| `POST /api/volumes/{name}/restore` | owner or admin | restore a backup into the source volume or, with `target`/`targetRegion`, another volume the caller can access |
 
 `GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local VS Code launch endpoint require ownership or admin.
 

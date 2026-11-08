@@ -141,8 +141,9 @@ backup actions return `501 volume backups are not configured`.
 
 Configure the bucket on every region manager that owns volumes. The central hub
 does not need S3 credentials unless it also hosts workspaces. The hub reports
-backup availability if any region has backups enabled, and volume backup,
-restore, and delete requests are proxied to the region that owns the volume.
+backup availability if any region has backups enabled. Backup and delete
+requests go to the region that owns the source volume; restore requests go to
+the region that owns the target volume, which may differ for a copy.
 
 All regions can share one bucket and prefix. Object keys include the volume
 name, which is unique within the cluster. Use a separate prefix per region if

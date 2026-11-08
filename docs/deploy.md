@@ -318,7 +318,8 @@ Create the bucket first and grant the credentials list/get/put/delete access to
 the configured prefix. The chart can create a Secret from
 `backup.s3.accessKey`/`secretKey` when `existingSecret` is empty. In a
 multi-region deployment, configure the same bucket on every region manager; the
-hub proxies volume backup actions to the owning region. The helper image must
+hub routes backup and delete to the owning region and restore to the target
+region. The helper image must
 contain `sh`, `tar`, and `gzip`. Live backups are allowed while the workspace
 runs, with a crash-consistency warning; restores require a stopped target
 workspace. Copying a backup to another region requires the same bucket and
