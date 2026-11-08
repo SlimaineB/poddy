@@ -186,6 +186,29 @@ func TestPostgresStore(t *testing.T) {
 		t.Fatalf("audit action=%q outcome=%q actor=%q ip=%q duration=%d detail=%q", action, outcome, actor, sourceIP, duration, detail)
 	}
 
+	page, err := store.ListAudit(ctx, namespace, AuditFilter{
+		Query:     "base",
+		Action:    "workspace.create",
+		Outcome:   "success",
+		Actor:     "alice@example.com",
+		Workspace: "demo",
+		Page:      1,
+		PerPage:   10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("audit page = %+v", page)
+	}
+	item := page.Items[0]
+	if item.Action != "workspace.create" || item.Actor != "alice@example.com" || item.TargetName != "demo" || item.SourceIP != "203.0.113.7" {
+		t.Fatalf("audit item = %+v", item)
+	}
+	if item.DurationMS == nil || *item.DurationMS != 42 || item.Details["template"] != "base" {
+		t.Fatalf("audit item details = %+v", item)
+	}
+
 	snapshot.Phase = "Stopped"
 	snapshot.DesiredState = "stopped"
 	snapshot.StoppedAt = now.Add(time.Minute)

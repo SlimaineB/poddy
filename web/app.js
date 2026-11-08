@@ -30,6 +30,8 @@ async function init() {
     await openMap();
   } else if (initialView === "volumes") {
     openVolumes();
+  } else if (initialView === "audit") {
+    await openAudit();
   }
   setInterval(() => {
     if (!document.hidden) load({ silent: true });
@@ -49,7 +51,9 @@ els.newWorkspace.addEventListener("click", openCreate);
 els.refresh.addEventListener("click", async () => {
   els.refresh.classList.add("spinning");
   try {
-    if (els.volumesView && !els.volumesView.hidden) {
+    if (els.auditView && !els.auditView.hidden) {
+      await loadAudit({ silent: true });
+    } else if (els.volumesView && !els.volumesView.hidden) {
       await loadVolumes({ silent: true });
     } else {
       await load();
@@ -151,6 +155,8 @@ els.connectionsBack.addEventListener("click", () => showView("workspaces"));
 els.manageUsers.addEventListener("click", openUsers);
 els.manageTeams.addEventListener("click", openTeams);
 els.manageTemplates.addEventListener("click", openTemplates);
+els.manageAudit.addEventListener("click", openAudit);
+els.auditBack.addEventListener("click", () => showView("workspaces"));
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
 els.usersBack.addEventListener("click", () => showView("workspaces"));

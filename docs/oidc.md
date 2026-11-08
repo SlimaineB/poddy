@@ -146,7 +146,7 @@ The portal reads the username, email and groups from the ID token. If a claim is
 - **Auth0**: add a custom claim with an Action.
 - **Google**: no groups claim; use `allowedUsers` or a custom claim.
 
-`allowedGroups` / `allowedUsers` are case-insensitive. Empty lists allow any authenticated user. These allowlists gate **sign-in**; RBAC roles (admins, owners, teams, template users) gate **what a signed-in user can do**.
+`allowedGroups` / `allowedUsers` are case-insensitive. Empty lists allow any authenticated user. These allowlists gate **sign-in**; RBAC roles (admins, auditors, owners, teams, template users) gate **what a signed-in user can do**.
 
 ## Sessions and HA
 

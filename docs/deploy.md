@@ -200,7 +200,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
 - **ConfigMap size**: stopped workspace specs and RBAC/users data live in ConfigMaps (1 MiB limit per ConfigMap). Thousands of stopped workspaces with large rendered specs will hit this limit.
 - **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
-- **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica.
+- **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains.
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and usage reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace or RBAC decisions; it does not remove the ConfigMap size limit by itself.
 
@@ -208,6 +208,8 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 
 - **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable VS Code desktop tickets.
 - **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
+- **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
+- **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads require PostgreSQL; the page returns `501` when the database is not configured.
 
 ### Multi-region
 

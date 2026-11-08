@@ -137,6 +137,32 @@ The mirror is refreshed at startup and after writes:
 - Workspaces: after create, stop, start, restart, and delete.
 - Audit: HTTP actions through the portal and SSH connections through the bastion.
 
+## Audit read API and UI
+
+When PostgreSQL is configured, admins and identities listed in `rbac.auditors`
+can read the audit trail from the **Audit** page or directly:
+
+```http
+GET /api/audit?outcome=denied&action=workspace.create&since=2026-01-01&page=1&per_page=50
+```
+
+Supported query parameters:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `q` | Case-insensitive search across actor, action, target, workspace, and details. |
+| `action` | Exact action, for example `workspace.create`. |
+| `outcome` | `success`, `denied`, or `error`. |
+| `actor` | Exact actor identity. |
+| `workspace` | Exact workspace name. |
+| `since` / `until` | RFC3339 timestamp or `YYYY-MM-DD`. `until` is exclusive for date-only values. |
+| `page` / `per_page` | Pagination; `per_page` is capped at 100. |
+
+The endpoint returns `403` for other users and `501` when PostgreSQL is not
+configured. Reading the audit trail itself is recorded as `audit.view`.
+Auditors can only read; all mutations still require an admin or the workspace
+owner as appropriate.
+
 ## Design notes
 
 - **Namespace is the tenant boundary.** Every tenant-scoped table has a
@@ -178,6 +204,7 @@ The mirror is refreshed at startup and after writes:
 | Templates | `template.access.update` |
 | Teams | `team.update`, `team.delete` |
 | External auth | `external_auth.connect`, `external_auth.disconnect` |
+| Audit | `audit.view` |
 
 Use `outcome = 'denied'` for authorization failures and `outcome = 'error'` for
 failed operations. `details` contains non-secret context such as the requested

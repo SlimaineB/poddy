@@ -111,6 +111,8 @@ The `poddy-rbac` ConfigMap stores `rbac.yaml`:
 ```yaml
 admins:
   - admin@example.com
+auditors:
+  - security@example.com
 teams:
   backend:
     members:
@@ -129,6 +131,7 @@ templates:
 | Role | Scope |
 |------|-------|
 | Global admin | Every workspace and template; manages teams |
+| Auditor | Read-only access to the PostgreSQL audit trail |
 | Template owner | Users and teams allowed to use their templates |
 | Team member | Inherits access granted to the team |
 | Regular user | Own workspaces and templates assigned directly or by team |

@@ -141,4 +141,16 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.bastion.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.bastion.topologySpreadConstraints | nindent 8 }}
+      {{- else if gt (int .Values.bastion.replicaCount) 1 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "poddy.bastion.selectorLabels" . | nindent 14 }}
+      {{- end }}
 {{- end }}

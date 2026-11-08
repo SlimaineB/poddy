@@ -75,6 +75,26 @@ func (s *Server) isAdmin(id *identity, cfg rbac.Config) bool {
 	return cfg.IsAdmin(rbacIdentity(id.User))
 }
 
+func (s *Server) isAuditor(id *identity, cfg rbac.Config) bool {
+	if id.Method == "region" {
+		return id.Admin
+	}
+	if id.Method == "none" {
+		return true
+	}
+	if id.Method == "token" {
+		return s.TokenAdmin
+	}
+	if s.RBAC == nil {
+		return false
+	}
+	return cfg.IsAuditor(rbacIdentity(id.User))
+}
+
+func (s *Server) canViewAudit(id *identity, cfg rbac.Config) bool {
+	return s.isAdmin(id, cfg) || s.isAuditor(id, cfg)
+}
+
 func (s *Server) workspaceAllowed(r *http.Request, name string, id *identity, cfg rbac.Config) (bool, error) {
 	if s.isAdmin(id, cfg) {
 		return true, nil
