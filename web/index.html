@@ -43,6 +43,7 @@
       </a>
       <div class="topbar-actions">
         <button id="manage-workspaces" class="button ghost small active" type="button">Workspaces</button>
+        <button id="manage-volumes" class="button ghost small" type="button">Volumes</button>
         <button id="manage-connections" class="button ghost small" type="button" hidden>Connections</button>
         <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
         <button id="manage-teams" class="button ghost small" type="button" hidden>Teams</button>
@@ -240,6 +241,64 @@
           <div id="map-regions-list" class="map-regions-list"></div>
         </section>
       </aside>
+    </div>
+  </section>
+
+
+  <section id="volumes-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="volumes-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Volumes</h1>
+        <p>Persistent storage attached to workspaces, plus volumes left behind after a workspace is deleted.</p>
+      </div>
+      <div class="view-actions">
+        <span id="volumes-count" class="count"></span>
+        <button id="volumes-refresh" class="button ghost small" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <div id="volumes-summary" class="volume-summary"></div>
+
+    <div class="workspace-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="volumes-search" type="search" placeholder="Search volumes by name, workspace, owner, region, or storage class" autocomplete="off">
+      </div>
+      <div class="view-toggle" role="group" aria-label="Volume filter">
+        <button class="button ghost small active" type="button" data-volume-filter="all" aria-pressed="true">All</button>
+        <button class="button ghost small" type="button" data-volume-filter="assigned" aria-pressed="false">Assigned</button>
+        <button class="button ghost small" type="button" data-volume-filter="unassigned" aria-pressed="false">Unassigned</button>
+      </div>
+    </div>
+
+    <section id="volumes-loading" class="loading" hidden>
+      <span class="spinner"></span>
+      <span>Loading volumes</span>
+    </section>
+
+    <section id="volumes-empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-database"></use></svg></span>
+      <h2>No volumes found</h2>
+      <p>Persistent workspaces create a volume automatically. Orphaned volumes appear here after their workspace is deleted.</p>
+    </section>
+
+    <div id="volumes-list-wrap" class="workspace-list-wrap" hidden>
+      <table class="workspace-table volumes-table">
+        <thead>
+          <tr>
+            <th>Volume</th>
+            <th>Workspace</th>
+            <th>Owner</th>
+            <th>Region</th>
+            <th>Status</th>
+            <th>Capacity</th>
+            <th>Storage class</th>
+            <th class="workspace-table-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="volumes-list"></tbody>
+      </table>
     </div>
   </section>
 
@@ -609,6 +668,74 @@
     </footer>
   </dialog>
 
+
+  <dialog id="volume-backups-dialog" class="dialog dialog-wide">
+    <header class="dialog-header">
+      <div>
+        <h2 id="volume-backups-title">Volume backups</h2>
+        <p id="volume-backups-subtitle">Backups stored in S3-compatible object storage.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <div id="volume-backup-status" class="volume-backup-status"></div>
+      <div class="volume-backup-actions">
+        <button id="volume-backup-create" class="button primary small" type="button">
+          <svg class="icon"><use href="#icon-plus"></use></svg>
+          Create backup
+        </button>
+        <button id="volume-backups-refresh" class="button ghost small" type="button">Refresh</button>
+      </div>
+      <div id="volume-backups-list" class="volume-backups-list"></div>
+      <p class="hint">Archives are gzip tar files of the whole volume. Stop the workspace before creating a backup or restoring one.</p>
+    </div>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="restore-dialog" class="dialog dialog-small">
+    <header class="dialog-header">
+      <div>
+        <h2>Restore backup</h2>
+        <p id="restore-text"></p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <label class="volume-check">
+        <input id="restore-clean" type="checkbox">
+        <span>Delete existing files before restoring</span>
+      </label>
+      <p class="hint">Without this option, the archive is extracted over the current contents and extra files are kept.</p>
+      <div id="restore-error" class="form-error" role="alert" hidden></div>
+    </div>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Cancel</button>
+      <button id="restore-confirm" class="button danger" type="button">Restore</button>
+    </footer>
+  </dialog>
+
+  <dialog id="volume-delete-dialog" class="dialog dialog-small">
+    <header class="dialog-header">
+      <div>
+        <h2>Delete volume</h2>
+        <p id="volume-delete-text"></p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Cancel</button>
+      <button id="volume-delete-confirm" class="button danger" type="button">Delete volume</button>
+    </footer>
+  </dialog>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
   <script src="/static/core.js"></script>
@@ -618,6 +745,7 @@
   <script src="/static/users.js"></script>
   <script src="/static/connections.js"></script>
   <script src="/static/sshkeys.js"></script>
+  <script src="/static/volumes.js"></script>
   <script src="/static/vendor/cytoscape.min.js"></script>
   <script src="/static/vendor/dagre.min.js"></script>
   <script src="/static/vendor/cytoscape-dagre.js"></script>

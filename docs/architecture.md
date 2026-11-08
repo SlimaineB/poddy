@@ -182,15 +182,17 @@ An optional PostgreSQL mirror stores RBAC, OIDC users, templates, workspaces,
 and audit events. When `PODDY_DATABASE_URL` is set, the portal syncs the mirror
 at startup and after writes; the bastion writes `ssh.connect` audit events.
 Kubernetes remains authoritative and PostgreSQL is never read for access
-decisions. It stores control-plane metadata only; PVC contents still need volume
-snapshots. See [PostgreSQL schema](postgres-schema.md) and
-[Data model](data-model.md) for the object-level details.
+decisions. It stores control-plane metadata only; PVC contents are not
+mirrored. Use volume snapshots or the built-in
+[S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
+and [Data model](data-model.md) for the object-level details.
 
 ### Cluster loss
 
 Losing the cluster loses ConfigMaps, Secrets, and PVCs. A PostgreSQL backup can
-restore metadata, but workspace files are only recoverable from PVC snapshots or
-another storage backup. Test both restore paths independently.
+restore metadata, but workspace files are only recoverable from PVC snapshots,
+the built-in [S3 volume backups](volumes.md), or another storage backup. Test
+both restore paths independently.
 
 ## Scaling and availability
 

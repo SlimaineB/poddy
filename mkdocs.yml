@@ -48,6 +48,7 @@ nav:
       - Local k3s test: k3s-test.md
   - Workspaces:
       - Templates: templates.md
+      - Volumes and backups: volumes.md
       - External authentication: external-auth.md
       - Links: links.md
   - Access and security:

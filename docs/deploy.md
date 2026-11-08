@@ -293,6 +293,37 @@ automatic failover of an existing workspace between regions.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
+## Volume backups
+
+The **Volumes** page lists assigned and orphaned PVCs and can create, restore,
+and delete gzip tar backups in S3-compatible object storage. Backups are
+disabled by default.
+
+```yaml
+backup:
+  enabled: true
+  helperImage: busybox:1.36
+  s3:
+    endpoint: https://minio.example.com:9000
+    region: us-east-1
+    bucket: poddy-backups
+    prefix: poddy-backups
+    useSSL: true
+    existingSecret: poddy-backup
+    accessKeyKey: access-key
+    secretKeyKey: secret-key
+```
+
+Create the bucket first and grant the credentials list/get/put/delete access to
+the configured prefix. The chart can create a Secret from
+`backup.s3.accessKey`/`secretKey` when `existingSecret` is empty. In a
+multi-region deployment, configure the same bucket on every region manager; the
+hub proxies volume backup actions to the owning region. The helper image must
+contain `sh`, `tar`, and `gzip`, and the workspace must be stopped before
+backing up or restoring its volume. See
+[Volumes and backups](volumes.md) for the full configuration, API, and
+troubleshooting reference.
+
 ## RBAC details
 
 The chart creates two least-privilege identities:
@@ -662,9 +693,9 @@ and workspaces, and records audit events; the bastion records SSH audit events.
 Kubernetes remains authoritative and PostgreSQL is never read for access
 decisions. If PostgreSQL is configured but unavailable at startup, the process
 exits; if it fails later, sync/audit errors are logged and workspace operations
-continue. Back up PVCs separately with volume snapshots. See
-[PostgreSQL schema](postgres-schema.md) for migrations, tables, and restore
-guidance.
+continue. Back up PVCs with volume snapshots or the built-in
+[S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
+for migrations, tables, and restore guidance.
 
 ## Troubleshooting
 

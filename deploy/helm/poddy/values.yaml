@@ -64,6 +64,33 @@ database:
   # are managed externally.
   autoMigrate: true
 
+# Workspace volume backups to S3-compatible object storage. When enabled, the
+# portal creates a short-lived helper pod that mounts a stopped workspace volume
+# and streams a gzip tar archive to the bucket. The helper pod uses the same
+# service account and namespace permissions as the portal.
+backup:
+  enabled: false
+  # Image used by temporary backup/restore pods. It must contain sh, tar, and
+  # gzip (busybox is sufficient).
+  helperImage: busybox:1.36
+  s3:
+    # Endpoint without a scheme, for example minio.example.com:9000 or
+    # s3.us-east-1.amazonaws.com. A scheme is accepted and controls useSSL.
+    endpoint: ""
+    region: ""
+    bucket: ""
+    prefix: poddy-backups
+    useSSL: true
+    # Prefer existingSecret in production. It must contain accessKeyKey and
+    # secretKeyKey in the release namespace.
+    existingSecret: ""
+    accessKeyKey: access-key
+    secretKeyKey: secret-key
+    # Inline credentials are only used when existingSecret is empty. They are
+    # stored in a chart-managed Secret.
+    accessKey: ""
+    secretKey: ""
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

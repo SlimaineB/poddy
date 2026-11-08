@@ -154,3 +154,14 @@ Secret holding the optional PostgreSQL connection string.
 {{- printf "%s-desktop" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Secret holding S3 credentials for workspace volume backups.
+*/}}
+{{- define "poddy.backupSecretName" -}}
+{{- if .Values.backup.s3.existingSecret -}}
+{{- .Values.backup.s3.existingSecret -}}
+{{- else -}}
+{{- printf "%s-backup" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

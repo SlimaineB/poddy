@@ -28,6 +28,8 @@ async function init() {
     await openTopology();
   } else if (initialView === "map") {
     await openMap();
+  } else if (initialView === "volumes") {
+    openVolumes();
   }
   setInterval(() => {
     if (!document.hidden) load({ silent: true });
@@ -47,7 +49,11 @@ els.newWorkspace.addEventListener("click", openCreate);
 els.refresh.addEventListener("click", async () => {
   els.refresh.classList.add("spinning");
   try {
-    await load();
+    if (els.volumesView && !els.volumesView.hidden) {
+      await loadVolumes({ silent: true });
+    } else {
+      await load();
+    }
   } finally {
     els.refresh.classList.remove("spinning");
   }

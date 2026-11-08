@@ -36,6 +36,15 @@ type Config struct {
 	RegionsFile  string
 	InstanceID   string
 
+	BackupS3Endpoint  string
+	BackupS3Region    string
+	BackupS3Bucket    string
+	BackupS3AccessKey string
+	BackupS3SecretKey string
+	BackupS3Prefix    string
+	BackupS3UseSSL    bool
+	BackupHelperImage string
+
 	DatabaseURL         string
 	DatabaseAutoMigrate bool
 
@@ -90,6 +99,15 @@ func Load(args []string) (Config, error) {
 		RegionsFile:  os.Getenv("PODDY_REGIONS_FILE"),
 		InstanceID:   os.Getenv("PODDY_INSTANCE_ID"),
 
+		BackupS3Endpoint:  os.Getenv("PODDY_BACKUP_S3_ENDPOINT"),
+		BackupS3Region:    os.Getenv("PODDY_BACKUP_S3_REGION"),
+		BackupS3Bucket:    os.Getenv("PODDY_BACKUP_S3_BUCKET"),
+		BackupS3AccessKey: os.Getenv("PODDY_BACKUP_S3_ACCESS_KEY"),
+		BackupS3SecretKey: os.Getenv("PODDY_BACKUP_S3_SECRET_KEY"),
+		BackupS3Prefix:    env("PODDY_BACKUP_S3_PREFIX", "poddy-backups"),
+		BackupS3UseSSL:    envBool("PODDY_BACKUP_S3_USE_SSL", true),
+		BackupHelperImage: env("PODDY_BACKUP_HELPER_IMAGE", "busybox:1.36"),
+
 		DatabaseURL:         os.Getenv("PODDY_DATABASE_URL"),
 		DatabaseAutoMigrate: envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
 
@@ -141,6 +159,14 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.RegionHubURL, "region-hub-url", cfg.RegionHubURL, "central hub public URL")
 	fs.StringVar(&cfg.RegionsFile, "regions-file", cfg.RegionsFile, "central hub regions configuration file")
 	fs.StringVar(&cfg.InstanceID, "instance-id", cfg.InstanceID, "unique instance identifier used for distributed locks")
+	fs.StringVar(&cfg.BackupS3Endpoint, "backup-s3-endpoint", cfg.BackupS3Endpoint, "S3-compatible endpoint for volume backups")
+	fs.StringVar(&cfg.BackupS3Region, "backup-s3-region", cfg.BackupS3Region, "S3 region for volume backups")
+	fs.StringVar(&cfg.BackupS3Bucket, "backup-s3-bucket", cfg.BackupS3Bucket, "S3 bucket for volume backups")
+	fs.StringVar(&cfg.BackupS3AccessKey, "backup-s3-access-key", cfg.BackupS3AccessKey, "S3 access key for volume backups")
+	fs.StringVar(&cfg.BackupS3SecretKey, "backup-s3-secret-key", cfg.BackupS3SecretKey, "S3 secret key for volume backups")
+	fs.StringVar(&cfg.BackupS3Prefix, "backup-s3-prefix", cfg.BackupS3Prefix, "object key prefix for volume backups")
+	fs.BoolVar(&cfg.BackupS3UseSSL, "backup-s3-use-ssl", cfg.BackupS3UseSSL, "use TLS for the S3 endpoint")
+	fs.StringVar(&cfg.BackupHelperImage, "backup-helper-image", cfg.BackupHelperImage, "image used by temporary volume backup pods")
 	fs.StringVar(&cfg.DatabaseURL, "database-url", cfg.DatabaseURL, "PostgreSQL URL for optional metadata mirror and audit events")
 	fs.BoolVar(&cfg.DatabaseAutoMigrate, "database-auto-migrate", cfg.DatabaseAutoMigrate, "apply embedded PostgreSQL migrations on startup")
 	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
