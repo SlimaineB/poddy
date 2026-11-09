@@ -219,6 +219,9 @@ auth tokens. Region managers own the Kubernetes API connection, workspace pods,
 PVCs, stopped-state ConfigMap, terminal/VS Code proxying, and the region SSH
 bastion.
 
+See [Regions](regions.md) for the full step-by-step checklist to add, verify,
+rotate, and remove a region.
+
 ```text
 Browser ──► central hub ── signed identity ──► region manager (eu) ──► pods
                        └─ signed identity ──► region manager (us) ──► pods

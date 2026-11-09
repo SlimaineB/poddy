@@ -44,6 +44,7 @@ nav:
   - Getting started: getting-started.md
   - Deployment:
       - Kubernetes (Helm): deploy.md
+      - Regions: regions.md
       - Amazon EKS (ALB + EFS): eks.md
       - Local k3s test: k3s-test.md
   - Workspaces:
