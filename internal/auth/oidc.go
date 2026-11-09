@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -42,27 +43,29 @@ func (u User) Display() string {
 
 // Config holds the OIDC provider settings.
 type Config struct {
-	Issuer        string
-	ClientID      string
-	ClientSecret  string
-	RedirectURL   string
-	Scopes        []string
-	AllowedGroups []string
-	AllowedUsers  []string
-	UsernameClaim string
-	EmailClaim    string
-	GroupsClaim   string
-	SessionKey    []byte
-	SessionTTL    time.Duration
+	Issuer           string
+	DiscoveryURL     string
+	AuthorizationURL string
+	ClientID         string
+	ClientSecret     string
+	RedirectURL      string
+	Scopes           []string
+	AllowedGroups    []string
+	AllowedUsers     []string
+	UsernameClaim    string
+	EmailClaim       string
+	GroupsClaim      string
+	SessionKey       []byte
+	SessionTTL       time.Duration
 }
 
 // OIDC implements the OpenID Connect authorization code flow with PKCE.
 type OIDC struct {
-	cfg      Config
-	provider *oidc.Provider
-	verifier *oidc.IDTokenVerifier
-	oauth    oauth2.Config
-	key      []byte
+	cfg         Config
+	verifier    *oidc.IDTokenVerifier
+	oauth       oauth2.Config
+	userInfoURL string
+	key         []byte
 }
 
 type flowState struct {
@@ -78,6 +81,35 @@ type session struct {
 	User    User   `json:"user"`
 	Expires int64  `json:"expires"`
 	Issuer  string `json:"issuer"`
+}
+
+type discoveryDocument struct {
+	Issuer                string `json:"issuer"`
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+	UserinfoEndpoint      string `json:"userinfo_endpoint"`
+	JWKSURI               string `json:"jwks_uri"`
+}
+
+func fetchDiscovery(ctx context.Context, discoveryURL string) (discoveryDocument, error) {
+	discoveryEndpoint := strings.TrimRight(discoveryURL, "/") + "/.well-known/openid-configuration"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryEndpoint, nil)
+	if err != nil {
+		return discoveryDocument{}, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return discoveryDocument{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return discoveryDocument{}, fmt.Errorf("discovery returned %s", resp.Status)
+	}
+	var doc discoveryDocument
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&doc); err != nil {
+		return discoveryDocument{}, err
+	}
+	return doc, nil
 }
 
 // New builds an OIDC client and performs provider discovery.
@@ -112,20 +144,41 @@ func New(ctx context.Context, cfg Config) (*OIDC, error) {
 		}
 	}
 
-	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
+	discoveryURL := cfg.DiscoveryURL
+	if discoveryURL == "" {
+		discoveryURL = cfg.Issuer
+	}
+	doc, err := fetchDiscovery(ctx, discoveryURL)
 	if err != nil {
-		return nil, fmt.Errorf("oidc discovery %s: %w", cfg.Issuer, err)
+		return nil, fmt.Errorf("oidc discovery %s: %w", discoveryURL, err)
+	}
+	if doc.Issuer != cfg.Issuer {
+		return nil, fmt.Errorf("oidc discovery issuer %q does not match configured issuer %q", doc.Issuer, cfg.Issuer)
+	}
+	if doc.JWKSURI == "" {
+		return nil, errors.New("oidc discovery document has no jwks_uri")
+	}
+	if doc.AuthorizationEndpoint == "" || doc.TokenEndpoint == "" {
+		return nil, errors.New("oidc discovery document is missing authorization or token endpoint")
+	}
+
+	endpoint := oauth2.Endpoint{
+		AuthURL:  doc.AuthorizationEndpoint,
+		TokenURL: doc.TokenEndpoint,
+	}
+	if cfg.AuthorizationURL != "" {
+		endpoint.AuthURL = cfg.AuthorizationURL
 	}
 
 	o := &OIDC{
-		cfg:      cfg,
-		provider: provider,
-		verifier: provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
-		key:      key,
+		cfg:         cfg,
+		verifier:    oidc.NewVerifier(cfg.Issuer, oidc.NewRemoteKeySet(ctx, doc.JWKSURI), &oidc.Config{ClientID: cfg.ClientID}),
+		userInfoURL: doc.UserinfoEndpoint,
+		key:         key,
 		oauth: oauth2.Config{
 			ClientID:     cfg.ClientID,
 			ClientSecret: cfg.ClientSecret,
-			Endpoint:     provider.Endpoint(),
+			Endpoint:     endpoint,
 			Scopes:       cfg.Scopes,
 			RedirectURL:  cfg.RedirectURL,
 		},
@@ -234,13 +287,10 @@ func (o *OIDC) Complete(ctx context.Context, code string, flow *Flow) (User, err
 
 	// Some providers expose groups/profile data only through the userinfo
 	// endpoint. Merge it in without overriding ID token claims.
-	if info, err := o.provider.UserInfo(ctx, oauth2.StaticTokenSource(token)); err == nil {
-		var extra map[string]any
-		if err := info.Claims(&extra); err == nil {
-			for key, value := range extra {
-				if _, exists := claims[key]; !exists {
-					claims[key] = value
-				}
+	if extra, err := o.userInfo(ctx, token); err == nil {
+		for key, value := range extra {
+			if _, exists := claims[key]; !exists {
+				claims[key] = value
 			}
 		}
 	}
@@ -263,6 +313,30 @@ func (o *OIDC) Complete(ctx context.Context, code string, flow *Flow) (User, err
 		return User{}, err
 	}
 	return user, nil
+}
+
+func (o *OIDC) userInfo(ctx context.Context, token *oauth2.Token) (map[string]any, error) {
+	if o.userInfoURL == "" {
+		return nil, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.userInfoURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("userinfo returned %s", resp.Status)
+	}
+	var claims map[string]any
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&claims); err != nil {
+		return nil, err
+	}
+	return claims, nil
 }
 
 func (o *OIDC) authorize(user User) error {

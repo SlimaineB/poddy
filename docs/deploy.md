@@ -13,7 +13,7 @@ The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as sep
 
 !!! tip "Amazon EKS"
     For an EKS example with ALB Ingress, an NLB for SSH, Okta OIDC, and shared
-    EFS storage, see [Amazon EKS with ALB and EFS](eks.md).
+    EBS and EFS storage, see [Amazon EKS with ALB, EBS, and EFS](eks.md).
 
 ### Prerequisites
 - Kubernetes 1.28+
@@ -36,6 +36,17 @@ image:
 
 If the GHCR package is private, create an image pull secret and reference it in
 the chart values. For source builds, see [Development](development.md).
+
+Registry overrides are separate:
+
+- **Portal and bastion**: set `image.repository`, `image.tag`, and
+  `imagePullSecrets`.
+- **Workspace and sidecar images**: set `workspace.imageRegistry` to a mirror
+  that exposes the same image paths, and `workspace.imagePullSecrets` for a
+  private registry. Individual templates can still set `image` or override a
+  sidecar.
+- **Helm chart**: install from your OCI mirror or from the source path
+  `deploy/helm/poddy` instead of `oci://ghcr.io/slimaineb/charts/poddy`.
 
 ### 2. Prepare secrets
 
@@ -141,6 +152,14 @@ bastion:
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: true
 
+workspace:
+  # Use when the cluster has no default StorageClass, for example on EKS.
+  storageClass: ""
+  # Optional registry mirror for workspace and sidecar images.
+  imageRegistry: ""
+  # Existing Secrets in the workspace namespace for a private registry.
+  imagePullSecrets: []
+
 # Optional: mirror metadata and audit events to PostgreSQL.
 # database:
 #   existingSecret: poddy-database
@@ -199,7 +218,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
 - **ConfigMap size**: stopped workspace specs and RBAC/users data live in ConfigMaps (1 MiB limit per ConfigMap). Thousands of stopped workspaces with large rendered specs will hit this limit.
-- **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
+- **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains.
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and quota reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace, quota, or RBAC decisions; it does not remove the ConfigMap size limit by itself.
@@ -296,6 +315,8 @@ automatic failover of an existing workspace between regions.
 - **Workspace namespace**: `workspaceNamespace` defaults to the release namespace. Set it to a dedicated namespace (e.g., `team-a`) to isolate teams.
   - `createWorkspaceNamespace: true` creates the namespace. **Warning**: `helm uninstall` will delete that namespace and all workspaces inside it. For production, create the namespace yourself (`kubectl create ns team-a`) and set `createWorkspaceNamespace: false`.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
+  - Set `workspace.storageClass` when the cluster has no default StorageClass. The value is used only when the template's `storageClass` parameter is empty.
+  - Set `workspace.imageRegistry` to pull workspace and sidecar images through a registry mirror. The mirror must expose the same image paths. Set `workspace.imagePullSecrets` to existing Secrets in `workspaceNamespace` for a private mirror.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
 ## Volume backups
@@ -396,8 +417,8 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 
 | Value | Description |
 |-------|-------------|
-| `ssh.enabled` | Enable the bastion and the UI SSH metadata (default true). |
-| `bastion.enabled` | Deploy the bastion as a separate Deployment (default true). Required when `ssh.enabled=true`. |
+| `ssh.enabled` | Enable SSH metadata and certificate issuance (default true). |
+| `bastion.enabled` | Deploy the bastion as a separate Deployment (default true). Set false for a hub that only issues certificates. |
 | `bastion.replicaCount` | Bastion replicas (default 1). >1 requires `ssh.existingHostKeySecret`. |
 | `bastion.resources` | Resource requests/limits for the bastion pod. |
 | `ssh.addr` | Listen address inside the bastion pod (default `:2222`). |
@@ -406,6 +427,16 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 | `auth.tokenAdmin` | Treat the shared token as a global admin (default `false`). Keep false with OIDC or multiple users. |
 | `ssh.authorizedKeys` | Optional administrator-managed public keys. The comment binds a key to an owner (`user:alice@example.com`) or marks it admin (`admin`, `*`). Teams normally use the portal's **SSH keys** page instead. |
 | `ssh.allowUnmappedKeys` | Allow keys without an owner comment to access every workspace (legacy, insecure; default `false`). |
+| `ssh.requireAgent` | Require the outbound workspace agent tunnel and disable the Kubernetes port-forward fallback (default `true`). Custom workspace images must include `poddy-agent`; set `false` to keep the fallback. |
+| `ssh.agent.enabled` | Inject the agent URL/token and run the bastion agent listener (default `true`). |
+| `ssh.agent.port` | Private ClusterIP port for the agent listener (default `8091`). |
+| `ssh.agent.url` | Agent URL injected into workspaces. Empty derives `http://<fullname>-agent.<namespace>.svc:<port>`. |
+| `ssh.agent.tokenTtl` | Workspace agent token lifetime (default `168h`). |
+| `ssh.agent.existingSecret` | Existing Secret with the shared agent HMAC key instead of the generated one. |
+| `ssh.certTtl` | Lifetime of issued SSH certificates (default `15m`). |
+| `ssh.ca.existingSecret` | Existing Secret with the SSH CA private key. Share it across the hub and regions. |
+| `ssh.ca.keyKey` | Key in the CA Secret (default `ssh-ca-key`). |
+| `ssh.ca.key` | Inline CA private key (PEM). Empty generates and preserves a random key. |
 | `ssh.existingKeysSecret` | Use an existing Secret instead of ConfigMap. |
 | `ssh.existingHostKeySecret` | **Required for `bastion.replicaCount > 1`**. Secret with private host key at `ssh.hostKeySecretKey`. |
 | `ssh.service.type` | Service type for SSH (default `LoadBalancer`). |
@@ -413,11 +444,12 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 
 **How it works**: The bastion runs as a separate `poddy-bastion` Deployment on
 `:2222`; in local mode it runs inside the portal process. No separate EC2
-bastion host or kubeconfig is required. It accepts SSH connections, verifies the
-public key, reads the target host from the `direct-tcpip` request
-(`poddy-ssh-<name>` or `poddy-<name>`), looks up the workspace pod and its
-`poddy.io/owner` annotation, authorizes the key for that owner, then opens a
-port-forward to pod port 22 and bridges the connection.
+bastion host or kubeconfig is required. It accepts SSH connections, verifies a
+public key or short-lived certificate, reads the target host from the
+`direct-tcpip` request (`poddy-ssh-<name>` or `poddy-<name>`), looks up the
+workspace pod and its `poddy.io/owner` annotation, authorizes the identity for
+that owner, then opens a multiplexed stream to the workspace agent or, as a
+fallback, a Kubernetes port-forward to pod port 22.
 
 A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@example.com`; the channel is rejected with `not authorized for this workspace`. Admin keys (`admin` or `*`) can reach every workspace for break-glass access.
 
@@ -428,6 +460,8 @@ A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@examp
 - Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 
 **VS Code Desktop**: the **VS Code** button targets VS Code Desktop, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from `vscode-extension/` once per machine) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows VS Code.
+
+**Short-lived certificates**: the portal exposes `POST /api/me/ssh-certificate` and signs certificates with the CA mounted from `ssh.ca`. Workspace `authorized_keys` includes the matching `cert-authority` line, so the same certificate authenticates to the bastion and to workspace `sshd`. The CA line is loopback-restricted only when `ssh.requireAgent=true`; with the port-forward fallback it is unrestricted. See [SSH access](ssh.md).
 
 **Changing keys**: the bastion loads `authorized_keys` at startup. If you use `ssh.existingKeysSecret`, update the Secret and run `kubectl rollout restart deployment/poddy-bastion -n poddy-system`. Existing workspace pods keep their old `SSH_AUTHORIZED_KEY` until they are restarted (stop/start or delete/recreate). The ConfigMap path already triggers a bastion rollout through the chart checksum.
 
@@ -467,6 +501,8 @@ poddy supports the OpenID Connect authorization code flow with PKCE. When enable
 oidc:
   enabled: true
   issuer: https://keycloak.example.com/realms/dev
+  # discoveryUrl: http://keycloak.internal/realms/dev
+  # authorizationUrl: https://keycloak.example.com/realms/dev/protocol/openid-connect/auth
   clientId: poddy
   clientSecret: ""            # prefer existingSecret in production
   redirectUrl: https://poddy.example.com/oidc/callback
@@ -504,7 +540,9 @@ The chart reads `oidc.clientIdKey` (default `oidc-client-id`), `oidc.clientSecre
 
 | Flag | Environment | Description |
 |------|-------------|-------------|
-| `-oidc-issuer` | `PODDY_OIDC_ISSUER` | Issuer URL (enables OIDC). |
+| `-oidc-issuer` | `PODDY_OIDC_ISSUER` | Issuer URL (the expected `iss` claim; enables OIDC). |
+| `-oidc-discovery-url` | `PODDY_OIDC_DISCOVERY_URL` | Discovery URL when it differs from the issuer (defaults to issuer). |
+| `-oidc-authorization-url` | `PODDY_OIDC_AUTHORIZATION_URL` | Browser-facing authorization endpoint override. |
 | `-oidc-client-id` | `PODDY_OIDC_CLIENT_ID` | Client ID. |
 | `-oidc-client-secret` | `PODDY_OIDC_CLIENT_SECRET` | Client secret (empty = public client with PKCE). |
 | `-oidc-redirect-url` | `PODDY_OIDC_REDIRECT_URL` | Callback URL (derived from request when empty). |
@@ -538,6 +576,8 @@ The portal reads the username, email and groups from the ID token. If a claim is
 ### Callback behind a proxy
 
 Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empty, the portal derives it from the request and honors `X-Forwarded-Proto` / `X-Forwarded-Host` set by ingress controllers.
+
+`oidc.issuer`, `oidc.discoveryUrl`, `oidc.authorizationUrl`, and `oidc.redirectUrl` are independent. Use `discoveryUrl` when discovery must use an internal URL, and `authorizationUrl` when the browser needs a different authorization endpoint. See [OIDC / SSO](oidc.md#issuer-discovery-authorization-and-callback-urls).
 
 ### Local test
 

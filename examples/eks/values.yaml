@@ -19,8 +19,12 @@ auth:
 
 oidc:
   enabled: true
-  # Use https://<org>.okta.com for the org authorization server.
+  # Expected iss claim. Use https://<org>.okta.com for the org authorization server.
   issuer: https://dev-123456.okta.com/oauth2/default
+  # Optional: use an internal discovery URL or a different browser-facing
+  # authorization endpoint. Both default to the issuer/discovery values.
+  discoveryUrl: ""
+  authorizationUrl: ""
   existingSecret: poddy-oidc
   redirectUrl: https://poddy.example.com/oidc/callback
   scopes: "openid,profile,email"
@@ -56,6 +60,14 @@ bastion:
 
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: false
+
+workspace:
+  # EKS does not always create a default StorageClass. Apply
+  # examples/eks/ebs-storageclass.yaml or set your own EBS class here.
+  storageClass: poddy-gp3
+  # Optional: mirror workspace and sidecar images through a private registry.
+  imageRegistry: ""
+  imagePullSecrets: []
 
 ingress:
   enabled: true

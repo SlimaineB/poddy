@@ -87,9 +87,9 @@ Browser ─────────► Portal (:8080) ────────�
                                              (workspace lifecycle)
 
 VS Code / ssh ───► Bastion (:2222) ────────► Kubernetes API
-                                             (pods/portforward)
+                                             (pods/portforward fallback)
                            │
-                           └── ProxyJump / port-forward ──► Workspace pod :22
+                           └── outbound agent tunnel ─────► Workspace pod :22
 ```
 
 The portal and bastion are separate Deployments built from the same image. The
@@ -103,7 +103,7 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 |------------|------------|
 | Try it locally in a few minutes | [Getting started](getting-started.md) |
 | Run it in production | [Kubernetes deployment](deploy.md) |
-| Run it on Amazon EKS with ALB and EFS | [Amazon EKS](eks.md) |
+| Run it on Amazon EKS with ALB, EBS, and EFS | [Amazon EKS](eks.md) |
 | Add my own workspace image | [Workspace templates](templates.md) |
 | Back up, restore, or copy workspace volumes | [Volumes and backups](volumes.md) |
 | Build poddy from source | [Development](development.md) |
@@ -112,5 +112,6 @@ flow and [Data model](data-model.md) for the Kubernetes objects involved.
 | Configure SSO | [OIDC / SSO](oidc.md) |
 | Configure Okta SSO | [Okta SSO](okta.md) |
 | Understand who can see what | [RBAC and ownership](rbac.md) |
+| Connect over SSH with short-lived certificates | [SSH access](ssh.md) |
 | Understand the request flow and components | [Architecture](architecture.md) |
 | Inspect the Kubernetes and PostgreSQL objects | [Data model](data-model.md) |

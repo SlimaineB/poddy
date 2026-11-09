@@ -160,6 +160,18 @@ createWorkspaceNamespace: false
 workspaceState:
   configMapName: ""
 
+# Defaults applied to workspace pods. Template parameters still win.
+workspace:
+  # Default StorageClass for workspace home volumes when the template leaves
+  # its storageClass parameter empty. Empty uses the cluster default.
+  storageClass: ""
+  # Registry mirror for workspace and sidecar images. The registry must expose
+  # the same image paths, for example mirror.example.com/slimaineb/....
+  imageRegistry: ""
+  # Existing image pull Secrets in the workspace namespace, applied to every
+  # workspace pod. Use this for a private registry mirror.
+  imagePullSecrets: []
+
 # Central hub only. Each entry is mounted as a YAML regions file and points the
 # hub at a region manager's portal Service. Prefer regionsExistingSecret in
 # production: it must contain regions.yaml with the same structure.
@@ -213,7 +225,14 @@ auth:
 # the shared token (if set) remains available for API automation.
 oidc:
   enabled: false
+  # Expected issuer (the iss claim). This is separate from the callback URL.
   issuer: ""
+  # Optional discovery URL when the issuer is only reachable from the browser
+  # or discovery must use an internal endpoint. Defaults to issuer.
+  discoveryUrl: ""
+  # Optional browser-facing authorization endpoint override. Use when the
+  # discovery document advertises an internal authorization endpoint.
+  authorizationUrl: ""
   clientId: ""
   clientSecret: ""
   # Use an existing Secret in the release namespace instead of putting secrets
@@ -291,6 +310,29 @@ ssh:
   # Legacy escape hatch: allow keys without an owner comment to access every
   # workspace. Keep false in production.
   allowUnmappedKeys: false
+  # Require the outbound workspace agent tunnel. When true, the bastion never
+  # uses the Kubernetes port-forward API to reach workspace pods.
+  requireAgent: true
+  # Lifetime of short-lived user SSH certificates issued by the portal.
+  certTtl: 15m
+  # SSH certificate authority. The same CA is mounted into the portal (to sign
+  # certificates) and the bastion (to verify them). Leave key empty to let the
+  # chart generate and preserve a random key.
+  ca:
+    existingSecret: ""
+    keyKey: ssh-ca-key
+    key: ""
+  agent:
+    enabled: true
+    # URL injected into workspace pods. Empty derives the in-cluster Service URL
+    # http://<release>-agent.<namespace>.svc:<port>.
+    url: ""
+    port: 8091
+    tokenTtl: 168h
+    # HMAC key shared by the portal and the bastion. Leave empty to let the
+    # chart generate and preserve a random Secret.
+    key: ""
+    existingSecret: ""
   # Use an existing Secret instead of creating a ConfigMap. The Secret must be
   # in the release namespace and contain ssh.keysSecretKey.
   existingKeysSecret: ""

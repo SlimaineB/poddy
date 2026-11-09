@@ -166,6 +166,9 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 	if err := m.applyExternalAuth(ctx, pod, state.Owner, state.Name, state.PortalURL, requirements); err != nil {
 		return Workspace{}, err
 	}
+	if err := m.applyAgentEnv(pod, state.Name, state.Owner); err != nil {
+		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
+	}
 	created, err := m.Client.CoreV1().Pods(m.Namespace).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return Workspace{}, err

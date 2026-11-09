@@ -86,6 +86,8 @@ The demo uses plain HTTP on `127.0.0.1` and known passwords. Never expose it.
 oidc:
   enabled: true
   issuer: https://keycloak.example.com/realms/dev
+  # discoveryUrl: http://keycloak.internal/realms/dev
+  # authorizationUrl: https://keycloak.example.com/realms/dev/protocol/openid-connect/auth
   clientId: poddy
   clientSecret: ""            # prefer existingSecret in production
   redirectUrl: https://poddy.example.com/oidc/callback
@@ -123,7 +125,9 @@ The chart reads `oidc.clientIdKey` (default `oidc-client-id`), `oidc.clientSecre
 
 | Flag | Environment | Description |
 |------|-------------|-------------|
-| `-oidc-issuer` | `PODDY_OIDC_ISSUER` | Issuer URL (enables OIDC). |
+| `-oidc-issuer` | `PODDY_OIDC_ISSUER` | Issuer URL (the expected `iss` claim; enables OIDC). |
+| `-oidc-discovery-url` | `PODDY_OIDC_DISCOVERY_URL` | Discovery URL when it differs from the issuer (defaults to issuer). |
+| `-oidc-authorization-url` | `PODDY_OIDC_AUTHORIZATION_URL` | Browser-facing authorization endpoint override. |
 | `-oidc-client-id` | `PODDY_OIDC_CLIENT_ID` | Client ID. |
 | `-oidc-client-secret` | `PODDY_OIDC_CLIENT_SECRET` | Client secret (empty = public client with PKCE). |
 | `-oidc-redirect-url` | `PODDY_OIDC_REDIRECT_URL` | Callback URL (derived from the request when empty). |
@@ -156,6 +160,25 @@ The portal reads the username, email and groups from the ID token. If a claim is
 - Token auth remains available when `auth.token` is set. To require SSO only, leave `auth.token` empty and do not set `PODDY_TOKEN`.
 - RBAC reads and writes the same ConfigMap from every replica. Writes are serialized within a replica and retried on conflicts; avoid simultaneous RBAC edits from multiple replicas.
 
+## Issuer, discovery, authorization, and callback URLs
+
+These URLs are independent:
+
+- `issuer` is the expected `iss` claim. It must match the provider's discovery document exactly.
+- `discoveryUrl` is where the portal fetches `/.well-known/openid-configuration`. Set it when the provider is reachable at an internal URL but issues public tokens. It defaults to `issuer`.
+- `authorizationUrl` is the browser-facing authorization endpoint. Set it when the discovery document advertises an internal endpoint that users cannot reach. It defaults to the endpoint from discovery.
+- `redirectUrl` is the portal callback (`https://<poddy-host>/oidc/callback`). It is registered with the provider and is separate from the issuer.
+
+For example, an internal Keycloak can be discovered at `http://keycloak.internal/realms/dev` while tokens carry `iss: https://keycloak.example.com/realms/dev`:
+
+```yaml
+oidc:
+  issuer: https://keycloak.example.com/realms/dev
+  discoveryUrl: http://keycloak.internal/realms/dev
+  authorizationUrl: https://keycloak.example.com/realms/dev/protocol/openid-connect/auth
+  redirectUrl: https://poddy.example.com/oidc/callback
+```
+
 ## Callback behind a proxy
 
 Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empty, the portal derives it from the request and honors `X-Forwarded-Proto` / `X-Forwarded-Host` set by ingress controllers.
@@ -164,7 +187,7 @@ Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empt
 
 | Symptom | Check |
 |---------|-------|
-| `issuer mismatch` | The discovery document's issuer must equal `oidc.issuer` exactly (scheme, host, path, no trailing slash). |
+| `issuer mismatch` | The discovery document (from `oidc.discoveryUrl` or `oidc.issuer`) must return an `issuer` equal to `oidc.issuer` exactly (scheme, host, path, no trailing slash). |
 | `redirect_uri mismatch` | The provider must allow exactly `https://<host>/oidc/callback`; check the public URL behind the proxy. |
 | Login loops back to the login page | Cookie not set: check `Secure`/HTTPS, `SameSite`, and that the browser uses the same host as the redirect URL. |
 | `401` after callback | Wrong client secret, clock skew, or the ID token audience/issuer does not match. |

@@ -80,10 +80,11 @@ type Info struct {
 }
 
 type Catalog struct {
-	mu        sync.RWMutex
-	templates map[string]*Template
-	dir       string
-	onReload  func()
+	mu            sync.RWMutex
+	templates     map[string]*Template
+	dir           string
+	imageRegistry string
+	onReload      func()
 }
 
 // Source is a template loaded from an external store, such as a Kubernetes
@@ -250,10 +251,28 @@ func (c *Catalog) swap(next *Catalog) {
 	c.mu.Lock()
 	c.templates = next.templates
 	c.dir = next.dir
+	registry := c.imageRegistry
+	if registry != "" {
+		for _, tmpl := range c.templates {
+			tmpl.Image = RewriteImageRegistry(tmpl.Image, registry)
+		}
+	}
 	onReload := c.onReload
 	c.mu.Unlock()
 	if onReload != nil {
 		onReload()
+	}
+}
+
+func (c *Catalog) SetImageRegistry(registry string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.imageRegistry = strings.TrimSuffix(strings.TrimSpace(registry), "/")
+	if c.imageRegistry == "" {
+		return
+	}
+	for _, tmpl := range c.templates {
+		tmpl.Image = RewriteImageRegistry(tmpl.Image, c.imageRegistry)
 	}
 }
 

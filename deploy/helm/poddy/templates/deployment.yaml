@@ -1,8 +1,8 @@
-{{- if and .Values.ssh.enabled (not .Values.bastion.enabled) }}
-{{- fail "bastion.enabled must be true when ssh.enabled=true" }}
-{{- end }}
 {{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
 {{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and bastion.replicaCount > 1" }}
+{{- end }}
+{{- if and .Values.ssh.enabled .Values.ssh.requireAgent (not .Values.ssh.agent.enabled) }}
+{{- fail "ssh.agent.enabled must be true when ssh.requireAgent=true" }}
 {{- end }}
 {{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}
 {{- fail "oidc.issuer is required when oidc.enabled=true" }}
@@ -70,6 +70,12 @@ spec:
         {{- if or .Values.desktop.secret .Values.desktop.existingSecret }}
         checksum/desktop: {{ include (print $.Template.BasePath "/secret-desktop.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.ssh.enabled }}
+        checksum/ssh-ca: {{ include (print $.Template.BasePath "/secret-ssh-ca.yaml") . | sha256sum }}
+        {{- if .Values.ssh.agent.enabled }}
+        checksum/agent: {{ include (print $.Template.BasePath "/secret-agent.yaml") . | sha256sum }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -101,7 +107,14 @@ spec:
             - -editor=
             - -ssh-addr=
             - -ssh-enabled={{ .Values.ssh.enabled }}
+            {{- if .Values.ssh.enabled }}
+            - -ssh-require-agent={{ .Values.ssh.requireAgent }}
+            {{- end }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            - -agent-url={{ include "poddy.agentURL" . }}
+            - -agent-token-ttl={{ .Values.ssh.agent.tokenTtl }}
+            {{- end }}
             {{- if .Values.regionManager.enabled }}
             - -region-mode=true
             - -region-name={{ .Values.regionManager.name }}
@@ -129,6 +142,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: PODDY_STORAGE_CLASS
+              value: {{ .Values.workspace.storageClass | quote }}
+            - name: PODDY_IMAGE_REGISTRY
+              value: {{ .Values.workspace.imageRegistry | quote }}
+            - name: PODDY_WORKSPACE_IMAGE_PULL_SECRETS
+              value: {{ join "," .Values.workspace.imagePullSecrets | quote }}
             {{- if .Values.backup.enabled }}
             - name: PODDY_BACKUP_S3_ENDPOINT
               value: {{ .Values.backup.s3.endpoint | quote }}
@@ -189,6 +208,14 @@ spec:
             {{- if .Values.oidc.enabled }}
             - name: PODDY_OIDC_ISSUER
               value: {{ .Values.oidc.issuer | quote }}
+            {{- with .Values.oidc.discoveryUrl }}
+            - name: PODDY_OIDC_DISCOVERY_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.authorizationUrl }}
+            - name: PODDY_OIDC_AUTHORIZATION_URL
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.oidc.existingSecret }}
             - name: PODDY_OIDC_CLIENT_ID
               valueFrom:
@@ -334,6 +361,19 @@ spec:
             - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            - name: PODDY_AGENT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.agentSecretName" . }}
+                  key: agent-key
+            {{- end }}
+            {{- if .Values.ssh.enabled }}
+            - name: PODDY_SSH_CA_KEY_FILE
+              value: /etc/poddy/ssh-ca/{{ .Values.ssh.ca.keyKey }}
+            - name: PODDY_SSH_CERT_TTL
+              value: {{ .Values.ssh.certTtl | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -366,6 +406,9 @@ spec:
               mountPath: /etc/poddy/authorized_keys
               subPath: {{ .Values.ssh.keysSecretKey }}
               readOnly: true
+            - name: ssh-ca
+              mountPath: /etc/poddy/ssh-ca
+              readOnly: true
             {{- end }}
             {{- if or .Values.regions .Values.regionsExistingSecret }}
             - name: regions
@@ -385,6 +428,10 @@ spec:
           configMap:
             name: {{ include "poddy.sshKeysName" . }}
           {{- end }}
+        - name: ssh-ca
+          secret:
+            secretName: {{ include "poddy.sshCASecretName" . }}
+            defaultMode: 0444
         {{- end }}
         {{- if or .Values.regions .Values.regionsExistingSecret }}
         - name: regions

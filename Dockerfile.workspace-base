@@ -1,3 +1,10 @@
+FROM golang:1.26 AS agent-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /poddy-agent ./cmd/poddy-agent
+
 FROM debian:bookworm-slim
 
 RUN apt-get update \
@@ -10,10 +17,11 @@ RUN apt-get update \
  && chmod 700 /home/dev/.ssh \
  && printf 'PasswordAuthentication no\nPermitRootLogin no\nUsePAM no\nAuthorizedKeysFile .ssh/authorized_keys\n' >> /etc/ssh/sshd_config
 
+COPY --from=agent-build /poddy-agent /usr/local/bin/poddy-agent
 COPY scripts/poddy-ssh-start /usr/local/bin/poddy-ssh-start
 COPY scripts/poddy-git-askpass /usr/local/bin/poddy-git-askpass
 COPY scripts/poddy-external-auth /usr/local/bin/poddy-external-auth
-RUN chmod 0755 /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth
+RUN chmod 0755 /usr/local/bin/poddy-agent /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth
 
 WORKDIR /home/dev
 EXPOSE 22

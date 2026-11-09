@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"poddy/internal/auth"
 	"poddy/internal/backup"
@@ -15,6 +16,7 @@ import (
 	"poddy/internal/metrics"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
+	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
@@ -44,6 +46,8 @@ type Server struct {
 	SSHKeys           *sshkeys.Dynamic
 	SSHAdminKeys      []string
 	SSHAllowUnmapped  bool
+	SSHCA             *sshca.CA
+	SSHCertTTL        time.Duration
 	UserKeys          *userkeys.Store
 	DesktopSecret     []byte
 
@@ -76,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/ssh-keys", s.listSSHKeys)
 	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
 	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)
+	mux.HandleFunc("POST /api/me/ssh-certificate", s.issueSSHCertificate)
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/audit", s.auditLog)
 	mux.HandleFunc("GET /api/regions", s.regionSummaries)
@@ -147,6 +152,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ssh":               s.SSHEnabled,
+		"sshCertificates":   s.SSHEnabled && s.SSHCA != nil,
 		"sshHost":           s.SSHHost,
 		"sshPort":           s.SSHPort,
 		"sshKeyPath":        s.SSHKeyPath,

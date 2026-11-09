@@ -10,13 +10,16 @@ import (
 )
 
 type Config struct {
-	Addr            string
-	MetricsAddr     string
-	Namespace       string
-	RBACConfigMap   string
-	StateConfigMap  string
-	TemplatesDir    string
-	DefaultTemplate string
+	Addr                      string
+	MetricsAddr               string
+	Namespace                 string
+	RBACConfigMap             string
+	StateConfigMap            string
+	TemplatesDir              string
+	DefaultTemplate           string
+	StorageClass              string
+	ImageRegistry             string
+	WorkspaceImagePullSecrets string
 
 	ExternalAuthSecret       string
 	ExternalAuthKey          string
@@ -57,30 +60,42 @@ type Config struct {
 	SSHPublicPort        string
 	SSHAllowUnmappedKeys bool
 	SSHUserKeysConfigMap string
+	SSHRequireAgent      bool
+	SSHCertTTL           time.Duration
+	SSHCAKeyFile         string
+	AgentAddr            string
+	AgentURL             string
+	AgentKey             string
+	AgentTokenTTL        time.Duration
 
-	OIDCIssuer        string
-	OIDCClientID      string
-	OIDCClientSecret  string
-	OIDCRedirectURL   string
-	OIDCScopes        string
-	OIDCAllowedGroups string
-	OIDCAllowedUsers  string
-	OIDCUsernameClaim string
-	OIDCEmailClaim    string
-	OIDCGroupsClaim   string
-	OIDCSessionKey    string
-	OIDCSessionTTL    time.Duration
+	OIDCIssuer           string
+	OIDCDiscoveryURL     string
+	OIDCAuthorizationURL string
+	OIDCClientID         string
+	OIDCClientSecret     string
+	OIDCRedirectURL      string
+	OIDCScopes           string
+	OIDCAllowedGroups    string
+	OIDCAllowedUsers     string
+	OIDCUsernameClaim    string
+	OIDCEmailClaim       string
+	OIDCGroupsClaim      string
+	OIDCSessionKey       string
+	OIDCSessionTTL       time.Duration
 }
 
 func Load(args []string) (Config, error) {
 	cfg := Config{
-		Addr:            env("PODDY_ADDR", ":8090"),
-		MetricsAddr:     os.Getenv("PODDY_METRICS_ADDR"),
-		Namespace:       env("PODDY_NAMESPACE", "default"),
-		RBACConfigMap:   env("PODDY_RBAC_CONFIGMAP", "poddy-rbac"),
-		StateConfigMap:  env("PODDY_STATE_CONFIGMAP", "poddy-state"),
-		TemplatesDir:    os.Getenv("PODDY_TEMPLATES_DIR"),
-		DefaultTemplate: env("PODDY_TEMPLATE", "base"),
+		Addr:                      env("PODDY_ADDR", ":8090"),
+		MetricsAddr:               os.Getenv("PODDY_METRICS_ADDR"),
+		Namespace:                 env("PODDY_NAMESPACE", "default"),
+		RBACConfigMap:             env("PODDY_RBAC_CONFIGMAP", "poddy-rbac"),
+		StateConfigMap:            env("PODDY_STATE_CONFIGMAP", "poddy-state"),
+		TemplatesDir:              os.Getenv("PODDY_TEMPLATES_DIR"),
+		DefaultTemplate:           env("PODDY_TEMPLATE", "base"),
+		StorageClass:              os.Getenv("PODDY_STORAGE_CLASS"),
+		ImageRegistry:             os.Getenv("PODDY_IMAGE_REGISTRY"),
+		WorkspaceImagePullSecrets: os.Getenv("PODDY_WORKSPACE_IMAGE_PULL_SECRETS"),
 
 		ExternalAuthSecret:       env("PODDY_EXTERNAL_AUTH_SECRET", "poddy-external-auth"),
 		ExternalAuthKey:          os.Getenv("PODDY_EXTERNAL_AUTH_KEY"),
@@ -120,19 +135,28 @@ func Load(args []string) (Config, error) {
 		SSHPublicPort:        env("PODDY_SSH_PUBLIC_PORT", "2222"),
 		SSHAllowUnmappedKeys: envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
 		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
+		SSHRequireAgent:      envBool("PODDY_SSH_REQUIRE_AGENT", false),
+		SSHCertTTL:           envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
+		SSHCAKeyFile:         os.Getenv("PODDY_SSH_CA_KEY_FILE"),
+		AgentAddr:            os.Getenv("PODDY_AGENT_ADDR"),
+		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
+		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
+		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", 7*24*time.Hour),
 
-		OIDCIssuer:        os.Getenv("PODDY_OIDC_ISSUER"),
-		OIDCClientID:      os.Getenv("PODDY_OIDC_CLIENT_ID"),
-		OIDCClientSecret:  os.Getenv("PODDY_OIDC_CLIENT_SECRET"),
-		OIDCRedirectURL:   os.Getenv("PODDY_OIDC_REDIRECT_URL"),
-		OIDCScopes:        env("PODDY_OIDC_SCOPES", "openid,profile,email,groups"),
-		OIDCAllowedGroups: os.Getenv("PODDY_OIDC_ALLOWED_GROUPS"),
-		OIDCAllowedUsers:  os.Getenv("PODDY_OIDC_ALLOWED_USERS"),
-		OIDCUsernameClaim: env("PODDY_OIDC_USERNAME_CLAIM", "preferred_username"),
-		OIDCEmailClaim:    env("PODDY_OIDC_EMAIL_CLAIM", "email"),
-		OIDCGroupsClaim:   env("PODDY_OIDC_GROUPS_CLAIM", "groups"),
-		OIDCSessionKey:    os.Getenv("PODDY_OIDC_SESSION_KEY"),
-		OIDCSessionTTL:    envDuration("PODDY_OIDC_SESSION_TTL", 12*time.Hour),
+		OIDCIssuer:           os.Getenv("PODDY_OIDC_ISSUER"),
+		OIDCDiscoveryURL:     os.Getenv("PODDY_OIDC_DISCOVERY_URL"),
+		OIDCAuthorizationURL: os.Getenv("PODDY_OIDC_AUTHORIZATION_URL"),
+		OIDCClientID:         os.Getenv("PODDY_OIDC_CLIENT_ID"),
+		OIDCClientSecret:     os.Getenv("PODDY_OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:      os.Getenv("PODDY_OIDC_REDIRECT_URL"),
+		OIDCScopes:           env("PODDY_OIDC_SCOPES", "openid,profile,email,groups"),
+		OIDCAllowedGroups:    os.Getenv("PODDY_OIDC_ALLOWED_GROUPS"),
+		OIDCAllowedUsers:     os.Getenv("PODDY_OIDC_ALLOWED_USERS"),
+		OIDCUsernameClaim:    env("PODDY_OIDC_USERNAME_CLAIM", "preferred_username"),
+		OIDCEmailClaim:       env("PODDY_OIDC_EMAIL_CLAIM", "email"),
+		OIDCGroupsClaim:      env("PODDY_OIDC_GROUPS_CLAIM", "groups"),
+		OIDCSessionKey:       os.Getenv("PODDY_OIDC_SESSION_KEY"),
+		OIDCSessionTTL:       envDuration("PODDY_OIDC_SESSION_TTL", 12*time.Hour),
 	}
 
 	fs := flag.NewFlagSet("poddy", flag.ContinueOnError)
@@ -143,6 +167,9 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.StateConfigMap, "state-configmap", cfg.StateConfigMap, "ConfigMap storing stopped workspace specs")
 	fs.StringVar(&cfg.TemplatesDir, "templates-dir", cfg.TemplatesDir, "extra workspace templates directory")
 	fs.StringVar(&cfg.DefaultTemplate, "template", cfg.DefaultTemplate, "default workspace template")
+	fs.StringVar(&cfg.StorageClass, "storage-class", cfg.StorageClass, "default StorageClass for workspace home volumes")
+	fs.StringVar(&cfg.ImageRegistry, "image-registry", cfg.ImageRegistry, "registry mirror applied to workspace and sidecar images")
+	fs.StringVar(&cfg.WorkspaceImagePullSecrets, "workspace-image-pull-secrets", cfg.WorkspaceImagePullSecrets, "comma-separated imagePullSecrets applied to workspace pods")
 	fs.StringVar(&cfg.ExternalAuthSecret, "external-auth-secret", cfg.ExternalAuthSecret, "Secret storing per-user external auth tokens")
 	fs.StringVar(&cfg.ExternalAuthKey, "external-auth-key", cfg.ExternalAuthKey, "key used to encrypt external auth tokens and sign workspace tokens")
 	fs.StringVar(&cfg.ExternalAuthURL, "external-auth-url", cfg.ExternalAuthURL, "portal URL reachable from workspaces (defaults to the request URL)")
@@ -178,8 +205,17 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.SSHPublicPort, "ssh-public-port", cfg.SSHPublicPort, "public SSH port shown to users")
 	fs.BoolVar(&cfg.SSHAllowUnmappedKeys, "ssh-allow-unmapped-keys", cfg.SSHAllowUnmappedKeys, "allow SSH keys without an owner comment to access every workspace (legacy, insecure)")
 	fs.StringVar(&cfg.SSHUserKeysConfigMap, "ssh-user-keys-configmap", cfg.SSHUserKeysConfigMap, "ConfigMap storing self-service SSH keys")
+	fs.BoolVar(&cfg.SSHRequireAgent, "ssh-require-agent", cfg.SSHRequireAgent, "require an outbound workspace agent tunnel for SSH (disables Kubernetes port-forward fallback)")
+	fs.DurationVar(&cfg.SSHCertTTL, "ssh-cert-ttl", cfg.SSHCertTTL, "lifetime of issued SSH certificates")
+	fs.StringVar(&cfg.SSHCAKeyFile, "ssh-ca-key-file", cfg.SSHCAKeyFile, "path to the SSH certificate authority private key")
+	fs.StringVar(&cfg.AgentAddr, "agent-addr", cfg.AgentAddr, "listen address for the workspace agent tunnel (empty disables it)")
+	fs.StringVar(&cfg.AgentURL, "agent-url", cfg.AgentURL, "URL injected into workspaces for the agent tunnel")
+	fs.StringVar(&cfg.AgentKey, "agent-key", cfg.AgentKey, "shared key used to sign and verify workspace agent tokens")
+	fs.DurationVar(&cfg.AgentTokenTTL, "agent-token-ttl", cfg.AgentTokenTTL, "lifetime of workspace agent tokens")
 
 	fs.StringVar(&cfg.OIDCIssuer, "oidc-issuer", cfg.OIDCIssuer, "OIDC issuer URL (enables OIDC login)")
+	fs.StringVar(&cfg.OIDCDiscoveryURL, "oidc-discovery-url", cfg.OIDCDiscoveryURL, "OIDC discovery URL (defaults to the issuer)")
+	fs.StringVar(&cfg.OIDCAuthorizationURL, "oidc-authorization-url", cfg.OIDCAuthorizationURL, "browser-facing OIDC authorization endpoint override")
 	fs.StringVar(&cfg.OIDCClientID, "oidc-client-id", cfg.OIDCClientID, "OIDC client ID")
 	fs.StringVar(&cfg.OIDCClientSecret, "oidc-client-secret", cfg.OIDCClientSecret, "OIDC client secret (empty for public clients with PKCE)")
 	fs.StringVar(&cfg.OIDCRedirectURL, "oidc-redirect-url", cfg.OIDCRedirectURL, "OIDC callback URL (derived from the request when empty)")

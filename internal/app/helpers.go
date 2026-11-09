@@ -1,15 +1,21 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"log"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
+	"poddy/internal/config"
 	"poddy/internal/local"
 )
 
@@ -81,4 +87,46 @@ func splitList(value string) []string {
 		}
 	}
 	return out
+}
+
+func agentSecret(cfg config.Config) string {
+	for _, value := range []string{cfg.AgentKey, cfg.ExternalAuthKey, cfg.OIDCSessionKey, cfg.DesktopSecret} {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func localAgentURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+func startAgentServer(ctx context.Context, addr string, handler http.Handler) (*http.Server, error) {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("agent tunnel: %w", err)
+	}
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("workspace agent tunnel listening on %s", addr)
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("agent tunnel: %v", err)
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+	}()
+	return srv, nil
 }

@@ -1,4 +1,4 @@
-# Amazon EKS with ALB and EFS
+# Amazon EKS with ALB, EBS, and EFS
 
 This page shows a production-oriented EKS deployment:
 
@@ -23,8 +23,10 @@ The manifests are in
 - `kubectl`, `helm`, and `eksctl` or equivalent.
 - The [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/)
   installed with IRSA.
+- The [AWS EBS CSI driver](https://github.com/kubernetes-sigs/aws-ebs-csi-driver)
+  installed with IRSA for workspace home volumes.
 - The [AWS EFS CSI driver](https://github.com/kubernetes-sigs/aws-efs-csi-driver)
-  installed with IRSA.
+  installed with IRSA for shared data.
 - An EFS file system with mount targets in the cluster VPC.
 - An ACM certificate for `poddy.example.com` in the same region as the ALB.
 - Route53 (or another DNS provider) for `poddy.example.com` and
@@ -53,7 +55,31 @@ The public subnets need the `kubernetes.io/role/elb=1` tag and the cluster's
 `kubernetes.io/cluster/<name>=shared` tag. Private subnets need
 `kubernetes.io/role/internal-elb=1` if you use an internal ALB.
 
-## 2. Install the EFS CSI driver
+## 2. Install the EBS CSI driver and create a StorageClass
+
+Create an IRSA service account with the `AmazonEBSCSIDriverPolicy` managed
+policy, then install the driver:
+
+```bash
+helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+  -n kube-system \
+  --set controller.serviceAccount.create=false \
+  --set controller.serviceAccount.name=ebs-csi-controller-sa
+```
+
+EKS does not always create a default StorageClass. Apply the example `gp3`
+class and keep `workspace.storageClass: poddy-gp3` in the values file:
+
+```bash
+kubectl apply -f examples/eks/ebs-storageclass.yaml
+kubectl get storageclass poddy-gp3
+```
+
+Use a different class name in `workspace.storageClass` if your cluster already
+has an EBS StorageClass.
+
+## 3. Install the EFS CSI driver
 
 Create an IRSA service account with the `AmazonEFSCSIDriverPolicy` managed
 policy, then install the driver:
@@ -70,7 +96,7 @@ The EFS security group must allow NFS (TCP 2049) from the worker node security
 group. The EFS file system must have a mount target in every subnet used by the
 nodes, or use a regional file system with mount targets in each AZ.
 
-## 3. Create the EFS StorageClass and shared PVC
+## 4. Create the EFS StorageClass and shared PVC
 
 Replace `fs-REPLACE_ME` in
 [`examples/eks/efs-storageclass.yaml`](https://github.com/SlimaineB/poddy/blob/main/examples/eks/efs-storageclass.yaml)
@@ -92,7 +118,7 @@ instead.
 EFS is elastic. The `5Gi` request on the PVC is a nominal Kubernetes value, not
 a hard limit.
 
-## 4. Prepare namespaces and secrets
+## 5. Prepare namespaces and secrets
 
 ```bash
 kubectl create namespace poddy-system
@@ -124,13 +150,17 @@ kubectl -n poddy-system create secret generic poddy-oidc \
   --from-literal=oidc-session-key="$(openssl rand -hex 32)"
 ```
 
-## 5. Install poddy
+## 6. Install poddy
 
 Copy `examples/eks/values.yaml` and replace:
 
 - the ACM certificate ARN;
-- the Okta issuer and allowed groups;
+- the Okta issuer, allowed groups, and optional `oidc.discoveryUrl` /
+  `oidc.authorizationUrl` if your provider uses internal endpoints;
 - the public hostnames;
+- `workspace.storageClass` if you use a different EBS class than `poddy-gp3`;
+- `workspace.imageRegistry` and `workspace.imagePullSecrets` if you mirror
+  workspace images through a private registry;
 - the image tag, if you pin a release.
 
 Then install:
@@ -160,7 +190,7 @@ add the `code-server` sidecar when `browserVSCode` is `"true"`, so workspaces
 also show **VS Code Web**; set the template parameter `browserVSCode` to
 `false` to omit it.
 
-## 6. Point DNS at the load balancers
+## 7. Point DNS at the load balancers
 
 Get the ALB hostname and create a Route53 alias for `poddy.example.com`:
 
@@ -184,7 +214,7 @@ The ALB can take a few minutes to become active. The NLB is created by the AWS
 Load Balancer Controller because the Service uses
 `service.beta.kubernetes.io/aws-load-balancer-type: external`.
 
-## 7. Create a workspace with EFS
+## 8. Create a workspace with EFS
 
 1. Open `https://poddy.example.com` and sign in through Okta.
 2. Create a workspace and choose the **EFS shared** template.
@@ -215,6 +245,13 @@ built-in PVC creation is `ReadWriteOnce`. Two options:
 For most teams, EBS for `/home/dev` plus EFS for `/shared` is simpler and
 faster.
 
+## PostgreSQL on EFS
+
+If you run PostgreSQL on EFS, set `PGDATA` to a subdirectory such as
+`/var/lib/postgresql/data/pgdata`. EFS adds `lost+found` at the volume root, and
+PostgreSQL refuses to initialize a non-empty data directory. See
+[PostgreSQL on EFS](postgres-schema.md#postgresql-on-efs).
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -223,6 +260,7 @@ faster.
 | Ingress returns 503 | The target group has no healthy targets. Check `alb.ingress.kubernetes.io/healthcheck-path: /healthz` and the portal Service endpoints. |
 | NLB is not created | Controller logs, `aws-load-balancer-type: external`, subnet tags, and the SSH Service annotations. |
 | SSH connects but the host key changes | Set `ssh.existingHostKeySecret`; all bastion replicas must share the same host key. |
+| Workspace PVC stays `Pending` | `workspace.storageClass` is empty and the cluster has no default, or the EBS CSI driver is missing. |
 | `poddy-shared-efs` stays `Pending` | The EFS CSI controller, StorageClass name, file system ID, and EFS mount targets. |
 | Workspace pod stuck mounting EFS | EFS security group allows TCP 2049 from the node security group; mount targets exist in the node AZs. |
 | `Permission denied` on `/shared` | The StorageClass `uid`/`gid` must match the workspace user (1000), or use the older `gidRangeStart`/`gidRangeEnd` parameters. |

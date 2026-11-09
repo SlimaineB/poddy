@@ -45,4 +45,14 @@ else
 fi
 chown -R dev:dev /home/dev/.ssh
 chmod 700 /home/dev/.ssh
+
+if [ -x /usr/local/bin/poddy-agent ] && [ -n "${PODDY_AGENT_URL:-}" ] && [ -n "${PODDY_AGENT_TOKEN:-}" ]; then
+  (
+    while :; do
+      /usr/local/bin/poddy-agent -url "$PODDY_AGENT_URL" -token "$PODDY_AGENT_TOKEN" -workspace "${PODDY_WORKSPACE_NAME:-}" || true
+      sleep 2
+    done
+  ) &
+fi
+
 exec /usr/sbin/sshd -D -e
