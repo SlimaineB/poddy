@@ -26,6 +26,9 @@ bastion:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # When empty, replicaCount > 1 spreads bastions across nodes with
+  # ScheduleAnyway. Set this to enforce zone/host policies in production.
+  topologySpreadConstraints: []
   probes:
     readiness:
       initialDelaySeconds: 2
@@ -113,6 +116,9 @@ rbac:
   # the initial install to avoid helm upgrade overwriting assignments.
   createConfigMap: true
   admins: []
+  # Auditors can read the audit trail but cannot change workspaces, templates,
+  # teams, or RBAC.
+  auditors: []
   # teams:
   #   backend:
   #     members:
@@ -375,9 +381,13 @@ probes:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+# When empty, replicaCount > 1 spreads portal pods across nodes with
+# ScheduleAnyway. Set this to enforce zone/host policies in production.
 topologySpreadConstraints: []
 priorityClassName: ""
 
+# Enable for production HA. PDBs are not created automatically, and
+# minAvailable must leave room for at least one healthy replica.
 podDisruptionBudget:
   enabled: false
   minAvailable: 1

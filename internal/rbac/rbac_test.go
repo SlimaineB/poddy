@@ -13,6 +13,8 @@ func TestParseAndRules(t *testing.T) {
 admins:
   - admin@example.com
   - group:platform
+auditors:
+  - audit@example.com
 teams:
   backend:
     members:
@@ -43,6 +45,13 @@ templates:
 	}
 	if !cfg.IsAdmin(Identity{Username: "ops", Groups: []string{"Platform"}}) {
 		t.Fatal("group admin not matched")
+	}
+	auditor := Identity{Email: "audit@example.com"}
+	if !cfg.IsAuditor(auditor) || !cfg.CanViewAudit(auditor) {
+		t.Fatal("auditor not matched")
+	}
+	if cfg.IsAuditor(Identity{Email: "alice@example.com"}) {
+		t.Fatal("regular user should not be an auditor")
 	}
 
 	owner := Identity{Username: "dev", Email: "dev@example.com"}

@@ -1,8 +1,9 @@
-# RBAC: admins, owners, and teams
+# RBAC: admins, auditors, owners, and teams
 
 poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. No database is required. An optional PostgreSQL mirror can copy RBAC metadata for disaster recovery and audit; Kubernetes remains authoritative. See [PostgreSQL schema](postgres-schema.md).
 
 - **Global admins** see and manage every workspace and template.
+- **Auditors** can read the PostgreSQL audit trail, but cannot change workspaces, templates, teams, or RBAC.
 - **Template owners** manage who can use their templates.
 - **Teams** are named groups of users that can be assigned to templates.
 - **Regular users** see their own workspaces and the templates assigned to them.
@@ -15,6 +16,9 @@ The portal reads the `poddy-rbac` ConfigMap in the workspace namespace (same nam
 admins:
   - admin@example.com
   - group:platform
+
+auditors:
+  - security@example.com
 
 teams:
   backend:
@@ -79,6 +83,7 @@ Access changes do **not** delete existing workspaces. They only affect who can c
 | Edit `owners` | yes | no (field read-only) |
 | Manage teams | yes | no |
 | List team names | yes | yes (for assignment) |
+| Read the audit trail | yes | no |
 
 An owner who clears `users` and `teams` keeps the template restricted to its owners, because the `owners` list is preserved. Only an admin can remove all owners and access lists, which deletes the entry and makes the template public again.
 
@@ -106,17 +111,19 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 ## UI
 
 - **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to; owners only see the directory.
+- **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The page and API are unavailable when `database.url` / `PODDY_DATABASE_URL` is not configured.
 - **Teams** (admins): dedicated page to create, edit members, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
 - **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
 - **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
 - Workspace cards show the owner badge to global admins.
-- The topbar shows the current role (`admin`, `owner`, or nothing for a regular user).
+- The topbar shows the current role (`admin`, `auditor`, `owner`, or nothing for a regular user).
 
 ## API
 
 | Method & path | Who | Purpose |
 |---------------|-----|---------|
-| `GET /api/me` | authenticated | username, email, groups, method, `isAdmin`, `ownedTemplates` |
+| `GET /api/me` | authenticated | username, email, groups, method, `isAdmin`, `isAuditor`, `canViewAudit`, `ownedTemplates` |
+| `GET /api/audit` | admin or auditor | read audit events; supports `q`, `action`, `outcome`, `actor`, `workspace`, `since`, `until`, `page`, `per_page` |
 | `GET /api/templates` | authenticated | templates the user can use, with `canManage` / `owned` |
 | `GET /api/templates/{name}/access` | admin or owner | current owners/users/teams |
 | `PUT /api/templates/{name}/access` | admin or owner | body `{"owners":[],"users":[],"teams":[]}` |
@@ -150,6 +157,8 @@ rbac:
   createConfigMap: true    # seed the ConfigMap on install
   admins:
     - admin@example.com
+  auditors:
+    - security@example.com
   teams:
     backend:
       members:
@@ -178,6 +187,6 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 ## Limits
 
 - One workspace namespace per portal; one RBAC document per portal.
-- No per-template quotas or workspace sharing between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, template-access, external-auth, terminal/VS Code, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
+- No per-template quotas or workspace sharing between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, template-access, external-auth, terminal/VS Code, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
 - No database is required: back up the ConfigMap if you rely on UI-managed access, or enable the optional PostgreSQL metadata mirror.
 - RBAC writes are serialized within a portal replica and retried on conflicts. With multiple replicas, avoid simultaneous edits.

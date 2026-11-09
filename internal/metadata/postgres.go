@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -121,6 +122,109 @@ func (p *Postgres) RecordAudit(ctx context.Context, event Event) error {
 		return fmt.Errorf("record audit event: %w", err)
 	}
 	return tx.Commit(ctx)
+}
+
+func (p *Postgres) AuditEnabled() bool { return true }
+
+func (p *Postgres) ListAudit(ctx context.Context, namespace string, filter AuditFilter) (AuditPage, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	perPage := filter.PerPage
+	if perPage <= 0 {
+		perPage = 25
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	var since, until any
+	if !filter.Since.IsZero() {
+		since = filter.Since
+	}
+	if !filter.Until.IsZero() {
+		until = filter.Until
+	}
+
+	where := `
+		WHERE namespace = $1
+		  AND ($2 = '' OR action = $2)
+		  AND ($3 = '' OR outcome = $3)
+		  AND ($4 = '' OR actor = $4)
+		  AND ($5 = '' OR workspace_name = $5)
+		  AND ($6::timestamptz IS NULL OR occurred_at >= $6)
+		  AND ($7::timestamptz IS NULL OR occurred_at < $7)
+		  AND ($8 = '' OR action ILIKE '%' || $8 || '%'
+		       OR actor ILIKE '%' || $8 || '%'
+		       OR target_name ILIKE '%' || $8 || '%'
+		       OR workspace_name ILIKE '%' || $8 || '%'
+		       OR details::text ILIKE '%' || $8 || '%')`
+	args := []any{
+		namespace,
+		strings.TrimSpace(filter.Action),
+		strings.TrimSpace(filter.Outcome),
+		strings.TrimSpace(filter.Actor),
+		strings.TrimSpace(filter.Workspace),
+		since,
+		until,
+		strings.TrimSpace(filter.Query),
+	}
+
+	var total int
+	if err := p.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.audit_events"+where, args...).Scan(&total); err != nil {
+		return AuditPage{}, fmt.Errorf("count audit events: %w", err)
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, occurred_at, actor, actor_type, action, outcome,
+		       target_type, target_name, COALESCE(target_namespace, ''),
+		       workspace_name, COALESCE(host(source_ip), ''),
+		       user_agent, request_id, duration_ms, error, details
+		FROM poddy.audit_events`+where+`
+		ORDER BY occurred_at DESC, id DESC
+		LIMIT $9 OFFSET $10`,
+		append(args, perPage, (page-1)*perPage)...,
+	)
+	if err != nil {
+		return AuditPage{}, fmt.Errorf("list audit events: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]AuditRecord, 0, perPage)
+	for rows.Next() {
+		var item AuditRecord
+		var details []byte
+		var duration sql.NullInt64
+		if err := rows.Scan(
+			&item.ID, &item.OccurredAt, &item.Actor, &item.ActorType,
+			&item.Action, &item.Outcome, &item.TargetType, &item.TargetName,
+			&item.TargetNamespace, &item.Workspace, &item.SourceIP,
+			&item.UserAgent, &item.RequestID, &duration, &item.Error,
+			&details,
+		); err != nil {
+			return AuditPage{}, fmt.Errorf("scan audit event: %w", err)
+		}
+		if duration.Valid {
+			value := int(duration.Int64)
+			item.DurationMS = &value
+		}
+		if len(details) > 0 {
+			if err := json.Unmarshal(details, &item.Details); err != nil {
+				return AuditPage{}, fmt.Errorf("decode audit details: %w", err)
+			}
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return AuditPage{}, fmt.Errorf("iterate audit events: %w", err)
+	}
+
+	pages := 0
+	if total > 0 {
+		pages = (total + perPage - 1) / perPage
+	}
+	return AuditPage{Items: items, Total: total, Page: page, PerPage: perPage, Pages: pages}, nil
 }
 
 func (p *Postgres) SyncRBAC(ctx context.Context, namespace string, cfg rbac.Config) error {

@@ -50,3 +50,12 @@ WARNING: only a shared token is configured. All users share the same identity
 WARNING: auth.tokenAdmin=true grants every holder of the shared token full
 administrator access to all workspaces.
 {{- end }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.podDisruptionBudget.enabled) }}
+WARNING: replicaCount is above one but podDisruptionBudget.enabled=false.
+Enable the portal PDB to protect availability during node drains.
+{{- end }}
+{{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.bastion.podDisruptionBudget.enabled) }}
+WARNING: bastion.replicaCount is above one but
+bastion.podDisruptionBudget.enabled=false. Enable it to protect SSH during
+node drains.
+{{- end }}

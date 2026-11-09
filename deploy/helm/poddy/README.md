@@ -155,6 +155,7 @@ name (without the leading `v`) is used.
 | `rbac.configMapName` | `""` (`<fullname>-rbac`) | RBAC ConfigMap name. |
 | `rbac.createConfigMap` | `true` | Seed the RBAC ConfigMap on install. |
 | `rbac.admins` | `[]` | Global admins (emails, `user:`, `group:`). |
+| `rbac.auditors` | `[]` | Read-only audit viewers (emails, `user:`, `group:`). |
 | `rbac.teams` | `{}` | Teams and members. |
 | `rbac.templates` | `{}` | Template owners/users/teams. |
 | `rbac.extraRules` | `[]` | Extra PolicyRules to append. |
@@ -163,6 +164,8 @@ name (without the leading `v`) is used.
 | `securityContext` | hardened | Container security context. |
 | `resources` | 50m/64Mi req, 500m/256Mi lim | Portal resource limits. |
 | `podDisruptionBudget.enabled` | `false` | Enable PDB. |
+| `topologySpreadConstraints` | `[]` | Portal spread constraints; defaults to host spread when `replicaCount > 1`. |
+| `bastion.topologySpreadConstraints` | `[]` | Bastion spread constraints; defaults to host spread when `bastion.replicaCount > 1`. |
 
 ## Workspace templates
 
@@ -285,8 +288,9 @@ database:
 
 Set `autoMigrate: false` when migrations are managed externally. The portal
 mirrors RBAC, OIDC users, templates, and workspaces; the bastion records SSH
-connections. See [docs/postgres-schema.md](../../../docs/postgres-schema.md)
-for the schema, audit actions, backup, and limitations.
+connections. Admins and `rbac.auditors` can read the trail from the **Audit**
+page. See [docs/postgres-schema.md](../../../docs/postgres-schema.md) for the
+schema, audit actions, backup, and limitations.
 
 ## Validation and tests
 
@@ -372,7 +376,7 @@ The portal can stop, start, and restart workspaces from the UI or API:
 - The ConfigMap is created on first use; the chart's `configmaps` Role rule covers it. Set `workspaceState.configMapName` to share or isolate it.
 
 
-### Admins, teams, and template access
+### Admins, auditors, teams, and template access
 
 ```yaml
 rbac:
@@ -380,6 +384,8 @@ rbac:
   createConfigMap: true
   admins:
     - admin@example.com
+  auditors:
+    - security@example.com
   teams:
     backend:
       members:

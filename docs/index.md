@@ -67,8 +67,8 @@ never need a kubeconfig.
 - **Real dev containers.** Persistent volumes with optional S3 backup/restore,
   including live backups and copies between volumes, custom images, and
   templates that declare CPU, memory, storage, and links.
-- **Team-ready access.** OIDC / SSO, global admins, template owners, teams, and
-  per-template access.
+- **Team-ready access.** OIDC / SSO, global admins, read-only auditors,
+  template owners, teams, and per-template access.
 - **No database required.** Kubernetes ConfigMaps and Secrets are the source of
   truth. An optional PostgreSQL mirror adds metadata durability, an audit log,
   and disaster-recovery snapshots without becoming the source of truth for

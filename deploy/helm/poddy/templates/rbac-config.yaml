@@ -12,6 +12,10 @@ data:
     {{- range .Values.rbac.admins }}
       - {{ . | quote }}
     {{- end }}
+    auditors:
+    {{- range .Values.rbac.auditors }}
+      - {{ . | quote }}
+    {{- end }}
     teams:
     {{- range $name, $team := .Values.rbac.teams }}
       {{ $name }}:

@@ -55,6 +55,7 @@ type Access struct {
 // Config is the RBAC document stored in the ConfigMap.
 type Config struct {
 	Admins    []string          `json:"admins,omitempty"`
+	Auditors  []string          `json:"auditors,omitempty"`
 	Teams     map[string]Team   `json:"teams,omitempty"`
 	Templates map[string]Access `json:"templates,omitempty"`
 }
@@ -186,6 +187,16 @@ func (c Config) Marshal() (string, error) {
 // IsAdmin reports whether the identity is a global admin.
 func (c Config) IsAdmin(id Identity) bool {
 	return matchesAny(c.Admins, id)
+}
+
+// IsAuditor reports whether the identity can read the audit trail.
+func (c Config) IsAuditor(id Identity) bool {
+	return matchesAny(c.Auditors, id)
+}
+
+// CanViewAudit reports whether the identity can read the audit trail.
+func (c Config) CanViewAudit(id Identity) bool {
+	return c.IsAdmin(id) || c.IsAuditor(id)
 }
 
 // Access returns the access entry for a template.

@@ -48,6 +48,7 @@
         <button id="manage-users" class="button ghost small" type="button" hidden>Users</button>
         <button id="manage-teams" class="button ghost small" type="button" hidden>Teams</button>
         <button id="manage-templates" class="button ghost small" type="button" hidden>Templates</button>
+        <button id="manage-audit" class="button ghost small" type="button" hidden>Audit</button>
         <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
           <svg class="icon"><use href="#icon-refresh"></use></svg>
         </button>
@@ -414,6 +415,80 @@
     <div id="teams-pagination" class="pagination" hidden></div>
   </section>
 
+  <section id="audit-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="audit-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Audit</h1>
+        <p>Authentication, workspace, template, team, and access events recorded in PostgreSQL.</p>
+      </div>
+      <div class="view-actions">
+        <span id="audit-count" class="count"></span>
+        <button id="audit-refresh" class="button ghost small" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <div class="audit-filters panel">
+      <div class="search-box audit-search">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="audit-search" type="search" placeholder="Search actor, action, target, workspace, or details" autocomplete="off">
+      </div>
+      <label class="audit-filter">
+        <span>Outcome</span>
+        <select id="audit-outcome">
+          <option value="">Any</option>
+          <option value="success">Success</option>
+          <option value="denied">Denied</option>
+          <option value="error">Error</option>
+        </select>
+      </label>
+      <label class="audit-filter">
+        <span>Action</span>
+        <input id="audit-action" placeholder="workspace.create" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="audit-filter">
+        <span>Since</span>
+        <input id="audit-since" type="date">
+      </label>
+      <label class="audit-filter">
+        <span>Until</span>
+        <input id="audit-until" type="date">
+      </label>
+      <button id="audit-apply" class="button primary small" type="button">Apply</button>
+      <button id="audit-clear" class="button ghost small" type="button">Clear</button>
+    </div>
+
+    <section id="audit-loading" class="loading" hidden>
+      <span class="spinner"></span>
+      <span>Loading audit events</span>
+    </section>
+
+    <section id="audit-empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-lock"></use></svg></span>
+      <h2>No audit events</h2>
+      <p>No events match the current filters, or PostgreSQL audit storage is disabled.</p>
+    </section>
+
+    <div id="audit-list-wrap" class="workspace-list-wrap" hidden>
+      <table class="workspace-table audit-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Outcome</th>
+            <th>Target</th>
+            <th>Workspace</th>
+            <th>Source</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="audit-list"></tbody>
+      </table>
+    </div>
+    <div id="audit-pagination" class="pagination" hidden></div>
+  </section>
+
   <section id="ssh-keys-view" class="page" hidden>
     <header class="view-header">
       <div>
@@ -751,6 +826,7 @@
   <script src="/static/connections.js"></script>
   <script src="/static/sshkeys.js"></script>
   <script src="/static/volumes.js"></script>
+  <script src="/static/audit.js"></script>
   <script src="/static/vendor/cytoscape.min.js"></script>
   <script src="/static/vendor/dagre.min.js"></script>
   <script src="/static/vendor/cytoscape-dagre.js"></script>

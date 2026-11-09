@@ -99,6 +99,13 @@ region. It reads the live pod when the workspace is running or the saved spec
 when it is stopped, removes runtime-only metadata, and redacts sensitive
 environment values. The action is audited as `workspace.manifests.view`.
 
+### Audit trail
+
+1. An admin or an identity in `rbac.auditors` opens the **Audit** page.
+2. The portal calls `GET /api/audit`, which reads `poddy.audit_events` from PostgreSQL with optional action, outcome, actor, workspace, date, and text filters.
+3. The portal returns a paginated, read-only view. Reading the trail is itself audited as `audit.view`.
+4. Without PostgreSQL the endpoint returns `501`; audit storage is optional and never used for access decisions.
+
 ### Browser terminal
 
 1. The browser opens a WebSocket to the portal.

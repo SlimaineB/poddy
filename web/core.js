@@ -81,6 +81,16 @@ const state = {
   volumeRestoreName: "",
   volumeRestoreClean: false,
   pendingVolumeDelete: null,
+  auditItems: [],
+  auditPage: 1,
+  auditPerPage: 50,
+  auditTotal: 0,
+  auditPages: 0,
+  auditQuery: "",
+  auditOutcome: "",
+  auditAction: "",
+  auditSince: "",
+  auditUntil: "",
 };
 
 const els = {
@@ -161,8 +171,25 @@ const els = {
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
   manageTemplates: document.getElementById("manage-templates"),
+  manageAudit: document.getElementById("manage-audit"),
   userRole: document.getElementById("user-role"),
   workspacesView: document.getElementById("workspaces-view"),
+  auditView: document.getElementById("audit-view"),
+  auditBack: document.getElementById("audit-back"),
+  auditRefresh: document.getElementById("audit-refresh"),
+  auditSearch: document.getElementById("audit-search"),
+  auditOutcome: document.getElementById("audit-outcome"),
+  auditAction: document.getElementById("audit-action"),
+  auditSince: document.getElementById("audit-since"),
+  auditUntil: document.getElementById("audit-until"),
+  auditApply: document.getElementById("audit-apply"),
+  auditClear: document.getElementById("audit-clear"),
+  auditCount: document.getElementById("audit-count"),
+  auditLoading: document.getElementById("audit-loading"),
+  auditEmpty: document.getElementById("audit-empty"),
+  auditListWrap: document.getElementById("audit-list-wrap"),
+  auditList: document.getElementById("audit-list"),
+  auditPagination: document.getElementById("audit-pagination"),
   volumesView: document.getElementById("volumes-view"),
   volumesBack: document.getElementById("volumes-back"),
   volumesRefresh: document.getElementById("volumes-refresh"),
@@ -995,6 +1022,7 @@ async function loadMe() {
     els.manageUsers.hidden = true;
     els.manageTeams.hidden = true;
     els.manageTemplates.hidden = true;
+    els.manageAudit.hidden = true;
     if (me.isAdmin) {
       els.userRole.hidden = false;
       els.userRole.textContent = "admin";
@@ -1007,7 +1035,11 @@ async function loadMe() {
       els.userRole.classList.add("owner");
       els.manageUsers.hidden = false;
       els.manageTemplates.hidden = false;
+    } else if (me.canViewAudit) {
+      els.userRole.hidden = false;
+      els.userRole.textContent = "auditor";
     }
+    els.manageAudit.hidden = !me.canViewAudit;
   } catch {
     // The server redirects unauthenticated page loads to the login page.
   }
@@ -1023,14 +1055,16 @@ function showView(name) {
   els.teamsView.hidden = name !== "teams";
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
+  els.auditView.hidden = name !== "audit";
   const active = name === "workspaces" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "volumes" ? els.manageVolumes
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams
     : (name === "templates" || name === "template") ? els.manageTemplates
+    : name === "audit" ? els.manageAudit
     : null;
-  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates]) {
+  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageAudit]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

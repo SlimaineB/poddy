@@ -247,6 +247,9 @@
         "affinity": {
           "type": "object"
         },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
         "probes": {
           "type": "object"
         },
@@ -360,6 +363,12 @@
           "type": "boolean"
         },
         "admins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auditors": {
           "type": "array",
           "items": {
             "type": "string"

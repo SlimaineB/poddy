@@ -86,6 +86,7 @@ metadata:
 data:
   rbac.yaml: |
     admins: []
+    auditors: []
     teams: {}
     templates: {}
 ---

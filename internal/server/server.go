@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
 	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)
 	mux.HandleFunc("GET /api/config", s.config)
+	mux.HandleFunc("GET /api/audit", s.auditLog)
 	mux.HandleFunc("GET /api/regions", s.regionSummaries)
 	mux.HandleFunc("GET /api/templates", s.templates)
 	mux.HandleFunc("GET /api/templates/{name}/access", s.templateAccess)

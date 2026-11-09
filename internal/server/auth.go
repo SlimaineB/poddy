@@ -211,6 +211,8 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"groups":         id.User.Groups,
 		"method":         id.Method,
 		"isAdmin":        s.isAdmin(id, cfg),
+		"isAuditor":      s.isAuditor(id, cfg),
+		"canViewAudit":   s.canViewAudit(id, cfg),
 		"ownedTemplates": cfg.OwnedTemplates(rbacIdentity(id.User)),
 	})
 }
