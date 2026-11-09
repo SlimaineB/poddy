@@ -16,7 +16,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **VS Code launch**: Click **VS Code** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy VS Code extension (installed once) enrolls the machine key, writes the SSH config, and opens `vscode://` without manual setup. In local editor mode the portal launches Windows VS Code directly. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
-- **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion; the hub routes workspace operations, terminal, VS Code, logs, external-auth callbacks, and SSH-key sync to the correct region using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Multi-region](deploy.md#multi-region).
+- **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion; the hub routes workspace operations, terminal, VS Code, logs, external-auth callbacks, and SSH-key sync to the correct region using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Regions](docs/regions.md).
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, security context, central-hub regions, and region-manager mode.
 - **Prometheus metrics**: A dedicated metrics listener exposes HTTP, workspace lifecycle, authentication, template reload, and workspace phase metrics, plus Go/process metrics. The Helm chart creates a ClusterIP metrics Service and can render a ServiceMonitor.
 - **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace, quota, or RBAC decisions; only the admin/auditor audit page reads it.
@@ -220,6 +220,7 @@ See [docs/templates.md](docs/templates.md) for:
     ├── index.md
     ├── getting-started.md
     ├── deploy.md
+    ├── regions.md
     ├── k3s-test.md
     ├── templates.md
     ├── external-auth.md
