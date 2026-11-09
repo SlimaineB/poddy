@@ -377,6 +377,9 @@
         "teams": {
           "type": "object"
         },
+        "userQuotas": {
+          "type": "object"
+        },
         "templates": {
           "type": "object"
         },

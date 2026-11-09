@@ -8,7 +8,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs and admin Pod/PVC manifests; browser terminal (`xterm.js`); a searchable, paginated topology view grouping users, their workspaces, and attached PVC/PV storage; a world map view plotting each region with workspace/user counts and pan/zoom.
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
-- **RBAC**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page; access data is stored in a ConfigMap.
+- **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyJump) and port-forwards to workspace pods. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
@@ -18,7 +18,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion; the hub routes workspace operations, terminal, VS Code, logs, external-auth callbacks, and SSH-key sync to the correct region using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Multi-region](deploy.md#multi-region).
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, security context, central-hub regions, and region-manager mode.
 - **Prometheus metrics**: A dedicated metrics listener exposes HTTP, workspace lifecycle, authentication, template reload, and workspace phase metrics, plus Go/process metrics. The Helm chart creates a ClusterIP metrics Service and can render a ServiceMonitor.
-- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace or RBAC decisions; only the admin/auditor audit page reads it.
+- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace, quota, or RBAC decisions; only the admin/auditor audit page reads it.
 
 ## Architecture
 
@@ -211,7 +211,8 @@ See [docs/templates.md](docs/templates.md) for:
 │       └── poddy-templates/    # Independently managed template ConfigMaps
 ├── migrations/
 │   ├── embed.go                 # Embeds migrations in the portal/bastion image
-│   └── 0001_init.sql            # Optional PostgreSQL metadata schema
+│   ├── 0001_init.sql            # Optional PostgreSQL metadata schema
+│   └── 0002_quotas.sql          # Team and user quota mirror
 ├── mkdocs.yml                   # MkDocs Material site config
 ├── requirements-docs.txt        # Docs build dependencies
 └── docs/

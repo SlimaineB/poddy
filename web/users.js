@@ -108,6 +108,7 @@ function renderDirectoryList(container, values, memberships, kind, query) {
     const meta = document.createElement("span");
     meta.className = "directory-meta";
     const teams = memberships.get(value.toLowerCase()) || [];
+    const quotaEntry = kind === "user" && state.me.isAdmin ? userQuotaEntry(value) : null;
     if (kind === "group") {
       const badge = document.createElement("span");
       badge.className = "badge neutral";
@@ -128,8 +129,25 @@ function renderDirectoryList(container, values, memberships, kind, query) {
         : "Team memberships are visible to admins.";
       meta.append(none);
     }
+    if (quotaEntry) {
+      const summary = quotaSummary(quotaEntry.quota);
+      if (summary) {
+        const quota = document.createElement("span");
+        quota.className = "directory-quota";
+        quota.textContent = `Quota: ${summary}`;
+        meta.append(quota);
+      }
+    }
     main.append(name, meta);
     item.append(avatar, main);
+    if (kind === "user" && state.me.isAdmin) {
+      const quota = document.createElement("button");
+      quota.type = "button";
+      quota.className = "button ghost small quota-button";
+      quota.textContent = quotaEntry ? "Edit quota" : "Set quota";
+      quota.addEventListener("click", () => openUserQuota(value, quotaEntry));
+      item.append(quota);
+    }
     container.append(item);
   }
 }
@@ -137,7 +155,7 @@ async function openUsers() {
   try {
     state.userPage = 1;
     state.groupPage = 1;
-    await Promise.all([loadDirectory({ paginated: true, page: 1, groupPage: 1 }), refreshTeams()]);
+    await Promise.all([loadDirectory({ paginated: true, page: 1, groupPage: 1 }), refreshTeams(), loadUserQuotas()]);
     state.userQuery = "";
     els.usersSearch.value = "";
     renderUsers();

@@ -3,9 +3,9 @@
 !!! note "Optional mirror, Kubernetes-first"
     poddy runs without PostgreSQL. When `PODDY_DATABASE_URL` is set (Helm:
     `database.url` or `database.existingSecret`), the portal mirrors RBAC,
-    OIDC users, templates, and workspaces into PostgreSQL and writes an
-    append-only audit trail. Kubernetes remains the runtime source of truth;
-    PostgreSQL is never read for workspace or RBAC decisions.
+    OIDC users, templates, workspaces, and quota configuration into PostgreSQL
+    and writes an append-only audit trail. Kubernetes remains the runtime source
+    of truth; PostgreSQL is never read for workspace, quota, or RBAC decisions.
 
     The portal requires the database at startup when it is configured. If the
     database becomes unavailable later, sync and audit writes are logged and
@@ -27,7 +27,8 @@ A PostgreSQL metadata store gives you:
 
 - A backup target that survives cluster loss.
 - An audit trail for workspace lifecycle, terminal, VS Code, and SSH activity.
-- A place for quotas and usage accounting.
+- A durable mirror of team and user quota configuration for reporting. Quota
+  enforcement still happens in the portal from the RBAC ConfigMap.
 - A shared catalog for multiple clusters or portals.
 - A migration path toward a control plane that can recreate a cluster from
   metadata.
@@ -84,17 +85,23 @@ By default the portal and bastion apply the embedded migrations on startup.
 They use a PostgreSQL advisory lock and `poddy.schema_migrations`, so several
 replicas can start at the same time safely.
 
-To apply the migration manually instead:
+To apply the migrations manually instead, apply every file in lexical order
+(`0001_init.sql`, then `0002_quotas.sql`, and so on) and record the same version
+rows that the automatic runner would write. The runner wraps each file in a
+transaction and records its version (the filename without `.sql`) in
+`poddy.schema_migrations`. It re-runs any file without a matching row, so do
+not disable auto-migration halfway through a manual application.
 
 ```bash
-psql --single-transaction -v ON_ERROR_STOP=1 \
-  "$PODDY_DATABASE_URL" -f migrations/0001_init.sql
+for file in migrations/*.sql; do
+  psql --single-transaction -v ON_ERROR_STOP=1 "$PODDY_DATABASE_URL" -f "$file"
+  psql -v ON_ERROR_STOP=1 "$PODDY_DATABASE_URL" \
+    -c "INSERT INTO poddy.schema_migrations (version) VALUES ('$(basename "$file" .sql)') ON CONFLICT DO NOTHING"
+done
 ```
 
-The automatic runner wraps each migration in a transaction. The migration
-creates the `poddy` schema and records its version in `poddy.schema_migrations`.
-Use `PODDY_DATABASE_AUTO_MIGRATE=false` after a manual migration if you do not
-want the process to manage the schema.
+Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
+`poddy.schema_migrations` are fully up to date.
 
 ## Tables
 
@@ -103,8 +110,9 @@ want the process to manage the schema.
 | `tenants` | One workspace namespace per tenant. |
 | `users` | OIDC identities seen by the portal, including groups and first/last seen. |
 | `global_admins` | Global admin identities. |
-| `teams` | Named teams. |
+| `teams` | Named teams and their optional quota defaults. |
 | `team_members` | Team membership entries. |
+| `user_quotas` | Per-user quota overrides resolved against team defaults. |
 | `templates` | Template catalog metadata and public/restricted state. |
 | `template_versions` | Versioned template YAML, Pod template, parameters, links, and external auth requirements. |
 | `template_owners` | Template owners. |
@@ -119,7 +127,7 @@ want the process to manage the schema.
 
 | Kubernetes object | PostgreSQL tables |
 |-------------------|-------------------|
-| `poddy-rbac` ConfigMap | `tenants`, `global_admins`, `teams`, `team_members`, `templates`, `template_owners`, `template_users`, `template_teams` |
+| `poddy-rbac` ConfigMap | `tenants`, `global_admins`, `teams` (including quota columns), `team_members`, `user_quotas`, `templates`, `template_owners`, `template_users`, `template_teams` |
 | `poddy-users` ConfigMap | `users` |
 | Template ConfigMaps | `templates`, `template_versions`, access tables |
 | Workspace pods and stopped state | `workspaces` |
@@ -131,7 +139,7 @@ The mirror is refreshed at startup and after writes:
 - Startup removes workspaces that no longer exist in Kubernetes; startup and
   catalog reloads remove stale templates, so rows deleted while the portal was
   down do not linger.
-- RBAC and template access: after team or template-access changes.
+- RBAC and template access: after team, user-quota, or template-access changes.
 - Templates: after template ConfigMaps or the local template directory reload.
 - Users: when an OIDC user signs in.
 - Workspaces: after create, stop, start, restart, and delete.
@@ -171,6 +179,10 @@ owner as appropriate.
   partial unique index so only one version per template can be active.
 - **`templates.is_public` is derived.** A template with no access rows is
   public. When owners, users, or teams are assigned, set it to `false`.
+- **Quotas are configuration, not accounting.** `teams.quota_*` and
+  `user_quotas` mirror the RBAC document. The portal computes live usage from
+  Kubernetes workspaces and PVCs, so these tables are not the enforcement
+  source.
 - **Workspace template names are historical.** `workspaces.template_name` is
   kept even if the template is later deleted, so the workspace can still be
   recreated from its rendered spec.
@@ -189,7 +201,7 @@ owner as appropriate.
 - **Audit writes are best effort.** The portal does not block a workspace
   operation if the audit insert fails, but it logs the error. Use Kubernetes
   audit logs as a second source when you need stronger guarantees.
-- **Forward-only migrations.** Add new files as `migrations/0002_*.sql`; do not
+- **Forward-only migrations.** Add new files as `migrations/0003_*.sql`; do not
   edit an applied migration.
 
 ## Audit actions
@@ -203,6 +215,7 @@ owner as appropriate.
 | SSH | `ssh.connect` |
 | Templates | `template.access.update` |
 | Teams | `team.update`, `team.delete` |
+| User quotas | `user_quota.update`, `user_quota.delete` |
 | External auth | `external_auth.connect`, `external_auth.disconnect` |
 | Audit | `audit.view` |
 
@@ -237,7 +250,8 @@ For production, also enable:
 ## Current behavior and next steps
 
 1. **Mirror and audit (available now).** The portal writes Kubernetes metadata
-   snapshots and audit events to PostgreSQL. Kubernetes remains authoritative.
+   snapshots, quota configuration, and audit events to PostgreSQL. Kubernetes
+   remains authoritative.
 2. **Reconcile (roadmap).** Add a restore command that recreates ConfigMaps and
    template objects from PostgreSQL in a new cluster.
 3. **Source of truth (not planned by default).** poddy intentionally keeps

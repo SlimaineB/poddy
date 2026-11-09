@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -529,5 +530,85 @@ func TestSnapshotTerminatingStopped(t *testing.T) {
 	}
 	if snapshot.DesiredState != "stopped" || snapshot.Phase != "Terminating" || snapshot.StoppedAt.IsZero() {
 		t.Fatalf("terminating snapshot = %+v", snapshot)
+	}
+}
+
+func TestPreviewUsage(t *testing.T) {
+	m := newTestManager()
+	usage, err := m.PreviewUsage(CreateRequest{
+		Name:       "preview",
+		Template:   "base",
+		CPU:        "2",
+		Memory:     "4Gi",
+		Storage:    "10Gi",
+		Parameters: map[string]string{"browserVSCode": "false"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.CPU.Cmp(resource.MustParse("2")) != 0 {
+		t.Fatalf("cpu = %s", usage.CPU.String())
+	}
+	if usage.Memory.Cmp(resource.MustParse("4Gi")) != 0 {
+		t.Fatalf("memory = %s", usage.Memory.String())
+	}
+	if usage.Storage.Cmp(resource.MustParse("10Gi")) != 0 {
+		t.Fatalf("storage = %s", usage.Storage.String())
+	}
+}
+
+func TestCreateQuotaCheckRunsBeforeResources(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+	called := false
+
+	_, err := m.Create(ctx, CreateRequest{
+		Name: "blocked",
+		QuotaCheck: func(usage ResourceUsage) error {
+			called = true
+			if usage.Storage.Cmp(resource.MustParse("5Gi")) != 0 {
+				t.Fatalf("storage = %s", usage.Storage.String())
+			}
+			return errors.New("quota exceeded")
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "quota exceeded") {
+		t.Fatalf("create error = %v", err)
+	}
+	if !called {
+		t.Fatal("quota check was not called")
+	}
+	if _, err := m.Client.CoreV1().PersistentVolumeClaims("poddy").Get(ctx, "poddy-blocked", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("pvc should not exist: %v", err)
+	}
+	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-blocked", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("pod should not exist: %v", err)
+	}
+}
+
+func TestListIncludesWorkspaceUsage(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+	if _, err := m.Create(ctx, CreateRequest{
+		Name:       "usage",
+		Template:   "base",
+		CPU:        "2",
+		Memory:     "1Gi",
+		Storage:    "7Gi",
+		Parameters: map[string]string{"browserVSCode": "false"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := m.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("list = %+v", list)
+	}
+	ws := list[0]
+	if ws.CPU != "2" || ws.Memory != "1Gi" || ws.Storage != "7Gi" {
+		t.Fatalf("usage = cpu %q memory %q storage %q", ws.CPU, ws.Memory, ws.Storage)
 	}
 }

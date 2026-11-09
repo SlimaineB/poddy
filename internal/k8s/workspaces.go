@@ -63,6 +63,9 @@ type Workspace struct {
 	Owner         string    `json:"owner,omitempty"`
 	Persistent    bool      `json:"persistent"`
 	BrowserVSCode bool      `json:"browserVSCode,omitempty"`
+	CPU           string    `json:"cpu,omitempty"`
+	Memory        string    `json:"memory,omitempty"`
+	Storage       string    `json:"storage,omitempty"`
 	Region        string    `json:"region,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
@@ -84,6 +87,10 @@ type CreateRequest struct {
 	ExternalAuthReady bool              `json:"externalAuthReady,omitempty"`
 	ExternalAuthEnv   map[string]string `json:"externalAuthEnv,omitempty"`
 	WorkspaceToken    string            `json:"workspaceToken,omitempty"`
+
+	// QuotaCheck is called with the rendered resource requests before any
+	// Kubernetes object is created.
+	QuotaCheck func(ResourceUsage) error `json:"-"`
 }
 
 // ExternalAuthFunc returns the environment variables injected into a workspace.
@@ -131,10 +138,31 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 		return nil, err
 	}
 
+	storage := map[string]string{}
+	claims, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelName + "=" + AppName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for i := range claims.Items {
+		claim := &claims.Items[i]
+		name := claim.Labels[labelWorkspace]
+		if name == "" {
+			name = strings.TrimPrefix(claim.Name, "poddy-")
+		}
+		if quantity, ok := claim.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+			storage[name] = quantity.String()
+		}
+	}
+
 	out := make([]Workspace, 0, len(pods.Items))
 	seen := make(map[string]bool, len(pods.Items))
 	for i := range pods.Items {
 		ws := toWorkspace(&pods.Items[i])
+		if ws.Storage == "" {
+			ws.Storage = storage[ws.Name]
+		}
 		out = append(out, ws)
 		seen[ws.Name] = true
 	}
@@ -150,7 +178,11 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 		if state.Name == "" {
 			state.Name = name
 		}
-		out = append(out, workspaceFromState(state, "Stopped"))
+		ws := workspaceFromState(state, "Stopped")
+		if ws.Storage == "" {
+			ws.Storage = storage[name]
+		}
+		out = append(out, ws)
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -238,6 +270,86 @@ func (m *Manager) GetWorkspace(ctx context.Context, name string) (Workspace, err
 	return toWorkspace(pod), nil
 }
 
+type resolvedCreate struct {
+	templateName string
+	template     *templates.Template
+	params       map[string]string
+	storage      string
+	pod          *corev1.Pod
+}
+
+func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
+	if m.Templates == nil {
+		return resolvedCreate{}, fmt.Errorf("template catalog is not configured")
+	}
+
+	templateName := req.Template
+	if templateName == "" {
+		templateName = m.DefaultTemplate
+	}
+	if templateName == "" {
+		templateName = "base"
+	}
+	tmpl, err := m.Templates.Get(templateName)
+	if err != nil {
+		return resolvedCreate{}, err
+	}
+
+	params, err := tmpl.Resolve(req.Parameters)
+	if err != nil {
+		return resolvedCreate{}, err
+	}
+	if req.CPU != "" {
+		params["cpu"] = req.CPU
+	}
+	if req.Memory != "" {
+		params["memory"] = req.Memory
+	}
+	if req.Storage != "" {
+		params["storage"] = req.Storage
+	}
+	storage := params["storage"]
+
+	image := req.Image
+	if image == "" {
+		image = tmpl.Image
+	}
+	data := templates.Data{
+		Name:           req.Name,
+		Namespace:      m.Namespace,
+		PodName:        PodName(req.Name),
+		PVCName:        PodName(req.Name),
+		Image:          image,
+		Parameters:     params,
+		Storage:        storage,
+		AuthorizedKeys: strings.Join(m.authorizedKeysFor(req.Owner), "\n"),
+	}
+	pod, err := tmpl.Render(data)
+	if err != nil {
+		return resolvedCreate{}, err
+	}
+	if !hasContainer(pod, ContainerName) {
+		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
+	}
+	return resolvedCreate{
+		templateName: templateName,
+		template:     tmpl,
+		params:       params,
+		storage:      storage,
+		pod:          pod,
+	}, nil
+}
+
+// PreviewUsage renders a create request without touching Kubernetes and
+// returns its resource requests.
+func (m *Manager) PreviewUsage(req CreateRequest) (ResourceUsage, error) {
+	resolved, err := m.resolveCreate(req)
+	if err != nil {
+		return ResourceUsage{}, err
+	}
+	return resourceUsage(resolved.pod.Spec, resolved.storage)
+}
+
 func (m *Manager) Create(ctx context.Context, req CreateRequest) (Workspace, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	if err := validateName(req.Name); err != nil {
@@ -261,37 +373,25 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 	} else if !apierrors.IsNotFound(err) {
 		return Workspace{}, err
 	}
-	if m.Templates == nil {
-		return Workspace{}, fmt.Errorf("template catalog is not configured")
-	}
 
-	templateName := req.Template
-	if templateName == "" {
-		templateName = m.DefaultTemplate
-	}
-	if templateName == "" {
-		templateName = "base"
-	}
-	tmpl, err := m.Templates.Get(templateName)
+	resolved, err := m.resolveCreate(req)
 	if err != nil {
 		return Workspace{}, err
 	}
-
-	params, err := tmpl.Resolve(req.Parameters)
+	usage, err := resourceUsage(resolved.pod.Spec, resolved.storage)
 	if err != nil {
 		return Workspace{}, err
 	}
-	if req.CPU != "" {
-		params["cpu"] = req.CPU
-	}
-	if req.Memory != "" {
-		params["memory"] = req.Memory
-	}
-	if req.Storage != "" {
-		params["storage"] = req.Storage
+	if req.QuotaCheck != nil {
+		if err := req.QuotaCheck(usage); err != nil {
+			return Workspace{}, err
+		}
 	}
 
-	storage := params["storage"]
+	templateName := resolved.templateName
+	tmpl := resolved.template
+	params := resolved.params
+	storage := resolved.storage
 	createdPVC := false
 	if storage != "" {
 		createdPVC, err = m.createPVC(ctx, req.Name, templateName, storage, params["storageClass"])
@@ -300,34 +400,7 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 	}
 
-	image := req.Image
-	if image == "" {
-		image = tmpl.Image
-	}
-	data := templates.Data{
-		Name:           req.Name,
-		Namespace:      m.Namespace,
-		PodName:        PodName(req.Name),
-		PVCName:        PodName(req.Name),
-		Image:          image,
-		Parameters:     params,
-		Storage:        storage,
-		AuthorizedKeys: strings.Join(m.authorizedKeysFor(req.Owner), "\n"),
-	}
-	pod, err := tmpl.Render(data)
-	if err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
-		return Workspace{}, err
-	}
-	if !hasContainer(pod, ContainerName) {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
-		return Workspace{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
-	}
-
+	pod := resolved.pod
 	pod.Name = PodName(req.Name)
 	pod.Namespace = m.Namespace
 	if pod.Labels == nil {

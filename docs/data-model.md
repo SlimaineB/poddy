@@ -21,7 +21,7 @@ the source of truth and PostgreSQL is never read for access decisions. See
 | OIDC users | ConfigMap | `poddy-users` | `users.json` |
 | Self-service SSH keys | ConfigMap | `poddy-user-ssh-keys` | `keys.json` |
 | External auth tokens | Secret | `poddy-external-auth` | encrypted token document |
-| Optional metadata mirror | PostgreSQL | `poddy` schema | `migrations/0001_init.sql` |
+| Optional metadata mirror | PostgreSQL | `poddy` schema | `migrations/*.sql` |
 
 The portal's Kubernetes Role is scoped to this namespace. It needs access to
 pods, exec, port-forward, PVCs, ConfigMaps, and Secrets.
@@ -118,6 +118,15 @@ teams:
     members:
       - alice@example.com
       - bob@example.com
+    quota:
+      maxWorkspaces: 5
+      cpu: "4"
+      memory: "8Gi"
+      storage: "50Gi"
+userQuotas:
+  alice@example.com:
+    maxWorkspaces: 2
+    cpu: "2"
 templates:
   go:
     owners:
@@ -130,10 +139,10 @@ templates:
 
 | Role | Scope |
 |------|-------|
-| Global admin | Every workspace and template; manages teams |
+| Global admin | Every workspace and template; manages teams and quotas |
 | Auditor | Read-only access to the PostgreSQL audit trail |
 | Template owner | Users and teams allowed to use their templates |
-| Team member | Inherits access granted to the team |
+| Team member | Inherits access granted to the team and its quota defaults |
 | Regular user | Own workspaces and templates assigned directly or by team |
 
 A template with no access entry is public. The shared token and trusted local
@@ -176,10 +185,10 @@ refreshed tokens through environment variables declared by the template.
 ## Optional PostgreSQL metadata
 
 When `PODDY_DATABASE_URL` is set, the portal mirrors the same metadata into
-PostgreSQL: tenants, users, teams, RBAC, templates, template versions,
-workspaces, and audit events. The bastion also writes SSH audit events. The
-portal syncs at startup and after writes; it does not read PostgreSQL for RBAC
-or workspace decisions.
+PostgreSQL: tenants, users, teams, team/user quotas, RBAC, templates, template
+versions, workspaces, and audit events. The bastion also writes SSH audit
+events. The portal syncs at startup and after writes; it does not read
+PostgreSQL for RBAC, quota, or workspace decisions.
 
 The `external_auth_tokens` table is reserved for a future encrypted mirror;
 tokens currently remain in the Kubernetes Secret. PostgreSQL never stores PVC
@@ -192,7 +201,8 @@ backup strategy, and current limitations.
 
 - No database is required at runtime.
 - No workspace files or PVC contents in PostgreSQL.
-- No PostgreSQL reads for access decisions; Kubernetes remains authoritative.
+- No PostgreSQL reads for access or quota decisions; Kubernetes remains
+  authoritative.
 - No plaintext OAuth tokens in PostgreSQL.
 - No long-lived Kubernetes credentials in the browser.
 - No cluster-wide access for the portal.

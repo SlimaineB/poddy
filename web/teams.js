@@ -45,6 +45,13 @@ function renderTeams() {
     const members = team.memberCount || 0;
     count.textContent = `${members} member${members === 1 ? "" : "s"}`;
     info.append(name, count);
+    const quota = quotaSummary(team.quota);
+    if (quota) {
+      const quotaLine = document.createElement("p");
+      quotaLine.className = "quota-summary";
+      quotaLine.textContent = `Quota: ${quota}`;
+      info.append(quotaLine);
+    }
     const actions = document.createElement("div");
     actions.className = "team-actions";
     const edit = document.createElement("button");
@@ -78,6 +85,8 @@ function editTeam(team) {
   els.teamName.value = team.name;
   els.teamName.readOnly = true;
   entryLists.teamMembers.setValues(team.members || []);
+  setQuotaInputs("team", team.quota || null);
+  setTeamQuotaEnabled(state.me.isAdmin);
   els.teamSave.textContent = "Save team";
   els.teamForm.scrollIntoView({ behavior: "smooth", block: "start" });
   entryLists.teamMembers.focus();
@@ -87,6 +96,8 @@ function newTeam() {
   els.teamForm.reset();
   els.teamFormTitle.textContent = "New team";
   entryLists.teamMembers.setValues([]);
+  setQuotaInputs("team", null);
+  setTeamQuotaEnabled(state.me.isAdmin);
   els.teamName.readOnly = false;
   els.teamSave.textContent = "Create team";
   els.teamName.focus();
@@ -96,15 +107,24 @@ async function saveTeam(event) {
   const name = els.teamName.value.trim();
   if (!name) return;
   const members = entryLists.teamMembers.getValues();
+  let quota;
+  try {
+    quota = readQuota("team");
+  } catch (err) {
+    toast(err.message || "Invalid quota.");
+    return;
+  }
 
   const original = els.teamSave.innerHTML;
   let saved = false;
   els.teamSave.disabled = true;
   els.teamSave.innerHTML = `<span class="spinner small"></span>Saving`;
   try {
+    const body = { members };
+    if (state.me.isAdmin) body.quota = quota;
     await api(`/api/teams/${encodeURIComponent(name)}`, {
       method: "PUT",
-      body: JSON.stringify({ members }),
+      body: JSON.stringify(body),
     });
     toast(`Team ${name} saved.`, "success");
     state.editingTeam = name;
@@ -116,6 +136,7 @@ async function saveTeam(event) {
     renderTeamsPagination();
     const current = state.teams.find((team) => team.name === name);
     entryLists.teamMembers.setValues(current?.members || members);
+    setQuotaInputs("team", current?.quota || null);
   } catch (err) {
     toast(err.message || "Failed to save team.");
   } finally {
@@ -136,6 +157,13 @@ async function deleteTeam(team) {
     toast(err.message || "Failed to delete team.");
   }
 }
+function setTeamQuotaEnabled(enabled) {
+  setQuotaDisabled("team", !enabled);
+  els.teamQuotaHint.textContent = enabled
+    ? "Applies to team members unless a user override is set. Leave a field empty for unlimited."
+    : "Only admins can change team quotas.";
+}
+
 function teamMemberships() {
   const users = new Map();
   const groups = new Map();

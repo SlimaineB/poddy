@@ -60,7 +60,7 @@ internal region-authenticated endpoint.
 | SSH bastion | Accepts user SSH connections and port-forwards to workspace pods | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
 | Workspace pods | `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
-| RBAC store | Admins, teams, and template access | ConfigMap |
+| RBAC store | Admins, teams, template access, and quotas | ConfigMap |
 | Workspace state | Rendered specs of stopped workspaces | ConfigMap |
 | User directory | OIDC identities seen by the portal | ConfigMap |
 | Self-service SSH keys | Public keys bound to signed-in identities | ConfigMap `poddy-user-ssh-keys` |
@@ -74,12 +74,16 @@ internal region-authenticated endpoint.
 1. The browser calls `POST /api/workspaces` on the portal.
 2. The portal authenticates the request, checks template access, and prefixes
    the name with the authenticated username when authentication is enabled.
-3. It renders the template's `pod.yaml` with the chosen parameters.
-4. It creates the pod and, when requested, a PVC in the workspace namespace.
-5. The owner is written to the `poddy.io/owner` annotation.
-6. If PostgreSQL is enabled, the portal mirrors the workspace snapshot and
+3. It renders the template's `pod.yaml` with the chosen parameters and computes
+   the requested CPU, memory, and storage.
+4. It resolves the user's effective quota from the RBAC ConfigMap and checks
+   projected usage across all of the user's workspaces. A violation returns
+   `409` before any Kubernetes object is created.
+5. It creates the pod and, when requested, a PVC in the workspace namespace.
+6. The owner is written to the `poddy.io/owner` annotation.
+7. If PostgreSQL is enabled, the portal mirrors the workspace snapshot and
    records a `workspace.create` audit event.
-7. The portal watches pods and reports their phase to the UI.
+8. The portal watches pods and reports their phase to the UI.
 
 ### Workspace details and startup logs
 
@@ -105,6 +109,17 @@ environment values. The action is audited as `workspace.manifests.view`.
 2. The portal calls `GET /api/audit`, which reads `poddy.audit_events` from PostgreSQL with optional action, outcome, actor, workspace, date, and text filters.
 3. The portal returns a paginated, read-only view. Reading the trail is itself audited as `audit.view`.
 4. Without PostgreSQL the endpoint returns `501`; audit storage is optional and never used for access decisions.
+
+### Quota enforcement
+
+The portal resolves the effective quota when a workspace is created. Team
+quotas are defaults; a user override wins field by field, and multiple teams
+contribute the most permissive value per field. Admins bypass quotas.
+
+In multi-region mode the central hub lists the user's workspaces from every
+region, adds the rendered resource request for the new workspace, and rejects
+the create before calling the region. Region managers do not enforce quotas
+locally, so direct region creates bypass quota checks.
 
 ### Browser terminal
 
@@ -185,12 +200,12 @@ truth:
   with AES-GCM when a key is configured.
 - **Persistent data** lives in one PVC per persistent workspace.
 
-An optional PostgreSQL mirror stores RBAC, OIDC users, templates, workspaces,
-and audit events. When `PODDY_DATABASE_URL` is set, the portal syncs the mirror
-at startup and after writes; the bastion writes `ssh.connect` audit events.
-Kubernetes remains authoritative and PostgreSQL is never read for access
-decisions. It stores control-plane metadata only; PVC contents are not
-mirrored. Use volume snapshots or the built-in
+An optional PostgreSQL mirror stores RBAC, team/user quotas, OIDC users,
+templates, workspaces, and audit events. When `PODDY_DATABASE_URL` is set, the
+portal syncs the mirror at startup and after writes; the bastion writes
+`ssh.connect` audit events. Kubernetes remains authoritative and PostgreSQL is
+never read for access or quota decisions. It stores control-plane metadata only;
+PVC contents are not mirrored. Use volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
 and [Data model](data-model.md) for the object-level details.
 

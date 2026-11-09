@@ -100,6 +100,10 @@ func auditRoute(r *http.Request) (string, string) {
 		return "team.update", "team"
 	case "DELETE /api/teams/{name}":
 		return "team.delete", "team"
+	case "PUT /api/user-quotas/{identity}":
+		return "user_quota.update", "user"
+	case "DELETE /api/user-quotas/{identity}":
+		return "user_quota.delete", "user"
 	case "POST /api/external-auth/{id}/disconnect":
 		return "external_auth.disconnect", "provider"
 	}

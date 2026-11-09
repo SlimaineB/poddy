@@ -5,8 +5,9 @@ poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. No 
 - **Global admins** see and manage every workspace and template.
 - **Auditors** can read the PostgreSQL audit trail, but cannot change workspaces, templates, teams, or RBAC.
 - **Template owners** manage who can use their templates.
-- **Teams** are named groups of users that can be assigned to templates.
+- **Teams** are named groups of users that can be assigned to templates and carry optional quota defaults.
 - **Regular users** see their own workspaces and the templates assigned to them.
+- **Quotas** cap each user's total workspaces, CPU, memory, and storage. Team quotas provide defaults; user overrides win field by field.
 
 ## Where roles live
 
@@ -89,6 +90,56 @@ An owner who clears `users` and `teams` keeps the template restricted to its own
 
 The server rejects unknown team names when saving access.
 
+## Quotas
+
+Quotas are optional per-user budgets stored in the same `rbac.yaml` document.
+The portal checks them when a workspace is created. Usage includes every
+workspace owned by the user, running or stopped, plus the workspace being
+created. CPU, memory, and storage are summed from the rendered resource requests
+and PVC size.
+
+```yaml
+teams:
+  backend:
+    members:
+      - alice@example.com
+    quota:
+      maxWorkspaces: 5
+      cpu: "4"
+      memory: "8Gi"
+      storage: "50Gi"
+
+userQuotas:
+  alice@example.com:
+    maxWorkspaces: 2
+    cpu: "2"
+```
+
+Rules:
+
+- A team quota is the default for its members.
+- A user quota overrides the team value **field by field**. Fields omitted from
+  the user quota still inherit from teams.
+- If a user belongs to several teams with quotas, the portal takes the **most
+  permissive value per field**.
+- No team quota and no user override means unlimited. An empty field also means
+  unlimited for that dimension.
+- A user override wins even when it is lower than the team value.
+- Admins bypass quotas.
+- In multi-region deployments the central hub enforces the quota across all
+  regions. Region managers do not enforce quotas locally, so create workspaces
+  through the hub.
+- `maxWorkspaces` is a non-negative integer. CPU, memory, and storage are
+  non-negative Kubernetes quantities such as `500m`, `4`, `8Gi`, or `50Gi`.
+
+`userQuotas` keys may be a plain username/email, `user:<username>`, or
+`email:<email>`, matched case-insensitively. The wildcard `*` is not allowed as
+a user-quota key. Sending an empty quota removes the override.
+
+Admins manage quotas in the UI: **Teams** has quota fields on the team form, and
+**Users** has **Set quota** / **Edit quota** actions. Both write to the RBAC
+ConfigMap; no database is required.
+
 ## Workspace ownership
 
 Each workspace gets an owner at creation:
@@ -110,9 +161,9 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 
 ## UI
 
-- **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to; owners only see the directory.
+- **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
 - **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The page and API are unavailable when `database.url` / `PODDY_DATABASE_URL` is not configured.
-- **Teams** (admins): dedicated page to create, edit members, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
+- **Teams** (admins): dedicated page to create, edit members, set quota defaults, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
 - **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
 - **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
 - Workspace cards show the owner badge to global admins.
@@ -129,8 +180,11 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `PUT /api/templates/{name}/access` | admin or owner | body `{"owners":[],"users":[],"teams":[]}` |
 | `GET /api/users` | admin or template owner | known users and groups for the Users page and autocomplete |
 | `GET /api/teams` | admin or template owner | team names; members only for admins |
-| `PUT /api/teams/{name}` | admin | body `{"members":[]}` |
+| `PUT /api/teams/{name}` | admin | body `{"members":[],"quota":{"maxWorkspaces":5,"cpu":"4","memory":"8Gi","storage":"50Gi"}}`; omit `quota` to preserve, send `{}` to clear |
 | `DELETE /api/teams/{name}` | admin | delete and detach from templates |
+| `GET /api/user-quotas` | admin | list explicit user quota overrides |
+| `PUT /api/user-quotas/{identity}` | admin | set an override; `{}` or all-empty fields remove it |
+| `DELETE /api/user-quotas/{identity}` | admin | remove an override |
 | `GET /api/volumes` | authenticated | volumes, summary, and backup availability; filtered by ownership for non-admins |
 | `DELETE /api/volumes/{name}` | admin | delete an unassigned volume |
 | `GET/POST /api/volumes/{name}/backups` | owner or admin | list or create backups for a volume |
@@ -163,6 +217,15 @@ rbac:
     backend:
       members:
         - alice@example.com
+      quota:
+        maxWorkspaces: 5
+        cpu: "4"
+        memory: "8Gi"
+        storage: "50Gi"
+  userQuotas:
+    alice@example.com:
+      maxWorkspaces: 2
+      cpu: "2"
   templates:
     go:
       owners:
@@ -187,6 +250,6 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 ## Limits
 
 - One workspace namespace per portal; one RBAC document per portal.
-- No per-template quotas or workspace sharing between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, template-access, external-auth, terminal/VS Code, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
+- Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/VS Code, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
 - No database is required: back up the ConfigMap if you rely on UI-managed access, or enable the optional PostgreSQL metadata mirror.
 - RBAC writes are serialized within a portal replica and retried on conflicts. With multiple replicas, avoid simultaneous edits.
