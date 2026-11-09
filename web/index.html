@@ -590,6 +590,28 @@
           <label>Parameters</label>
           <div id="params" class="params"></div>
         </div>
+        <fieldset class="schedule-fieldset">
+          <legend>Auto-stop schedule</legend>
+          <label class="checkbox-field">
+            <input id="schedule-enabled" name="scheduleEnabled" type="checkbox">
+            Stop this workspace outside its active hours
+          </label>
+          <div class="schedule-grid">
+            <div class="field">
+              <label for="schedule-timezone">Time zone</label>
+              <select id="schedule-timezone" name="scheduleTimezone" data-schedule-field></select>
+            </div>
+            <div class="field">
+              <label for="schedule-start">Start</label>
+              <input id="schedule-start" name="scheduleStart" type="time" value="09:00" data-schedule-field>
+            </div>
+            <div class="field">
+              <label for="schedule-stop">Stop</label>
+              <input id="schedule-stop" name="scheduleStop" type="time" value="18:00" data-schedule-field>
+            </div>
+          </div>
+          <p class="hint">Outside this window the pod is stopped. It starts again at the start time only if the schedule stopped it; a manual stop stays stopped.</p>
+        </fieldset>
       </div>
       <footer class="dialog-footer">
         <button class="button ghost" type="button" data-close>Cancel</button>
@@ -644,6 +666,37 @@
     </header>
     <div class="dialog-body">
       <dl id="detail-list" class="detail-list"></dl>
+      <section class="workspace-schedule">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Auto-stop schedule</h3>
+            <p>Keep this workspace running only during a daily time window.</p>
+          </div>
+        </header>
+        <form id="detail-schedule-form" class="schedule-form">
+          <label class="checkbox-field">
+            <input id="detail-schedule-enabled" type="checkbox">
+            Stop this workspace outside its active hours
+          </label>
+          <div class="schedule-grid">
+            <div class="field">
+              <label for="detail-schedule-timezone">Time zone</label>
+              <select id="detail-schedule-timezone" data-schedule-field></select>
+            </div>
+            <div class="field">
+              <label for="detail-schedule-start">Start</label>
+              <input id="detail-schedule-start" type="time" value="09:00" data-schedule-field>
+            </div>
+            <div class="field">
+              <label for="detail-schedule-stop">Stop</label>
+              <input id="detail-schedule-stop" type="time" value="18:00" data-schedule-field>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="detail-schedule-save" class="button primary small" type="submit">Save schedule</button>
+          </div>
+        </form>
+      </section>
       <section id="detail-manifests" class="workspace-manifests" hidden>
         <header class="workspace-logs-header">
           <div>

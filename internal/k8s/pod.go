@@ -38,23 +38,34 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 		Memory:        quantityString(memory),
 		Storage:       storageFromPod(pod),
 		CreatedAt:     pod.CreationTimestamp.Time,
+		Schedule:      scheduleFromPod(pod),
 	}
+}
+
+func scheduleFromPod(pod *corev1.Pod) *Schedule {
+	state, ok := stateFromPodAnnotation(pod)
+	if !ok {
+		return nil
+	}
+	return state.Schedule
 }
 
 func workspaceFromState(state WorkspaceState, phase string) Workspace {
 	cpu, memory := resourceRequests(state.Spec)
 	return Workspace{
-		Name:          state.Name,
-		Template:      state.Template,
-		Phase:         phase,
-		Image:         state.Image,
-		Owner:         state.Owner,
-		Persistent:    state.Persistent,
-		BrowserVSCode: hasContainerSpec(state.Spec, BrowserVSCodeContainer),
-		CPU:           quantityString(cpu),
-		Memory:        quantityString(memory),
-		Storage:       state.Storage,
-		CreatedAt:     state.CreatedAt,
+		Name:              state.Name,
+		Template:          state.Template,
+		Phase:             phase,
+		Image:             state.Image,
+		Owner:             state.Owner,
+		Persistent:        state.Persistent,
+		BrowserVSCode:     hasContainerSpec(state.Spec, BrowserVSCodeContainer),
+		CPU:               quantityString(cpu),
+		Memory:            quantityString(memory),
+		Storage:           state.Storage,
+		CreatedAt:         state.CreatedAt,
+		Schedule:          cloneSchedule(state.Schedule),
+		StoppedBySchedule: state.StoppedBySchedule,
 	}
 }
 

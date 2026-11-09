@@ -168,6 +168,9 @@ func Run(ctx context.Context, args []string) error {
 		}
 	}
 
+	go manager.RunScheduleLoop(ctx, k8s.DefaultScheduleInterval)
+	log.Printf("workspace schedules enabled (every %s)", k8s.DefaultScheduleInterval)
+
 	var metadataStore metadata.Store
 	var metadataAuditor metadata.Auditor
 	if cfg.DatabaseURL != "" {

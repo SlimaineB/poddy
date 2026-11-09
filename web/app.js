@@ -76,6 +76,9 @@ els.regionsShowAll.addEventListener("click", () => {
 
 els.templateSelect.addEventListener("change", renderParams);
 els.createForm.addEventListener("input", () => setFormError(els.createError, ""));
+els.scheduleEnabled.addEventListener("change", () => syncScheduleFields(els.createForm, els.scheduleEnabled.checked));
+els.detailScheduleEnabled.addEventListener("change", () => syncScheduleFields(els.detailScheduleForm, els.detailScheduleEnabled.checked));
+els.detailScheduleForm.addEventListener("submit", saveSchedule);
 
 els.createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -97,6 +100,16 @@ els.createForm.addEventListener("submit", async (event) => {
   };
   const region = String(data.get("region") || "").trim();
   if (region) body.region = region;
+  if (data.get("scheduleEnabled") === "on") {
+    const timezone = String(data.get("scheduleTimezone") || "").trim();
+    const start = String(data.get("scheduleStart") || "").trim();
+    const stop = String(data.get("scheduleStop") || "").trim();
+    if (!timezone || !start || !stop) {
+      setFormError(els.createError, "Choose a time zone and start/stop times.");
+      return;
+    }
+    body.schedule = { enabled: true, timezone, start, stop };
+  }
 
   const original = els.createSubmit.innerHTML;
   setFormError(els.createError, "");

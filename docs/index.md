@@ -59,7 +59,7 @@ never need a kubeconfig.
 ## What you get
 
 - **One control plane.** A browser portal to create, stop, start, restart, and
-  delete workspaces.
+  delete workspaces, with optional timezone-aware auto-stop schedules.
 - **Scale what you need.** The portal and SSH bastion run as separate
   Deployments, so HTTP/API and SSH capacity scale independently.
 - **Four ways to work.** Browser terminal, browser VS Code, SSH through a

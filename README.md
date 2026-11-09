@@ -7,6 +7,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 ## Features
 
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs and admin Pod/PVC manifests; browser terminal (`xterm.js`); a searchable, paginated topology view grouping users, their workspaces, and attached PVC/PV storage; a world map view plotting each region with workspace/user counts and pan/zoom.
+- **Auto-stop schedules**: Give a workspace a timezone and daily start/stop times. poddy stops it outside the active window and starts it again only when the schedule stopped it, so a manual stop stays stopped.
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
@@ -109,7 +110,7 @@ kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base
 Open `http://127.0.0.1:8080` and enter the token.
 
 ### 5. Create a workspace
-Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set parameters, **Create**. Wait for **Running**.
+Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set parameters, **Create**. Wait for **Running**. Optionally enable **Auto-stop schedule** and choose a timezone plus start/stop times.
 
 ### 6. Connect
 - **Terminal**: Click the terminal icon for a browser shell in the workspace user home (`/home/dev`).
@@ -119,7 +120,7 @@ Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set 
 - **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Ports**: Click **Ports** on a running workspace to open a dedicated ports window, see its listening TCP ports, and open an app in a new tab. The same list is available in workspace details. The portal authenticates the request, checks workspace ownership, port-forwards to the pod (through the central hub for remote regions), and proxies HTTP and WebSocket traffic. Apps bound to `127.0.0.1` work; apps that use root-relative asset URLs may need a base path. Use SSH `-L` for raw TCP.
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
-- **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop.
+- **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop. The optional auto-stop schedule stops the pod outside its active hours and starts it again at the next window only if the schedule stopped it.
 
 If you used an administrator-managed key instead, load it once:
 ```bash
