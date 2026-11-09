@@ -79,6 +79,25 @@ export PODDY_DATABASE_URL='postgres://postgres:test@127.0.0.1:5432/poddy?sslmode
 export PODDY_DATABASE_AUTO_MIGRATE=true
 ```
 
+## PostgreSQL on EFS
+
+If you run PostgreSQL on an EFS-backed volume, set `PGDATA` to a subdirectory.
+EFS creates a `lost+found` directory at the volume root, and PostgreSQL refuses
+to initialize a data directory that is not empty:
+
+```yaml
+env:
+  - name: PGDATA
+    value: /var/lib/postgresql/data/pgdata
+volumeMounts:
+  - name: postgres-data
+    mountPath: /var/lib/postgresql/data
+```
+
+The same applies to any shared filesystem that creates `lost+found` at the
+mount root. For production, a managed database or an EBS-backed volume is
+usually a better choice than EFS for PostgreSQL.
+
 ## Schema migrations
 
 By default the portal and bastion apply the embedded migrations on startup.

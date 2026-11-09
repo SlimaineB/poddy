@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 	"poddy/internal/templates"
 )
@@ -46,6 +47,8 @@ const (
 	envExternalAuthIDs = "PODDY_EXTERNAL_AUTH_IDS"
 	envGitAskpass      = "GIT_ASKPASS"
 	envGitPrompt       = "GIT_TERMINAL_PROMPT"
+	envAgentURL        = "PODDY_AGENT_URL"
+	envAgentToken      = "PODDY_AGENT_TOKEN"
 )
 
 var (
@@ -107,20 +110,27 @@ type ExternalAuthFunc func(ctx context.Context, owner, workspace, portalURL stri
 type WorkspaceTokenFunc func(workspace, owner string) (string, error)
 
 type Manager struct {
-	Client            kubernetes.Interface
-	Rest              *rest.Config
-	Namespace         string
-	Templates         *templates.Catalog
-	DefaultTemplate   string
-	AuthorizedKeys    []string
-	SSHKeys           sshkeys.Keyring
-	StateConfigMap    string
-	InstanceID        string
-	PortalURL         string
-	Region            string
-	HelperImage       string
-	ExternalAuth      ExternalAuthFunc
-	ExternalAuthToken WorkspaceTokenFunc
+	Client              kubernetes.Interface
+	Rest                *rest.Config
+	Namespace           string
+	Templates           *templates.Catalog
+	DefaultTemplate     string
+	DefaultStorageClass string
+	ImageRegistry       string
+	ImagePullSecrets    []string
+	AuthorizedKeys      []string
+	SSHKeys             sshkeys.Keyring
+	SSHCA               *sshca.CA
+	SSHRequireAgent     bool
+	StateConfigMap      string
+	InstanceID          string
+	PortalURL           string
+	Region              string
+	HelperImage         string
+	ExternalAuth        ExternalAuthFunc
+	ExternalAuthToken   WorkspaceTokenFunc
+	AgentURL            string
+	AgentToken          WorkspaceTokenFunc
 }
 
 func PodName(name string) string {
@@ -313,6 +323,9 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if req.Storage != "" {
 		params["storage"] = req.Storage
 	}
+	if _, ok := params["storageClass"]; ok && strings.TrimSpace(params["storageClass"]) == "" && m.DefaultStorageClass != "" {
+		params["storageClass"] = m.DefaultStorageClass
+	}
 	storage := params["storage"]
 
 	image := req.Image
@@ -333,6 +346,8 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if err != nil {
 		return resolvedCreate{}, err
 	}
+	rewritePodImages(pod, m.ImageRegistry)
+	applyImagePullSecrets(pod, m.ImagePullSecrets)
 	if !hasContainer(pod, ContainerName) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
 	}
@@ -452,6 +467,12 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 		return Workspace{}, err
 	}
+	if err := m.applyAgentEnv(pod, req.Name, req.Owner); err != nil {
+		if createdPVC {
+			_ = m.deletePVC(ctx, req.Name)
+		}
+		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
+	}
 	stateSpec := *pod.Spec.DeepCopy()
 	stripExternalAuthEnv(&stateSpec, externalAuthEnvNames(pod))
 	state := WorkspaceState{
@@ -547,10 +568,26 @@ func (m *Manager) delete(ctx context.Context, name string) error {
 // Stop deletes the workspace pod but keeps its persistent volume and a stored
 // copy of the rendered spec so it can be started again.
 func (m *Manager) authorizedKeysFor(owner string) []string {
+	var keys []string
 	if m.SSHKeys != nil {
-		return m.SSHKeys.ForOwner(owner)
+		keys = m.SSHKeys.ForOwner(owner)
+	} else {
+		keys = m.AuthorizedKeys
 	}
-	return m.AuthorizedKeys
+	if m.SSHCA == nil {
+		return keys
+	}
+	ca := m.SSHCA.AuthorizedKeyUnrestricted()
+	if m.SSHRequireAgent {
+		ca = m.SSHCA.AuthorizedKey()
+	}
+	if ca == "" {
+		return keys
+	}
+	out := make([]string, 0, len(keys)+1)
+	out = append(out, keys...)
+	out = append(out, ca)
+	return out
 }
 
 func validateName(name string) error {

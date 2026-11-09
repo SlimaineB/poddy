@@ -74,6 +74,68 @@ func TestCreateWorkspace(t *testing.T) {
 	}
 }
 
+func TestCreateAppliesDefaultStorageClass(t *testing.T) {
+	m := newTestManager()
+	m.DefaultStorageClass = "gp3"
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+
+	pvc, err := m.Client.CoreV1().PersistentVolumeClaims("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "gp3" {
+		t.Fatalf("storage class = %v", pvc.Spec.StorageClassName)
+	}
+
+	if _, err := m.Stop(ctx, "app"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := m.State(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.StorageClass != "gp3" {
+		t.Fatalf("state storage class = %q", state.StorageClass)
+	}
+}
+
+func TestCreateRewritesImageRegistry(t *testing.T) {
+	m := newTestManager()
+	m.ImageRegistry = "mirror.example.com"
+	m.ImagePullSecrets = []string{"registry-pull"}
+	ctx := context.Background()
+
+	ws, err := m.Create(ctx, CreateRequest{Name: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "mirror.example.com/slimaineb/poddy-workspace-base:latest"; ws.Image != want {
+		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
+	}
+
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	images := map[string]string{}
+	for _, container := range pod.Spec.Containers {
+		images[container.Name] = container.Image
+	}
+	if want := "mirror.example.com/slimaineb/poddy-workspace-base:latest"; images[ContainerName] != want {
+		t.Fatalf("workspace container image = %q, want %q", images[ContainerName], want)
+	}
+	if want := "mirror.example.com/gitpod/openvscode-server:latest"; images["code-server"] != want {
+		t.Fatalf("code-server image = %q, want %q", images["code-server"], want)
+	}
+	if len(pod.Spec.ImagePullSecrets) != 1 || pod.Spec.ImagePullSecrets[0].Name != "registry-pull" {
+		t.Fatalf("image pull secrets = %+v", pod.Spec.ImagePullSecrets)
+	}
+}
+
 func TestCreateWithTemplateParameters(t *testing.T) {
 	m := newTestManager()
 	ctx := context.Background()

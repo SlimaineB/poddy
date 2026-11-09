@@ -90,6 +90,8 @@ func auditRoute(r *http.Request) (string, string) {
 		return "workspace.schedule.update", "workspace"
 	case "GET /api/audit":
 		return "audit.view", "audit"
+	case "POST /api/me/ssh-certificate":
+		return "ssh.certificate.issue", "user"
 	case "GET /api/workspaces/{name}/logs":
 		return "workspace.logs.view", "workspace"
 	case "GET /api/workspaces/{name}/manifests":

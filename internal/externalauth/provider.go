@@ -37,7 +37,7 @@ func LoadProviders() ([]Provider, error) {
 	return ParseProviders(os.Environ())
 }
 
-// ParseProviders parses Coder-style indexed environment variables.
+// ParseProviders parses indexed environment variables.
 func ParseProviders(environ []string) ([]Provider, error) {
 	values := map[string]string{}
 	for _, item := range environ {

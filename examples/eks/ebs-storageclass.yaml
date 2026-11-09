@@ -1,0 +1,16 @@
+# EBS StorageClass for per-workspace home volumes on EKS.
+#
+# Requires the Amazon EBS CSI driver and an IRSA service account with the
+# AmazonEBSCSIDriverPolicy managed policy. The name matches
+# workspace.storageClass in examples/eks/values.yaml.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: poddy-gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  fsType: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

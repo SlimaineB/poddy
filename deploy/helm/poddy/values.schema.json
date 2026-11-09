@@ -51,6 +51,12 @@
         "issuer": {
           "type": "string"
         },
+        "discoveryUrl": {
+          "type": "string"
+        },
+        "authorizationUrl": {
+          "type": "string"
+        },
         "clientId": {
           "type": "string"
         },
@@ -320,6 +326,51 @@
         },
         "allowUnmappedKeys": {
           "type": "boolean"
+        },
+        "requireAgent": {
+          "type": "boolean"
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "url": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "tokenTtl": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            }
+          }
+        },
+        "certTtl": {
+          "type": "string"
+        },
+        "ca": {
+          "type": "object",
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "keyKey": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -385,6 +436,23 @@
         },
         "extraRules": {
           "type": "array"
+        }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "properties": {
+        "storageClass": {
+          "type": "string"
+        },
+        "imageRegistry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

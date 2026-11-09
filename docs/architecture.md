@@ -21,13 +21,22 @@ recovery, and an audit trail.
                                     │ port-forward
 ┌───────────────┐   SSH   ┌─────────┴─────────────┐
 │ VS Code / ssh │────────►│     poddy-bastion     │
-└───────────────┘         │  SSH :2222, ProxyJump │
+└───────────────┘         │ SSH :2222 + broker    │
+                          └───────────┬───────────┘
+                                      │ outbound agent tunnel
+                                      ▼
+                          ┌───────────────────────┐
+                          │ workspace pod         │
+                          │ poddy-agent :22       │
                           └───────────────────────┘
 ```
 
 The portal and bastion are separate Deployments built from the same container
-image. The portal never listens for SSH in cluster mode; the bastion has no HTTP
-API and only needs pod read access plus port-forward.
+image. The portal never listens for SSH in cluster mode; the bastion exposes
+SSH plus a private agent listener. Workspace pods run `poddy-agent`, which
+connects outbound to the bastion and forwards only to the workspace's loopback
+SSH port. The bastion falls back to Kubernetes port-forward only when
+`ssh.requireAgent=false`.
 
 ## Multi-region
 
@@ -57,7 +66,8 @@ internal region-authenticated endpoint.
 | Component | Responsibility | Where it runs |
 |-----------|----------------|---------------|
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
-| SSH bastion | Accepts user SSH connections and port-forwards to workspace pods | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
+| SSH bastion | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
+| Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Workspace pod, started by `poddy-ssh-start` |
 | Workspace pods | `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, template access, and quotas | ConfigMap |
@@ -84,6 +94,23 @@ internal region-authenticated endpoint.
 7. If PostgreSQL is enabled, the portal mirrors the workspace snapshot and
    records a `workspace.create` audit event.
 8. The portal watches pods and reports their phase to the UI.
+
+### SSH access
+
+1. The user connects to the bastion with an SSH key or a short-lived
+   certificate issued by `POST /api/me/ssh-certificate`.
+2. The bastion verifies the key or certificate, resolves the target workspace
+   from the `direct-tcpip` host, and checks that the workspace is running.
+3. The bastion authorizes the connection against the workspace owner, or
+   against the certificate's owner and optional workspace scope.
+4. If the workspace agent is connected, the bastion opens a multiplexed stream
+   to `127.0.0.1:22` inside the workspace. Otherwise it uses Kubernetes
+   port-forward unless `ssh.requireAgent=true`.
+5. The workspace `sshd` authenticates the user again with the same key or
+   certificate. Workspace `authorized_keys` trusts the CA line for certificate
+   authentication.
+
+See [SSH access](ssh.md) for the certificate flow and Helm values.
 
 ### Workspace details and startup logs
 

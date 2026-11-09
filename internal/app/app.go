@@ -31,8 +31,10 @@ import (
 	"poddy/internal/rbac"
 	"poddy/internal/region"
 	"poddy/internal/server"
+	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 	"poddy/internal/templates"
+	"poddy/internal/tunnel"
 	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
 	"poddy/web"
@@ -47,6 +49,17 @@ func Run(ctx context.Context, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
+		return fmt.Errorf("workspace agent: -agent-url or -agent-addr is required when -ssh-require-agent=true")
+	}
+
+	sshCA, err := sshca.LoadOrGenerate(cfg.SSHCAKeyFile)
+	if err != nil {
+		return fmt.Errorf("ssh ca: %w", err)
+	}
+	if cfg.SSHCAKeyFile == "" {
+		log.Printf("ssh ca: using an ephemeral key; set PODDY_SSH_CA_KEY_FILE to keep certificates valid across restarts")
 	}
 
 	var appMetrics *metrics.Metrics
@@ -72,6 +85,7 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("templates: %w", err)
 	}
+	catalog.SetImageRegistry(cfg.ImageRegistry)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -123,18 +137,23 @@ func Run(ctx context.Context, args []string) error {
 		portalURL = cfg.RegionHubURL
 	}
 	manager := &k8s.Manager{
-		Client:          client,
-		Rest:            restConfig,
-		Namespace:       cfg.Namespace,
-		Templates:       catalog,
-		DefaultTemplate: cfg.DefaultTemplate,
-		AuthorizedKeys:  keys,
-		SSHKeys:         keyring,
-		StateConfigMap:  cfg.StateConfigMap,
-		PortalURL:       portalURL,
-		InstanceID:      cfg.InstanceID,
-		Region:          cfg.RegionName,
-		HelperImage:     cfg.BackupHelperImage,
+		Client:              client,
+		Rest:                restConfig,
+		Namespace:           cfg.Namespace,
+		Templates:           catalog,
+		DefaultTemplate:     cfg.DefaultTemplate,
+		DefaultStorageClass: cfg.StorageClass,
+		ImageRegistry:       cfg.ImageRegistry,
+		ImagePullSecrets:    splitList(cfg.WorkspaceImagePullSecrets),
+		AuthorizedKeys:      keys,
+		SSHKeys:             keyring,
+		SSHCA:               sshCA,
+		SSHRequireAgent:     cfg.SSHRequireAgent,
+		StateConfigMap:      cfg.StateConfigMap,
+		PortalURL:           portalURL,
+		InstanceID:          cfg.InstanceID,
+		Region:              cfg.RegionName,
+		HelperImage:         templates.RewriteImageRegistry(cfg.BackupHelperImage, cfg.ImageRegistry),
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
@@ -166,6 +185,24 @@ func Run(ctx context.Context, args []string) error {
 			}
 			return "", nil
 		}
+	}
+
+	agentKey := agentSecret(cfg)
+	if agentURL := cfg.AgentURL; agentURL != "" && agentKey == "" {
+		log.Printf("workspace agent tunnel: using an ephemeral signing key; set PODDY_AGENT_KEY to share it with the bastion")
+	}
+	agentSigner := tunnel.NewTokenSigner(agentKey)
+	agentURL := cfg.AgentURL
+	if agentURL == "" && cfg.AgentAddr != "" {
+		agentURL = localAgentURL(cfg.AgentAddr)
+	}
+	manager.AgentURL = agentURL
+	manager.AgentToken = func(workspace, owner string) (string, error) {
+		token, _, err := agentSigner.SignAgent(workspace, owner, cfg.AgentTokenTTL)
+		return token, err
+	}
+	if agentURL == "" {
+		log.Printf("workspace agent tunnel disabled; SSH falls back to Kubernetes port-forward")
 	}
 
 	go manager.RunScheduleLoop(ctx, k8s.DefaultScheduleInterval)
@@ -200,7 +237,7 @@ func Run(ctx context.Context, args []string) error {
 		defer metricsServer.Close()
 	}
 
-	sshBastion, err := startBastion(cfg, manager, keyring, metadataAuditor)
+	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA)
 	if err != nil {
 		return err
 	}
@@ -298,6 +335,8 @@ func Run(ctx context.Context, args []string) error {
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
 		SSHEnabled:        cfg.SSHEnabled && (cfg.SSHAddr == "" || sshBastion != nil),
+		SSHCA:             sshCA,
+		SSHCertTTL:        cfg.SSHCertTTL,
 		OIDC:              oidcAuth,
 		OIDCRedirectURL:   cfg.OIDCRedirectURL,
 
@@ -372,6 +411,17 @@ func RunBastion(ctx context.Context, args []string) error {
 	if cfg.SSHAddr == "" {
 		return fmt.Errorf("ssh bastion: -ssh-addr is required")
 	}
+	if cfg.SSHRequireAgent && cfg.AgentAddr == "" {
+		return fmt.Errorf("ssh bastion: -agent-addr is required when -ssh-require-agent=true")
+	}
+
+	sshCA, err := sshca.LoadOrGenerate(cfg.SSHCAKeyFile)
+	if err != nil {
+		return fmt.Errorf("ssh ca: %w", err)
+	}
+	if cfg.SSHCAKeyFile == "" {
+		log.Printf("ssh ca: using an ephemeral key; set PODDY_SSH_CA_KEY_FILE to share the CA with the portal")
+	}
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -404,17 +454,30 @@ func RunBastion(ctx context.Context, args []string) error {
 	go userkeys.Watch(ctx, userKeyStore, keyring, keys, cfg.SSHAllowUnmappedKeys)
 
 	manager := &k8s.Manager{
-		Client:         client,
-		Rest:           restConfig,
-		Namespace:      cfg.Namespace,
-		AuthorizedKeys: keys,
-		SSHKeys:        keyring,
+		Client:          client,
+		Rest:            restConfig,
+		Namespace:       cfg.Namespace,
+		AuthorizedKeys:  keys,
+		SSHKeys:         keyring,
+		SSHCA:           sshCA,
+		SSHRequireAgent: cfg.SSHRequireAgent,
 	}
+
+	agentKey := agentSecret(cfg)
+	if agentKey == "" {
+		log.Printf("workspace agent tunnel: using an ephemeral signing key; set PODDY_AGENT_KEY to match the portal")
+	}
+	signer := tunnel.NewTokenSigner(agentKey)
+	broker := tunnel.NewBroker(signer)
+	defer broker.Close()
 
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keyring, cfg.SSHHostKey)
 	if err != nil {
 		return fmt.Errorf("ssh bastion: %w", err)
 	}
+	sshBastion.Broker = broker
+	sshBastion.RequireAgent = cfg.SSHRequireAgent
+	sshBastion.CA = sshCA
 	if cfg.DatabaseURL != "" {
 		sshBastion.Audit = metaStore
 	}
@@ -422,6 +485,14 @@ func RunBastion(ctx context.Context, args []string) error {
 		return fmt.Errorf("ssh bastion: %w", err)
 	}
 	defer sshBastion.Close()
+
+	if cfg.AgentAddr != "" {
+		agentServer, err := startAgentServer(ctx, cfg.AgentAddr, sshBastion.AgentHandler())
+		if err != nil {
+			return err
+		}
+		defer agentServer.Close()
+	}
 
 	log.Printf("ssh bastion listening on %s (namespace %s)", cfg.SSHAddr, cfg.Namespace)
 	errCh := make(chan error, 1)
@@ -505,17 +576,32 @@ func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Dyna
 	return keys, keyring, editor, nil
 }
 
-func startBastion(cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor) (*bastion.Bastion, error) {
+func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
 	}
+	if cfg.SSHRequireAgent && cfg.AgentAddr == "" {
+		return nil, fmt.Errorf("ssh bastion: -agent-addr is required when -ssh-require-agent=true")
+	}
+	broker := tunnel.NewBroker(signer)
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keys, cfg.SSHHostKey)
 	if err != nil {
+		broker.Close()
 		return nil, fmt.Errorf("ssh bastion: %w", err)
 	}
 	sshBastion.Audit = audit
+	sshBastion.Broker = broker
+	sshBastion.RequireAgent = cfg.SSHRequireAgent
+	sshBastion.CA = ca
 	if err := sshBastion.Listen(); err != nil {
+		broker.Close()
 		return nil, fmt.Errorf("ssh bastion: %w", err)
+	}
+	if cfg.AgentAddr != "" {
+		if _, err := startAgentServer(ctx, cfg.AgentAddr, sshBastion.AgentHandler()); err != nil {
+			_ = sshBastion.Close()
+			return nil, err
+		}
 	}
 	go func() {
 		log.Printf("ssh bastion listening on %s", cfg.SSHAddr)
@@ -535,18 +621,20 @@ func newOIDC(ctx context.Context, cfg config.Config) (*auth.OIDC, error) {
 	defer cancel()
 
 	oidcAuth, err := auth.New(discoveryCtx, auth.Config{
-		Issuer:        cfg.OIDCIssuer,
-		ClientID:      cfg.OIDCClientID,
-		ClientSecret:  cfg.OIDCClientSecret,
-		RedirectURL:   cfg.OIDCRedirectURL,
-		Scopes:        splitList(cfg.OIDCScopes),
-		AllowedGroups: splitList(cfg.OIDCAllowedGroups),
-		AllowedUsers:  splitList(cfg.OIDCAllowedUsers),
-		UsernameClaim: cfg.OIDCUsernameClaim,
-		EmailClaim:    cfg.OIDCEmailClaim,
-		GroupsClaim:   cfg.OIDCGroupsClaim,
-		SessionKey:    []byte(cfg.OIDCSessionKey),
-		SessionTTL:    cfg.OIDCSessionTTL,
+		Issuer:           cfg.OIDCIssuer,
+		DiscoveryURL:     cfg.OIDCDiscoveryURL,
+		AuthorizationURL: cfg.OIDCAuthorizationURL,
+		ClientID:         cfg.OIDCClientID,
+		ClientSecret:     cfg.OIDCClientSecret,
+		RedirectURL:      cfg.OIDCRedirectURL,
+		Scopes:           splitList(cfg.OIDCScopes),
+		AllowedGroups:    splitList(cfg.OIDCAllowedGroups),
+		AllowedUsers:     splitList(cfg.OIDCAllowedUsers),
+		UsernameClaim:    cfg.OIDCUsernameClaim,
+		EmailClaim:       cfg.OIDCEmailClaim,
+		GroupsClaim:      cfg.OIDCGroupsClaim,
+		SessionKey:       []byte(cfg.OIDCSessionKey),
+		SessionTTL:       cfg.OIDCSessionTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("oidc: %w", err)

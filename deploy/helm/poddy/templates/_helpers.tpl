@@ -165,3 +165,36 @@ Secret holding S3 credentials for workspace volume backups.
 {{- printf "%s-backup" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Secret holding the workspace agent HMAC key.
+*/}}
+{{- define "poddy.agentSecretName" -}}
+{{- if .Values.ssh.agent.existingSecret -}}
+{{- .Values.ssh.agent.existingSecret -}}
+{{- else -}}
+{{- printf "%s-agent" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+URL injected into workspace pods for the outbound agent tunnel.
+*/}}
+{{- define "poddy.agentURL" -}}
+{{- if .Values.ssh.agent.url -}}
+{{- .Values.ssh.agent.url -}}
+{{- else -}}
+{{- printf "http://%s-agent.%s.svc:%d" (include "poddy.fullname" .) .Release.Namespace (int .Values.ssh.agent.port) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Secret holding the SSH certificate authority private key.
+*/}}
+{{- define "poddy.sshCASecretName" -}}
+{{- if .Values.ssh.ca.existingSecret -}}
+{{- .Values.ssh.ca.existingSecret -}}
+{{- else -}}
+{{- printf "%s-ssh-ca" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

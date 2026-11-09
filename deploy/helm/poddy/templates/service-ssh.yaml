@@ -1,4 +1,4 @@
-{{- if .Values.ssh.enabled }}
+{{- if and .Values.ssh.enabled .Values.bastion.enabled }}
 apiVersion: v1
 kind: Service
 metadata:

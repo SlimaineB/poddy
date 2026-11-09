@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -139,6 +142,41 @@ func TestUserDisplay(t *testing.T) {
 		if got := tc.user.Display(); got != tc.want {
 			t.Fatalf("Display(%+v) = %q, want %q", tc.user, got, tc.want)
 		}
+	}
+}
+
+func TestNewSeparatesDiscoveryAndAuthorizationURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                                "https://id.example.com",
+			"authorization_endpoint":                "http://internal.example.com/auth",
+			"token_endpoint":                        "http://internal.example.com/token",
+			"jwks_uri":                              "http://internal.example.com/keys",
+			"response_types_supported":              []string{"code"},
+			"subject_types_supported":               []string{"public"},
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		})
+	}))
+	defer server.Close()
+
+	o, err := New(context.Background(), Config{
+		Issuer:           "https://id.example.com",
+		DiscoveryURL:     server.URL,
+		AuthorizationURL: "https://id.example.com/auth",
+		ClientID:         "poddy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := o.oauth.Endpoint.AuthURL; got != "https://id.example.com/auth" {
+		t.Fatalf("authorization endpoint = %q", got)
+	}
+	if got := o.oauth.Endpoint.TokenURL; got != "http://internal.example.com/token" {
+		t.Fatalf("token endpoint = %q", got)
 	}
 }
 

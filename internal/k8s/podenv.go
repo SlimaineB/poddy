@@ -11,6 +11,24 @@ import (
 	"poddy/internal/templates"
 )
 
+func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error {
+	if m.AgentURL == "" || m.AgentToken == nil {
+		return nil
+	}
+	container := containerByName(pod, ContainerName)
+	if container == nil {
+		return nil
+	}
+	token, err := m.AgentToken(workspace, owner)
+	if err != nil {
+		return err
+	}
+	setEnv(container, envAgentURL, m.AgentURL)
+	setEnv(container, envAgentToken, token)
+	setEnv(container, envWorkspaceName, workspace)
+	return nil
+}
+
 func (m *Manager) applyExternalAuth(ctx context.Context, pod *corev1.Pod, owner, workspace, portalURL string, requirements []templates.ExternalAuth) error {
 	if m.ExternalAuth == nil || len(requirements) == 0 {
 		return nil
@@ -106,6 +124,8 @@ func stripExternalAuthEnv(spec *corev1.PodSpec, names []string) {
 		envExternalAuthIDs: true,
 		envGitAskpass:      true,
 		envGitPrompt:       true,
+		envAgentURL:        true,
+		envAgentToken:      true,
 	}
 	for _, name := range names {
 		remove[name] = true

@@ -26,6 +26,10 @@ spec:
         {{- end }}
       annotations:
         checksum/ssh-keys: {{ include (print $.Template.BasePath "/configmap-ssh-keys.yaml") . | sha256sum }}
+        checksum/ssh-ca: {{ include (print $.Template.BasePath "/secret-ssh-ca.yaml") . | sha256sum }}
+        {{- if .Values.ssh.agent.enabled }}
+        checksum/agent: {{ include (print $.Template.BasePath "/secret-agent.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.bastion.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -53,6 +57,10 @@ spec:
             - -ssh-keys-file=/etc/poddy/authorized_keys
             - -ssh-allow-unmapped-keys={{ .Values.ssh.allowUnmappedKeys }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
+            - -ssh-require-agent={{ .Values.ssh.requireAgent }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            - -agent-addr=:{{ .Values.ssh.agent.port }}
+            {{- end }}
             {{- if .Values.ssh.existingHostKeySecret }}
             - -ssh-host-key=/etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
             {{- else }}
@@ -61,8 +69,19 @@ spec:
             {{- with .Values.bastion.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if or .Values.database.url .Values.database.existingSecret .Values.bastion.extraEnv }}
+          {{- if or .Values.database.url .Values.database.existingSecret .Values.bastion.extraEnv .Values.ssh.enabled }}
           env:
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            - name: PODDY_AGENT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.agentSecretName" . }}
+                  key: agent-key
+            {{- end }}
+            {{- if .Values.ssh.enabled }}
+            - name: PODDY_SSH_CA_KEY_FILE
+              value: /etc/poddy/ssh-ca/{{ .Values.ssh.ca.keyKey }}
+            {{- end }}
             {{- if or .Values.database.url .Values.database.existingSecret }}
             - name: PODDY_DATABASE_URL
               valueFrom:
@@ -80,6 +99,11 @@ spec:
             - name: ssh
               containerPort: 2222
               protocol: TCP
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            - name: agent
+              containerPort: {{ .Values.ssh.agent.port }}
+              protocol: TCP
+            {{- end }}
           readinessProbe:
             tcpSocket:
               port: ssh
@@ -105,6 +129,9 @@ spec:
             - name: ssh-host-key
               mountPath: /tmp/poddy
             {{- end }}
+            - name: ssh-ca
+              mountPath: /etc/poddy/ssh-ca
+              readOnly: true
             {{- with .Values.bastion.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -126,6 +153,10 @@ spec:
         - name: ssh-host-key
           emptyDir: {}
         {{- end }}
+        - name: ssh-ca
+          secret:
+            secretName: {{ include "poddy.sshCASecretName" . }}
+            defaultMode: 0444
         {{- with .Values.bastion.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

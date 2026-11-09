@@ -1,0 +1,18 @@
+{{- if and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.bastion.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.bastion.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: agent
+      port: {{ .Values.ssh.agent.port }}
+      targetPort: agent
+      protocol: TCP
+  selector:
+    {{- include "poddy.bastion.selectorLabels" . | nindent 4 }}
+{{- end }}

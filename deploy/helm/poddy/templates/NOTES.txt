@@ -29,6 +29,7 @@ Workspace namespace: {{ include "poddy.workspaceNamespace" . }}
 Workspace lifecycle: stop/start/restart from the UI (stopped specs are kept in the {{ include "poddy.stateConfigMapName" . }} ConfigMap).
 
 {{- if .Values.ssh.enabled }}
+{{- if .Values.bastion.enabled }}
 SSH endpoint: {{ .Values.ssh.publicHost }}:{{ .Values.ssh.publicPort }}
 SSH bastion Deployment: {{ include "poddy.fullname" . }}-bastion
 Use the "SSH" button in the UI to copy the ProxyJump configuration.
@@ -37,6 +38,9 @@ Use the "SSH" button in the UI to copy the ProxyJump configuration.
 WARNING: the SSH host key is ephemeral (stored in an emptyDir). Create a host
 key Secret and set ssh.existingHostKeySecret before scaling
 bastion.replicaCount above one.
+{{- end }}
+{{- else }}
+SSH certificate issuance is enabled; no local bastion is deployed.
 {{- end }}
 {{- else }}
 SSH bastion is disabled.

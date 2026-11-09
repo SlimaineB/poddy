@@ -19,16 +19,21 @@ import (
 
 	"poddy/internal/k8s"
 	"poddy/internal/metadata"
+	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
+	"poddy/internal/tunnel"
 )
 
 type Bastion struct {
-	Addr     string
-	Manager  *k8s.Manager
-	Audit    metadata.Auditor
-	keys     sshkeys.Keyring
-	config   *ssh.ServerConfig
-	listener net.Listener
+	Addr         string
+	Manager      *k8s.Manager
+	Audit        metadata.Auditor
+	Broker       *tunnel.Broker
+	RequireAgent bool
+	CA           *sshca.CA
+	keys         sshkeys.Keyring
+	config       *ssh.ServerConfig
+	listener     net.Listener
 }
 
 type directTCPIP struct {
@@ -47,18 +52,47 @@ func New(addr string, manager *k8s.Manager, keys sshkeys.Keyring, hostKeyPath st
 		return nil, err
 	}
 
-	config := &ssh.ServerConfig{
-		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			fingerprint := ssh.FingerprintSHA256(key)
-			if _, ok := keys.Lookup(fingerprint); !ok {
-				return nil, fmt.Errorf("unknown public key")
-			}
-			return &ssh.Permissions{Extensions: map[string]string{"fingerprint": fingerprint}}, nil
-		},
-	}
-	config.AddHostKey(signer)
+	b := &Bastion{Addr: addr, Manager: manager, keys: keys}
+	b.config = &ssh.ServerConfig{PublicKeyCallback: b.publicKeyCallback}
+	b.config.AddHostKey(signer)
+	return b, nil
+}
 
-	return &Bastion{Addr: addr, Manager: manager, keys: keys, config: config}, nil
+func (b *Bastion) publicKeyCallback(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	if cert, ok := key.(*ssh.Certificate); ok {
+		if b.CA == nil {
+			return nil, fmt.Errorf("SSH certificate authentication is not configured")
+		}
+		if err := b.CA.VerifyCert(cert); err != nil {
+			return nil, fmt.Errorf("invalid SSH certificate: %w", err)
+		}
+		if len(cert.ValidPrincipals) != 1 || cert.ValidPrincipals[0] != sshca.WorkspacePrincipal {
+			return nil, fmt.Errorf("invalid certificate principal")
+		}
+		owner := strings.TrimSpace(cert.KeyId)
+		if owner == "" {
+			return nil, fmt.Errorf("certificate has no owner")
+		}
+		extensions := map[string]string{
+			"actor":       owner,
+			"actorType":   "user",
+			"owner":       owner,
+			"fingerprint": ssh.FingerprintSHA256(cert.Key),
+		}
+		if workspace := sshca.Workspace(cert); workspace != "" {
+			extensions["workspace"] = workspace
+		}
+		if sshca.Admin(cert) {
+			extensions["admin"] = "true"
+		}
+		return &ssh.Permissions{Extensions: extensions}, nil
+	}
+
+	fingerprint := ssh.FingerprintSHA256(key)
+	if _, ok := b.keys.Lookup(fingerprint); !ok {
+		return nil, fmt.Errorf("unknown public key")
+	}
+	return &ssh.Permissions{Extensions: map[string]string{"fingerprint": fingerprint}}, nil
 }
 
 // Listen binds the bastion address. Serve reuses an existing listener.
@@ -89,10 +123,14 @@ func (b *Bastion) Serve() error {
 }
 
 func (b *Bastion) Close() error {
-	if b.listener == nil {
-		return nil
+	var err error
+	if b.listener != nil {
+		err = b.listener.Close()
 	}
-	return b.listener.Close()
+	if b.Broker != nil {
+		b.Broker.Close()
+	}
+	return err
 }
 
 func (b *Bastion) handle(conn net.Conn) {
@@ -124,10 +162,18 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 
 	name := workspaceName(request.Host)
 	fingerprint := ""
+	actor := ""
+	actorType := "user"
 	if permissions != nil {
 		fingerprint = permissions.Extensions["fingerprint"]
+		actor = strings.TrimSpace(permissions.Extensions["actor"])
+		if permissions.Extensions["actorType"] != "" {
+			actorType = permissions.Extensions["actorType"]
+		}
 	}
-	actor, actorType := b.auditActor(fingerprint)
+	if actor == "" {
+		actor, actorType = b.auditActor(fingerprint)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -143,7 +189,7 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 		return
 	}
 
-	if !b.keys.Authorize(fingerprint, k8s.Owner(pod)) {
+	if !b.authorize(permissions, fingerprint, k8s.Owner(pod), name) {
 		log.Printf("ssh bastion: key %s is not authorized for workspace %s", fingerprint, name)
 		b.recordAudit(name, actor, actorType, remoteAddr, "denied", "not authorized for this workspace")
 		_ = newChannel.Reject(ssh.Prohibited, "not authorized for this workspace")
@@ -154,22 +200,21 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	if port == 0 {
 		port = 22
 	}
+	if port != 22 {
+		b.recordAudit(name, actor, actorType, remoteAddr, "denied", "only the workspace SSH port is allowed")
+		_ = newChannel.Reject(ssh.Prohibited, "only the workspace SSH port is allowed")
+		return
+	}
 
-	local, stop, err := b.Manager.PortForward(k8s.PodName(name), port)
+	target, stop, transport, err := b.dialWorkspace(ctx, name, port)
 	if err != nil {
-		log.Printf("ssh bastion: port-forward %s: %v", name, err)
-		b.recordAudit(name, actor, actorType, remoteAddr, "error", "port-forward failed: "+err.Error())
+		log.Printf("ssh bastion: dial %s: %v", name, err)
+		b.recordAudit(name, actor, actorType, remoteAddr, "error", err.Error())
 		_ = newChannel.Reject(ssh.ConnectionFailed, "cannot reach workspace")
 		return
 	}
-	defer stop()
-
-	target, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", local), 5*time.Second)
-	if err != nil {
-		log.Printf("ssh bastion: dial %s: %v", name, err)
-		b.recordAudit(name, actor, actorType, remoteAddr, "error", "dial workspace failed: "+err.Error())
-		_ = newChannel.Reject(ssh.ConnectionFailed, "cannot reach workspace")
-		return
+	if stop != nil {
+		defer stop()
 	}
 	defer target.Close()
 
@@ -178,7 +223,7 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 		b.recordAudit(name, actor, actorType, remoteAddr, "error", err.Error())
 		return
 	}
-	b.recordAudit(name, actor, actorType, remoteAddr, "success", "")
+	b.recordAudit(name, actor, actorType, remoteAddr, "success", "transport="+transport)
 	go ssh.DiscardRequests(channelRequests)
 
 	done := make(chan struct{}, 2)
@@ -193,6 +238,50 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 
 	<-done
 	_ = channel.Close()
+}
+
+func (b *Bastion) dialWorkspace(ctx context.Context, name string, port int) (net.Conn, func(), string, error) {
+	if b.Broker != nil && b.Broker.Connected(name) {
+		conn, err := b.Broker.Dial(ctx, name, fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			return conn, nil, "agent", nil
+		}
+		if b.RequireAgent {
+			return nil, nil, "", fmt.Errorf("workspace agent: %w", err)
+		}
+		log.Printf("ssh bastion: agent dial %s failed, falling back to port-forward: %v", name, err)
+	}
+	if b.RequireAgent {
+		return nil, nil, "", fmt.Errorf("workspace agent is not connected")
+	}
+	local, stop, err := b.Manager.PortForward(k8s.PodName(name), port)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("port-forward failed: %w", err)
+	}
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", local), 5*time.Second)
+	if err != nil {
+		stop()
+		return nil, nil, "", fmt.Errorf("dial workspace failed: %w", err)
+	}
+	return conn, stop, "port-forward", nil
+}
+
+func (b *Bastion) authorize(permissions *ssh.Permissions, fingerprint, owner, workspace string) bool {
+	if permissions != nil {
+		if certOwner := strings.TrimSpace(permissions.Extensions["actor"]); certOwner != "" {
+			if permissions.Extensions["admin"] == "true" {
+				return true
+			}
+			if !strings.EqualFold(certOwner, owner) {
+				return false
+			}
+			if scope := strings.TrimSpace(permissions.Extensions["workspace"]); scope != "" && !strings.EqualFold(scope, workspace) {
+				return false
+			}
+			return true
+		}
+	}
+	return b.keys.Authorize(fingerprint, owner)
 }
 
 func (b *Bastion) auditActor(fingerprint string) (string, string) {
@@ -211,6 +300,10 @@ func (b *Bastion) auditActor(fingerprint string) (string, string) {
 }
 
 func (b *Bastion) recordAudit(workspace, actor, actorType, sourceIP, outcome, message string) {
+	b.recordEvent(workspace, actor, actorType, sourceIP, "ssh.connect", outcome, message)
+}
+
+func (b *Bastion) recordEvent(workspace, actor, actorType, sourceIP, action, outcome, message string) {
 	if b.Audit == nil {
 		return
 	}
@@ -220,7 +313,7 @@ func (b *Bastion) recordAudit(workspace, actor, actorType, sourceIP, outcome, me
 		Namespace:  b.Manager.Namespace,
 		Actor:      actor,
 		ActorType:  actorType,
-		Action:     "ssh.connect",
+		Action:     action,
 		Outcome:    outcome,
 		TargetType: "workspace",
 		TargetName: workspace,

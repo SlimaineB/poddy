@@ -67,7 +67,8 @@ name (without the leading `v`) is used.
 | Parameter | Description |
 |-----------|-------------|
 | `auth.token` or `auth.existingSecret` or `oidc.enabled` | Authentication is required (token and/or OIDC). |
-| `ssh.enabled` | Enable the bastion and UI SSH metadata (default `true`). |
+| `ssh.enabled` | Enable SSH metadata and certificate issuance (default `true`). |
+| `bastion.enabled` | Deploy the SSH bastion (default `true`). Set `false` for a hub that only issues certificates. |
 | `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
 | `ssh.authorizedKeys` or `ssh.existingKeysSecret` | Optional administrator-managed SSH keys. Teams normally add their own key under **SSH keys** in the portal. The comment binds an administrator-managed key to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token`) or marks it admin (`admin`, `*`). |
 | `ssh.existingHostKeySecret` | **Required** when `bastion.replicaCount > 1`. Secret with private host key. |
@@ -83,10 +84,23 @@ name (without the leading `v`) is used.
 | `bastion.podDisruptionBudget.enabled` | `false` | Create a PDB for the bastion. |
 | `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |
 | `image.tag` | `latest` | Portal and bastion image tag. |
-| `imagePullSecrets` | `[]` | Secrets for portal/bastion images (not workspaces). |
+| `imagePullSecrets` | `[]` | Secrets for portal/bastion images (use `workspace.imagePullSecrets` for workspaces). |
 | `ssh.allowUnmappedKeys` | `false` | Legacy: allow keys without an owner comment to reach every workspace. Insecure. |
+| `ssh.requireAgent` | `true` | Require the outbound workspace agent tunnel and disable Kubernetes port-forward fallback. Custom workspace images must include `poddy-agent`; restart existing workspaces after upgrading. Set `false` to keep the port-forward fallback. |
+| `ssh.agent.enabled` | `true` | Run the bastion agent listener and inject agent URL/token into workspaces. |
+| `ssh.agent.port` | `8091` | Private ClusterIP port for the agent listener. |
+| `ssh.agent.url` | `""` | Agent URL injected into workspaces. Empty derives the in-cluster Service URL. |
+| `ssh.agent.tokenTtl` | `168h` | Workspace agent token lifetime. Restart long-running workspaces before it expires. |
+| `ssh.agent.existingSecret` | `""` | Existing Secret with the shared agent HMAC key. |
+| `ssh.certTtl` | `15m` | Lifetime of issued SSH certificates. |
+| `ssh.ca.existingSecret` | `""` | Existing Secret with the SSH CA private key. Share it across hub and regions. |
+| `ssh.ca.keyKey` | `ssh-ca-key` | Key in the CA Secret. |
+| `ssh.ca.key` | `""` | Inline CA private key (PEM). Empty generates and preserves a random key. |
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
+| `workspace.storageClass` | `""` | Default StorageClass for workspace home PVCs when the template leaves it empty. |
+| `workspace.imageRegistry` | `""` | Registry mirror for workspace and sidecar images. |
+| `workspace.imagePullSecrets` | `[]` | Image pull Secrets applied to workspace pods (private registry mirror). |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | ConfigMap for stopped workspace specs. |
 | `regions` | `[]` | Central hub only. Region list with `name`, `url`, `key`, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
 | `regionsExistingSecret` | `""` | Existing Secret containing `regionsKey` instead of inline `regions`. |
@@ -102,7 +116,9 @@ name (without the leading `v`) is used.
 | `auth.tokenAdmin` | `false` | Treat the shared token as a global admin. Keep false in multi-user deployments. |
 | `auth.secretKey` | `token` | Key in the token Secret. |
 | `oidc.enabled` | `false` | Enable OIDC / SSO login. |
-| `oidc.issuer` | `""` | OIDC issuer URL. Required when enabled. |
+| `oidc.issuer` | `""` | OIDC issuer URL (the expected `iss` claim). Required when enabled. |
+| `oidc.discoveryUrl` | `""` | Optional discovery URL when it differs from the issuer (defaults to issuer). |
+| `oidc.authorizationUrl` | `""` | Optional browser-facing authorization endpoint override. |
 | `oidc.clientId` | `""` | OIDC client ID. Required when enabled unless `oidc.existingSecret` is set. |
 | `oidc.clientSecret` | `""` | OIDC client secret (empty = public client with PKCE). |
 | `oidc.existingSecret` | `""` | Secret with client ID, client secret and session key. |
@@ -203,6 +219,8 @@ The portal watches these ConfigMaps in `workspaceNamespace` and reloads without 
 oidc:
   enabled: true
   issuer: https://keycloak.example.com/realms/dev
+  # discoveryUrl: http://keycloak.internal/realms/dev
+  # authorizationUrl: https://keycloak.example.com/realms/dev/protocol/openid-connect/auth
   clientId: poddy
   clientSecret: ""
   existingSecret: poddy-oidc
@@ -222,7 +240,7 @@ kubectl create secret generic poddy-oidc \
   -n poddy-system
 ```
 
-Register `https://poddy.example.com/oidc/callback` as the provider redirect URI. The login page shows **Continue with SSO**; the shared token (if configured) remains available for API automation and is not a global admin unless `auth.tokenAdmin=true`.
+Register `https://poddy.example.com/oidc/callback` as the provider redirect URI. `issuer` is the expected `iss` claim and is separate from the callback; use `discoveryUrl` or `authorizationUrl` when discovery or the browser authorization endpoint uses a different URL. The login page shows **Continue with SSO**; the shared token (if configured) remains available for API automation and is not a global admin unless `auth.tokenAdmin=true`.
 
 See [docs/oidc.md](../../../docs/oidc.md) for claims, groups, HA sessions, and troubleshooting. A local Dex demo is in [deploy/dex](../../../deploy/dex).
 

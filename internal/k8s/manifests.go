@@ -131,7 +131,7 @@ func clearRuntimeMetadata(meta *metav1.ObjectMeta) {
 }
 
 func redactPodEnv(pod *corev1.Pod, externalNames []string) []string {
-	names := map[string]bool{envWorkspaceToken: true}
+	names := map[string]bool{envWorkspaceToken: true, envAgentToken: true}
 	for _, name := range externalNames {
 		names[name] = true
 	}
