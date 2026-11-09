@@ -71,6 +71,11 @@ workspaces:
     image: ghcr.io/slimaineb/poddy-workspace:latest
     persistent: true
     storage: 10Gi
+    schedule:
+      enabled: true
+      timezone: Europe/Paris
+      start: "09:00"
+      stop: "18:00"
     spec:
       containers:
         - name: workspace
@@ -78,7 +83,9 @@ workspaces:
 ```
 
 This is enough to recreate the pod on **Start** even if the template catalog
-changed in the meantime.
+changed in the meantime. The optional `schedule` is the workspace auto-stop
+window; `stoppedBySchedule: true` marks a stop performed by the scheduler so a
+manual stop is not restarted automatically.
 
 ## Templates
 

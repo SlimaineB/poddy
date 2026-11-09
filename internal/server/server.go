@@ -117,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/stop", s.stop)
 	mux.HandleFunc("POST /api/workspaces/{name}/start", s.start)
 	mux.HandleFunc("POST /api/workspaces/{name}/restart", s.restart)
+	mux.HandleFunc("PUT /api/workspaces/{name}/schedule", s.updateWorkspaceSchedule)
 	mux.HandleFunc("POST /api/workspaces/{name}/vscode", s.vscode)
 	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
 	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)

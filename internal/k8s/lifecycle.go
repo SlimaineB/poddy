@@ -16,6 +16,16 @@ import (
 )
 
 func (m *Manager) Stop(ctx context.Context, name string) (Workspace, error) {
+	return m.stopWorkspace(ctx, name, false)
+}
+
+// StopScheduled stops a workspace and marks it so the scheduler can start it
+// again at the next active window.
+func (m *Manager) StopScheduled(ctx context.Context, name string) (Workspace, error) {
+	return m.stopWorkspace(ctx, name, true)
+}
+
+func (m *Manager) stopWorkspace(ctx context.Context, name string, scheduled bool) (Workspace, error) {
 	if err := validateName(name); err != nil {
 		return Workspace{}, err
 	}
@@ -24,10 +34,10 @@ func (m *Manager) Stop(ctx context.Context, name string) (Workspace, error) {
 		return Workspace{}, err
 	}
 	defer release()
-	return m.stop(ctx, name)
+	return m.stop(ctx, name, scheduled)
 }
 
-func (m *Manager) stop(ctx context.Context, name string) (Workspace, error) {
+func (m *Manager) stop(ctx context.Context, name string, scheduled bool) (Workspace, error) {
 	pod, err := m.Get(ctx, name)
 	if apierrors.IsNotFound(err) {
 		if _, stateErr := m.State(ctx, name); stateErr == nil {
@@ -41,6 +51,7 @@ func (m *Manager) stop(ctx context.Context, name string) (Workspace, error) {
 
 	state := m.stateForPod(ctx, pod)
 	state.StoppedAt = time.Now().UTC()
+	state.StoppedBySchedule = scheduled
 	if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
 		states[name] = state
 		return nil
@@ -108,6 +119,7 @@ func (m *Manager) restart(ctx context.Context, name string) (Workspace, error) {
 
 	state := m.stateForPod(ctx, pod)
 	state.StoppedAt = time.Now().UTC()
+	state.StoppedBySchedule = false
 	if err := m.stateStore().Update(ctx, func(states map[string]WorkspaceState) error {
 		states[name] = state
 		return nil
@@ -202,6 +214,7 @@ func (m *Manager) podFromState(state WorkspaceState) *corev1.Pod {
 	if pod.Spec.RestartPolicy == "" {
 		pod.Spec.RestartPolicy = corev1.RestartPolicyAlways
 	}
+	state.StoppedBySchedule = false
 	if raw, err := marshalState(state); err == nil {
 		pod.Annotations[annotationState] = raw
 	}

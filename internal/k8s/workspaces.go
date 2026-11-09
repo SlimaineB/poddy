@@ -68,6 +68,10 @@ type Workspace struct {
 	Storage       string    `json:"storage,omitempty"`
 	Region        string    `json:"region,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
+	Schedule      *Schedule `json:"schedule,omitempty"`
+	// StoppedBySchedule is internal; it prevents the scheduler from restarting
+	// a workspace that a user stopped manually.
+	StoppedBySchedule bool `json:"-"`
 }
 
 type CreateRequest struct {
@@ -87,6 +91,7 @@ type CreateRequest struct {
 	ExternalAuthReady bool              `json:"externalAuthReady,omitempty"`
 	ExternalAuthEnv   map[string]string `json:"externalAuthEnv,omitempty"`
 	WorkspaceToken    string            `json:"workspaceToken,omitempty"`
+	Schedule          *Schedule         `json:"schedule,omitempty"`
 
 	// QuotaCheck is called with the rendered resource requests before any
 	// Kubernetes object is created.
@@ -368,6 +373,17 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 	if err := validateName(req.Name); err != nil {
 		return Workspace{}, err
 	}
+	if req.Schedule != nil {
+		schedule := *req.Schedule
+		if err := schedule.Normalize(); err != nil {
+			return Workspace{}, err
+		}
+		if schedule.Empty() {
+			req.Schedule = nil
+		} else {
+			req.Schedule = cloneSchedule(&schedule)
+		}
+	}
 	if _, err := m.GetWorkspace(ctx, req.Name); err == nil {
 		return Workspace{}, fmt.Errorf("workspace %q already exists", req.Name)
 	} else if !apierrors.IsNotFound(err) {
@@ -449,6 +465,7 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		Storage:         storage,
 		StorageClass:    params["storageClass"],
 		Parameters:      params,
+		Schedule:        cloneSchedule(req.Schedule),
 		PortalURL:       req.PortalURL,
 		Labels:          copyStringMap(pod.Labels),
 		Annotations:     copyStringMap(pod.Annotations),

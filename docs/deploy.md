@@ -360,6 +360,7 @@ Neither the portal nor the bastion can access other namespaces or cluster-scoped
 
 - **Stop** deletes the workspace pod, keeps its PVC, and stores the rendered pod spec in the `poddy-state` ConfigMap (key `workspaces.yaml`).
 - **Start** recreates the pod from the stored spec; **Restart** deletes and recreates it. The PVC is reused.
+- **Auto-stop schedules** are stored with the workspace state. The portal evaluates them every 30 seconds using the configured IANA timezone; outside the daily start/stop window it stops the pod, and at the next window it starts it again only if the schedule stopped it. A manual stop is never auto-started.
 - **Ephemeral workspaces** (`storage` empty) have no PVC: stopping them loses their data. The UI warns before stopping.
 - Stopped workspaces appear with phase `Stopped`; only their owner or a global admin can start/stop/restart/delete them.
 - Click a workspace card or name to open its details. The dialog shows metadata plus **startup logs** from init containers and workspace containers. Logs are fetched with the `pods/log` permission and are limited to the last 500 lines per container.

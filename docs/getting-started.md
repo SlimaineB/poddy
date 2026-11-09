@@ -121,8 +121,10 @@ Open <http://127.0.0.1:8080> and sign in with that token.
 1. Click **New workspace**.
 2. Pick **Base**, **Go**, **Node.js**, or **Python**.
 3. Adjust CPU, memory, or storage if you want.
-4. Click **Create**.
-5. Wait for the workspace to reach **Running**.
+4. Optionally enable **Auto-stop schedule**, choose the timezone, and set the
+   daily start and stop times.
+5. Click **Create**.
+6. Wait for the workspace to reach **Running**.
 
 ## 6. Connect
 

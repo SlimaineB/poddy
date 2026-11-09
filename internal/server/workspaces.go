@@ -166,6 +166,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"owner":       ws.Owner,
 		"persistent":  ws.Persistent,
 		"createdAt":   ws.CreatedAt,
+		"schedule":    ws.Schedule,
 		"podIP":       podIP,
 		"nodeName":    nodeName,
 		"podPhase":    podPhase,
@@ -434,6 +435,54 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 	s.workspaceLifecycle(w, r, "restart")
+}
+
+func (s *Server) updateWorkspaceSchedule(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
+		return
+	}
+	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	if err != nil || !allowed {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+	var schedule k8s.Schedule
+	if err := json.NewDecoder(r.Body).Decode(&schedule); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := schedule.Normalize(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	setAuditTarget(r, name)
+	setAuditDetail(r, "schedule", schedule)
+
+	ws, err := s.Workspaces.SetSchedule(r.Context(), name, schedule)
+	if apierrors.IsNotFound(err) {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		writeK8sError(w, err, http.StatusInternalServerError)
+		return
+	}
+	s.syncWorkspace(r.Context(), name)
+	writeJSON(w, http.StatusOK, ws)
 }
 
 func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, action string) {

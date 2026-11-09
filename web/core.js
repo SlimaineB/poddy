@@ -158,6 +158,16 @@ const els = {
   detailPortsRefresh: document.getElementById("detail-ports-refresh"),
   detailPortForm: document.getElementById("detail-port-form"),
   detailPortInput: document.getElementById("detail-port-input"),
+  scheduleEnabled: document.getElementById("schedule-enabled"),
+  scheduleTimezone: document.getElementById("schedule-timezone"),
+  scheduleStart: document.getElementById("schedule-start"),
+  scheduleStop: document.getElementById("schedule-stop"),
+  detailScheduleForm: document.getElementById("detail-schedule-form"),
+  detailScheduleEnabled: document.getElementById("detail-schedule-enabled"),
+  detailScheduleTimezone: document.getElementById("detail-schedule-timezone"),
+  detailScheduleStart: document.getElementById("detail-schedule-start"),
+  detailScheduleStop: document.getElementById("detail-schedule-stop"),
+  detailScheduleSave: document.getElementById("detail-schedule-save"),
   portsDialog: document.getElementById("ports-dialog"),
   portsTitle: document.getElementById("ports-title"),
   portsSubtitle: document.getElementById("ports-subtitle"),
@@ -747,6 +757,63 @@ function renderRegionOptions() {
   if (selected) els.regionSelect.value = selected.name;
   els.regionField.hidden = regions.length === 0;
 }
+
+function currentTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function timezoneOptions() {
+  let zones = [];
+  try {
+    zones = Intl.supportedValuesOf("timeZone");
+  } catch {
+    zones = [];
+  }
+  if (!Array.isArray(zones) || !zones.length) {
+    zones = [
+      "UTC", "Europe/Paris", "Europe/London", "Europe/Berlin", "Europe/Madrid",
+      "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+      "America/Sao_Paulo", "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore",
+      "Asia/Kolkata", "Australia/Sydney",
+    ];
+  }
+  if (!zones.includes("UTC")) zones.unshift("UTC");
+  const current = currentTimezone();
+  if (current && !zones.includes(current)) zones.unshift(current);
+  return zones;
+}
+
+function populateTimezones(select, value) {
+  if (!select) return;
+  const zones = timezoneOptions();
+  select.replaceChildren();
+  for (const zone of zones) {
+    const option = document.createElement("option");
+    option.value = zone;
+    option.textContent = zone;
+    select.append(option);
+  }
+  const preferred = value || currentTimezone();
+  if (preferred) select.value = preferred;
+  if (!select.value && zones.length) select.value = zones[0];
+}
+
+function syncScheduleFields(form, enabled) {
+  if (!form) return;
+  for (const field of form.querySelectorAll("[data-schedule-field]")) {
+    field.disabled = !enabled;
+  }
+}
+
+function scheduleSummary(schedule) {
+  if (!schedule || !schedule.enabled) return "";
+  return `${schedule.start}–${schedule.stop} ${schedule.timezone}`;
+}
+
 function renderTemplateOptions() {
   els.templateSelect.replaceChildren();
   for (const template of state.templates) {

@@ -66,6 +66,15 @@ function renderCard(workspace) {
     metaRow.append(region);
   }
 
+  const schedule = scheduleSummary(workspace.schedule);
+  if (schedule) {
+    const badge = document.createElement("span");
+    badge.className = "badge schedule";
+    badge.textContent = "Auto-stop";
+    badge.title = `Auto-stop: ${schedule}`;
+    metaRow.append(badge);
+  }
+
   if (state.me.isAdmin && workspace.owner) {
     const owner = document.createElement("span");
     owner.className = "badge owner";
@@ -439,6 +448,11 @@ async function openCreate() {
   if (!els.templateSelect.value) {
     els.templateSelect.value = state.templates[0].name;
   }
+  populateTimezones(els.scheduleTimezone, currentTimezone());
+  els.scheduleStart.value = "09:00";
+  els.scheduleStop.value = "18:00";
+  els.scheduleEnabled.checked = false;
+  syncScheduleFields(els.createForm, false);
   await loadExternalAuth();
   renderParams();
   els.createDialog.showModal();
@@ -838,6 +852,7 @@ function renderDetails(ws) {
   status.append(dot, document.createTextNode(ws.phase || "Unknown"));
 
   els.detailList.append(detailRow("Status", status));
+  els.detailList.append(detailRow("Auto-stop", scheduleSummary(ws.schedule) || "Disabled"));
   if (ws.region) {
     els.detailList.append(detailRow("Region", ws.regionDisplayName || ws.region));
   }
@@ -895,6 +910,53 @@ function renderDetails(ws) {
       teamsEl.append(teamRow);
     }
     els.detailList.append(detailRow("Teams", teamsEl));
+  }
+  renderScheduleForm(ws.schedule);
+}
+
+function renderScheduleForm(schedule) {
+  const enabled = Boolean(schedule && schedule.enabled);
+  els.detailScheduleEnabled.checked = enabled;
+  populateTimezones(els.detailScheduleTimezone, schedule && schedule.timezone);
+  els.detailScheduleStart.value = schedule && schedule.start ? schedule.start : "09:00";
+  els.detailScheduleStop.value = schedule && schedule.stop ? schedule.stop : "18:00";
+  syncScheduleFields(els.detailScheduleForm, enabled);
+}
+
+async function saveSchedule(event) {
+  event.preventDefault();
+  const workspace = state.detailWorkspace;
+  if (!workspace) return;
+  const enabled = els.detailScheduleEnabled.checked;
+  const body = {
+    enabled,
+    timezone: els.detailScheduleTimezone.value,
+    start: els.detailScheduleStart.value,
+    stop: els.detailScheduleStop.value,
+  };
+  if (enabled && (!body.timezone || !body.start || !body.stop)) {
+    toast("Choose a time zone and start/stop times.");
+    return;
+  }
+  const original = els.detailScheduleSave.innerHTML;
+  els.detailScheduleSave.disabled = true;
+  els.detailScheduleSave.setAttribute("aria-busy", "true");
+  els.detailScheduleSave.innerHTML = `<span class="spinner small"></span>Saving`;
+  try {
+    const updated = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    state.detailWorkspace = updated;
+    toast("Schedule saved.", "success");
+    await refreshDetails();
+    await load({ silent: true });
+  } catch (err) {
+    toast(err.message || "Failed to save schedule.");
+  } finally {
+    els.detailScheduleSave.disabled = false;
+    els.detailScheduleSave.removeAttribute("aria-busy");
+    els.detailScheduleSave.innerHTML = original;
   }
 }
 function showSSH(workspace) {
