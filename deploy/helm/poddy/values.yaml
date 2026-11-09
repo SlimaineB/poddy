@@ -50,10 +50,11 @@ image:
   pullPolicy: IfNotPresent
 
 # Optional PostgreSQL metadata mirror and audit log. When a connection string
-# is configured, the portal mirrors RBAC, users, templates and workspaces into
-# PostgreSQL and records audit events. Kubernetes remains the runtime source of
-# truth. The portal exits if PostgreSQL is configured but unreachable at startup;
-# later sync and audit failures are logged without blocking workspace operations.
+# is configured, the portal mirrors RBAC, users, templates, workspaces, and
+# quotas into PostgreSQL and records audit events. Kubernetes remains the
+# runtime source of truth. The portal exits if PostgreSQL is configured but
+# unreachable at startup; later sync and audit failures are logged without
+# blocking workspace operations.
 database:
   # PostgreSQL connection string, for example:
   # postgres://poddy:secret@postgres:5432/poddy?sslmode=require
@@ -124,7 +125,20 @@ rbac:
   #     members:
   #       - alice@example.com
   #       - group:backend
+  #     quota:
+  #       maxWorkspaces: 5
+  #       cpu: "4"
+  #       memory: "8Gi"
+  #       storage: "50Gi"
   teams: {}
+  # Per-user overrides. Team quotas are defaults; user values win field by field.
+  # userQuotas:
+  #   alice@example.com:
+  #     maxWorkspaces: 2
+  #     cpu: "2"
+  #     memory: "4Gi"
+  #     storage: "20Gi"
+  userQuotas: {}
   # templates:
   #   go:
   #     owners:

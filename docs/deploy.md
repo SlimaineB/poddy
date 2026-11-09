@@ -202,7 +202,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Bastion connections**: each SSH session opens a port-forward through a bastion pod. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and usage reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace or RBAC decisions; it does not remove the ConfigMap size limit by itself.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and quota reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace, quota, or RBAC decisions; it does not remove the ConfigMap size limit by itself.
 
 ### Replicas and namespaces
 
@@ -639,7 +639,7 @@ The chart applies:
 - **OIDC**: Prefer OIDC over the shared token for human access. Set `allowedGroups`/`allowedUsers` to restrict sign-in, and use a stable `oidc.sessionKey` for HA.
 - **Namespace isolation**: For hard tenant isolation, deploy one release per team/namespace. SSH isolation prevents cross-owner access inside one portal, but a shared namespace still shares network and storage classes.
 - **Local editor keys**: In local editor mode the portal marks keys it manages as admin keys, which is intended for a single operator workstation. Cluster deployments use `-editor=` and do not add local keys.
-- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
+- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, user quotas, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
 
 ## Workspace images
 
@@ -680,23 +680,24 @@ kubectl apply -f deploy/poddy.yaml
 - Templates = versioned files / ConfigMaps / Helm values (GitOps-friendly).
 - No separate DB is required to run poddy.
 
-**Workspace ownership, RBAC, and stopped specs work without a database:**
+**Workspace ownership, RBAC, quotas, and stopped specs work without a database:**
 - The owner is a pod annotation (`poddy.io/owner`).
-- Admins, teams, and template access are a small ConfigMap (`poddy-rbac`), updated through the API.
+- Admins, teams, template access, and team/user quotas are a small ConfigMap (`poddy-rbac`), updated through the API.
 - Stopped workspace specs are a small ConfigMap (`poddy-state`).
 - Users seen through OIDC are a small ConfigMap (`poddy-users`), written on sign-in. It is only a suggestion directory for access/team editors; authentication and sessions remain with the OIDC provider.
 
 **When you might add PostgreSQL:**
 - You need metadata to survive loss of the cluster.
-- You need a queryable audit log of workspace, terminal, VS Code, SSH, team, template, and external-auth actions.
-- You need usage accounting or reporting.
+- You need a queryable audit log of workspace, terminal, VS Code, SSH, team, template, quota, and external-auth actions.
+- You need a durable copy of quota configuration for reporting.
 - You want a durable copy of the metadata mirror for restore tooling.
 
 Set `database.url` or `database.existingSecret` in the Helm chart, or
 `PODDY_DATABASE_URL` outside Helm. The portal mirrors RBAC, users, templates,
-and workspaces, and records audit events; the bastion records SSH audit events.
-Kubernetes remains authoritative and PostgreSQL is never read for access
-decisions. If PostgreSQL is configured but unavailable at startup, the process
+workspaces, and team/user quotas, and records audit events; the bastion records
+SSH audit events. Kubernetes remains authoritative and PostgreSQL is never read
+for access or quota decisions. If PostgreSQL is configured but unavailable at
+startup, the process
 exits; if it fails later, sync/audit errors are logged and workspace operations
 continue. Back up PVCs with volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)

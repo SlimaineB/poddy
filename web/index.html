@@ -407,6 +407,28 @@
           <div id="team-members" class="entry-list"></div>
           <p class="hint">Add known users from the list or type an email, <code>user:</code> or <code>group:</code> entry.</p>
         </div>
+        <div class="field">
+          <label>Quota defaults</label>
+          <div class="quota-grid">
+            <label class="quota-field">
+              <span>Max workspaces</span>
+              <input id="team-quota-workspaces" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric">
+            </label>
+            <label class="quota-field">
+              <span>CPU</span>
+              <input id="team-quota-cpu" type="text" placeholder="e.g. 8" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="quota-field">
+              <span>Memory</span>
+              <input id="team-quota-memory" type="text" placeholder="e.g. 16Gi" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="quota-field">
+              <span>Storage</span>
+              <input id="team-quota-storage" type="text" placeholder="e.g. 50Gi" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+          <p id="team-quota-hint" class="hint">Applies to team members unless a user override is set. Leave a field empty for unlimited.</p>
+        </div>
         <div class="form-actions">
           <button id="team-save" class="button primary" type="submit">Save team</button>
         </div>
@@ -816,9 +838,50 @@
     </footer>
   </dialog>
 
+  <dialog id="user-quota-dialog" class="dialog dialog-small">
+    <form id="user-quota-form">
+      <header class="dialog-header">
+        <div>
+          <h2>User quota</h2>
+          <p id="user-quota-identity"></p>
+        </div>
+        <button class="icon-button" type="button" data-close aria-label="Close">
+          <svg class="icon"><use href="#icon-x"></use></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <div class="quota-grid">
+          <label class="quota-field">
+            <span>Max workspaces</span>
+            <input id="user-quota-workspaces" type="number" min="0" step="1" placeholder="Inherit" inputmode="numeric">
+          </label>
+          <label class="quota-field">
+            <span>CPU</span>
+            <input id="user-quota-cpu" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="quota-field">
+            <span>Memory</span>
+            <input id="user-quota-memory" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="quota-field">
+            <span>Storage</span>
+            <input id="user-quota-storage" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+        <p class="hint">Empty fields inherit the most permissive quota from the user's teams. Clearing every field removes the override.</p>
+        <p id="user-quota-error" class="form-error" hidden></p>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button ghost" type="button" data-close>Cancel</button>
+        <button id="user-quota-save" class="button primary" type="submit">Save quota</button>
+      </footer>
+    </form>
+  </dialog>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
   <script src="/static/core.js"></script>
+  <script src="/static/quotas.js"></script>
   <script src="/static/workspaces.js"></script>
   <script src="/static/templates.js"></script>
   <script src="/static/teams.js"></script>

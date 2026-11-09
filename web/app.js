@@ -159,6 +159,7 @@ els.manageAudit.addEventListener("click", openAudit);
 els.auditBack.addEventListener("click", () => showView("workspaces"));
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
+els.quotaForm.addEventListener("submit", saveUserQuota);
 els.usersBack.addEventListener("click", () => showView("workspaces"));
 els.teamsBack.addEventListener("click", () => showView("workspaces"));
 let userSearchTimer = 0;

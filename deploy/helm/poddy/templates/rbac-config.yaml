@@ -23,6 +23,37 @@ data:
         {{- range $team.members }}
           - {{ . | quote }}
         {{- end }}
+        {{- with $team.quota }}
+        quota:
+          {{- if hasKey . "maxWorkspaces" }}
+          maxWorkspaces: {{ .maxWorkspaces }}
+          {{- end }}
+          {{- if .cpu }}
+          cpu: {{ .cpu | quote }}
+          {{- end }}
+          {{- if .memory }}
+          memory: {{ .memory | quote }}
+          {{- end }}
+          {{- if .storage }}
+          storage: {{ .storage | quote }}
+          {{- end }}
+        {{- end }}
+    {{- end }}
+    userQuotas:
+    {{- range $identity, $quota := .Values.rbac.userQuotas }}
+      {{ $identity | quote }}:
+        {{- if hasKey $quota "maxWorkspaces" }}
+        maxWorkspaces: {{ $quota.maxWorkspaces }}
+        {{- end }}
+        {{- if $quota.cpu }}
+        cpu: {{ $quota.cpu | quote }}
+        {{- end }}
+        {{- if $quota.memory }}
+        memory: {{ $quota.memory | quote }}
+        {{- end }}
+        {{- if $quota.storage }}
+        storage: {{ $quota.storage | quote }}
+        {{- end }}
     {{- end }}
     templates:
     {{- range $name, $access := .Values.rbac.templates }}

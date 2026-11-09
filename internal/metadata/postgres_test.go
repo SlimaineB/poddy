@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"testing"
@@ -39,7 +40,18 @@ func TestPostgresStore(t *testing.T) {
 	cfg := rbac.Config{
 		Admins: []string{"admin@example.com"},
 		Teams: map[string]rbac.Team{
-			"backend": {Members: []string{"alice@example.com", "group:devs"}},
+			"backend": {
+				Members: []string{"alice@example.com", "group:devs"},
+				Quota: &rbac.Quota{
+					MaxWorkspaces: quotaInt(2),
+					CPU:           "2",
+					Memory:        "4Gi",
+					Storage:       "10Gi",
+				},
+			},
+		},
+		UserQuotas: map[string]rbac.Quota{
+			"alice@example.com": {CPU: "4"},
 		},
 		Templates: map[string]rbac.Access{
 			"base": {Owners: []string{"dev@example.com"}, Users: []string{"alice@example.com"}, Teams: []string{"backend"}},
@@ -110,7 +122,7 @@ func TestPostgresStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var admins, teams, members, templateVersions int
+	var admins, teams, members, userQuotas, templateVersions int
 	if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.global_admins WHERE namespace = $1", namespace).Scan(&admins); err != nil {
 		t.Fatal(err)
 	}
@@ -120,11 +132,38 @@ func TestPostgresStore(t *testing.T) {
 	if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.team_members WHERE namespace = $1", namespace).Scan(&members); err != nil {
 		t.Fatal(err)
 	}
+	if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.user_quotas WHERE namespace = $1", namespace).Scan(&userQuotas); err != nil {
+		t.Fatal(err)
+	}
 	if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM poddy.template_versions WHERE namespace = $1 AND is_active", namespace).Scan(&templateVersions); err != nil {
 		t.Fatal(err)
 	}
-	if admins != 1 || teams != 1 || members != 2 || templateVersions < 2 {
-		t.Fatalf("counts admins=%d teams=%d members=%d templateVersions=%d", admins, teams, members, templateVersions)
+	if admins != 1 || teams != 1 || members != 2 || userQuotas != 1 || templateVersions < 2 {
+		t.Fatalf("counts admins=%d teams=%d members=%d userQuotas=%d templateVersions=%d", admins, teams, members, userQuotas, templateVersions)
+	}
+
+	var teamQuotaMax sql.NullInt64
+	var teamCPU, teamMemory, teamStorage string
+	if err := pg.pool.QueryRow(ctx, `
+		SELECT quota_max_workspaces, quota_cpu, quota_memory, quota_storage
+		FROM poddy.teams WHERE namespace = $1 AND name = 'backend'`,
+		namespace,
+	).Scan(&teamQuotaMax, &teamCPU, &teamMemory, &teamStorage); err != nil {
+		t.Fatal(err)
+	}
+	if !teamQuotaMax.Valid || teamQuotaMax.Int64 != 2 || teamCPU != "2" || teamMemory != "4Gi" || teamStorage != "10Gi" {
+		t.Fatalf("team quota max=%v cpu=%q memory=%q storage=%q", teamQuotaMax, teamCPU, teamMemory, teamStorage)
+	}
+
+	var userQuotaCPU string
+	if err := pg.pool.QueryRow(ctx, `
+		SELECT cpu FROM poddy.user_quotas WHERE namespace = $1 AND identity = 'alice@example.com'`,
+		namespace,
+	).Scan(&userQuotaCPU); err != nil {
+		t.Fatal(err)
+	}
+	if userQuotaCPU != "4" {
+		t.Fatalf("user quota cpu = %q", userQuotaCPU)
 	}
 
 	if _, err := pg.pool.Exec(ctx, "INSERT INTO poddy.templates (namespace, name) VALUES ($1, 'stale')", namespace); err != nil {
@@ -236,4 +275,8 @@ func TestPostgresStore(t *testing.T) {
 	if err := ApplyMigrations(ctx, pg.pool); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func quotaInt(value int) *int {
+	return &value
 }

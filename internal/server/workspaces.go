@@ -297,6 +297,11 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	if s.RegionMode && s.HubURL != "" {
 		req.PortalURL = s.HubURL
 	}
+	quotaCheck, err := s.quotaGuard(r.Context(), id, cfg)
+	if err != nil {
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	if s.Regions != nil {
 		if err := s.prepareRemoteCreate(r, &req, templateName); err != nil {
@@ -310,6 +315,21 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		if regionName == "" {
 			if cfg, ok := s.Regions.Default(); ok {
 				regionName = cfg.Name
+			}
+		}
+		if quotaCheck != nil {
+			if s.Workspaces == nil {
+				http.Error(w, "quota: workspace manager is not configured", http.StatusInternalServerError)
+				return
+			}
+			usage, err := s.Workspaces.PreviewUsage(req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := quotaCheck(usage); err != nil {
+				writeQuotaError(w, err)
+				return
 			}
 		}
 		start := time.Now()
@@ -335,8 +355,14 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		s.Metrics.WorkspaceCreate(templateName, result, time.Since(start))
 	}()
 
+	req.QuotaCheck = quotaCheck
 	ws, err := s.Workspaces.Create(r.Context(), req)
 	if err != nil {
+		var quotaErr *quotaExceededError
+		if errors.As(err, &quotaErr) {
+			http.Error(w, quotaErr.Error(), http.StatusConflict)
+			return
+		}
 		if s.writeExternalAuthRequired(w, r, err) {
 			return
 		}

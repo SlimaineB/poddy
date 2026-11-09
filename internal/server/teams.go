@@ -8,9 +8,10 @@ import (
 )
 
 type teamInfo struct {
-	Name        string   `json:"name"`
-	Members     []string `json:"members,omitempty"`
-	MemberCount int      `json:"memberCount"`
+	Name        string      `json:"name"`
+	Members     []string    `json:"members,omitempty"`
+	MemberCount int         `json:"memberCount"`
+	Quota       *rbac.Quota `json:"quota,omitempty"`
 }
 
 func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +44,7 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 		if query != "" && !matchesSearch(query, append([]string{name}, team.Members...)...) {
 			continue
 		}
-		info := teamInfo{Name: name, MemberCount: len(team.Members)}
+		info := teamInfo{Name: name, MemberCount: len(team.Members), Quota: team.Quota}
 		if admin {
 			info.Members = nonNil(team.Members)
 		}
@@ -84,7 +85,8 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Members []string `json:"members"`
+		Members []string    `json:"members"`
+		Quota   *rbac.Quota `json:"quota"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -92,12 +94,28 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	quota := req.Quota
+	if quota != nil {
+		quota.Normalize()
+		if err := quota.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if quota.IsZero() {
+			quota = nil
+		}
+	}
+
 	members := rbac.Normalize(req.Members)
 	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
 		if cfg.Teams == nil {
 			cfg.Teams = map[string]rbac.Team{}
 		}
-		cfg.Teams[name] = rbac.Team{Members: members}
+		existing := cfg.Teams[name]
+		if req.Quota == nil {
+			quota = existing.Quota
+		}
+		cfg.Teams[name] = rbac.Team{Members: members, Quota: quota}
 		return nil
 	})
 	if err != nil {
@@ -111,6 +129,7 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 		Name:        name,
 		Members:     nonNil(members),
 		MemberCount: len(members),
+		Quota:       quota,
 	})
 }
 

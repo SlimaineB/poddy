@@ -1,7 +1,10 @@
 package k8s
 
 import (
+	"encoding/json"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func hasContainer(pod *corev1.Pod, name string) bool {
@@ -22,6 +25,7 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 	if pod.DeletionTimestamp != nil {
 		phase = "Terminating"
 	}
+	cpu, memory := resourceRequests(pod.Spec)
 	return Workspace{
 		Name:          pod.Labels[labelWorkspace],
 		Template:      pod.Labels[labelTemplate],
@@ -30,11 +34,15 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 		Owner:         Owner(pod),
 		Persistent:    hasPVC(pod),
 		BrowserVSCode: hasContainer(pod, BrowserVSCodeContainer),
+		CPU:           quantityString(cpu),
+		Memory:        quantityString(memory),
+		Storage:       storageFromPod(pod),
 		CreatedAt:     pod.CreationTimestamp.Time,
 	}
 }
 
 func workspaceFromState(state WorkspaceState, phase string) Workspace {
+	cpu, memory := resourceRequests(state.Spec)
 	return Workspace{
 		Name:          state.Name,
 		Template:      state.Template,
@@ -43,8 +51,42 @@ func workspaceFromState(state WorkspaceState, phase string) Workspace {
 		Owner:         state.Owner,
 		Persistent:    state.Persistent,
 		BrowserVSCode: hasContainerSpec(state.Spec, BrowserVSCodeContainer),
+		CPU:           quantityString(cpu),
+		Memory:        quantityString(memory),
+		Storage:       state.Storage,
 		CreatedAt:     state.CreatedAt,
 	}
+}
+
+func resourceRequests(spec corev1.PodSpec) (cpu, memory resource.Quantity) {
+	for _, container := range spec.Containers {
+		if quantity, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
+			cpu.Add(quantity)
+		}
+		if quantity, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+			memory.Add(quantity)
+		}
+	}
+	return cpu, memory
+}
+
+func quantityString(quantity resource.Quantity) string {
+	if quantity.IsZero() {
+		return ""
+	}
+	return quantity.String()
+}
+
+func storageFromPod(pod *corev1.Pod) string {
+	raw := pod.Annotations[annotationState]
+	if raw == "" {
+		return ""
+	}
+	var state WorkspaceState
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return ""
+	}
+	return state.Storage
 }
 
 func containerImage(pod *corev1.Pod, name string) string {

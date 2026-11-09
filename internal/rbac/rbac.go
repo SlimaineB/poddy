@@ -18,6 +18,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
@@ -40,9 +41,28 @@ type Identity struct {
 	Groups   []string
 }
 
+// Quota is an optional resource budget. A nil or empty field means unlimited.
+// Team quotas are defaults for their members; a user quota overrides the
+// corresponding team field.
+type Quota struct {
+	MaxWorkspaces *int   `json:"maxWorkspaces,omitempty" yaml:"maxWorkspaces,omitempty"`
+	CPU           string `json:"cpu,omitempty" yaml:"cpu,omitempty"`
+	Memory        string `json:"memory,omitempty" yaml:"memory,omitempty"`
+	Storage       string `json:"storage,omitempty" yaml:"storage,omitempty"`
+}
+
+// Usage is the projected resource usage checked against a quota.
+type Usage struct {
+	Workspaces int
+	CPU        resource.Quantity
+	Memory     resource.Quantity
+	Storage    resource.Quantity
+}
+
 // Team is a named group of users managed by the portal.
 type Team struct {
 	Members []string `json:"members,omitempty"`
+	Quota   *Quota   `json:"quota,omitempty" yaml:"quota,omitempty"`
 }
 
 // Access describes who can use and manage a template.
@@ -54,10 +74,11 @@ type Access struct {
 
 // Config is the RBAC document stored in the ConfigMap.
 type Config struct {
-	Admins    []string          `json:"admins,omitempty"`
-	Auditors  []string          `json:"auditors,omitempty"`
-	Teams     map[string]Team   `json:"teams,omitempty"`
-	Templates map[string]Access `json:"templates,omitempty"`
+	Admins     []string          `json:"admins,omitempty"`
+	Auditors   []string          `json:"auditors,omitempty"`
+	Teams      map[string]Team   `json:"teams,omitempty"`
+	UserQuotas map[string]Quota  `json:"userQuotas,omitempty" yaml:"userQuotas,omitempty"`
+	Templates  map[string]Access `json:"templates,omitempty"`
 }
 
 var teamName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$`)
@@ -67,6 +88,196 @@ func ValidateTeamName(name string) error {
 	name = strings.TrimSpace(name)
 	if !teamName.MatchString(name) {
 		return fmt.Errorf("invalid team name %q: use letters, numbers, dots, dashes or underscores", name)
+	}
+	return nil
+}
+
+// IsZero reports whether the quota has no configured limit.
+func (q Quota) IsZero() bool {
+	return q.MaxWorkspaces == nil &&
+		strings.TrimSpace(q.CPU) == "" &&
+		strings.TrimSpace(q.Memory) == "" &&
+		strings.TrimSpace(q.Storage) == ""
+}
+
+// Normalize trims whitespace from resource fields.
+func (q *Quota) Normalize() {
+	if q == nil {
+		return
+	}
+	q.CPU = strings.TrimSpace(q.CPU)
+	q.Memory = strings.TrimSpace(q.Memory)
+	q.Storage = strings.TrimSpace(q.Storage)
+}
+
+// Validate checks that quota values are non-negative Kubernetes quantities.
+func (q Quota) Validate() error {
+	if q.MaxWorkspaces != nil && *q.MaxWorkspaces < 0 {
+		return fmt.Errorf("maxWorkspaces must be zero or greater")
+	}
+	for name, value := range map[string]string{
+		"cpu":     q.CPU,
+		"memory":  q.Memory,
+		"storage": q.Storage,
+	} {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		quantity, err := resource.ParseQuantity(value)
+		if err != nil {
+			return fmt.Errorf("invalid %s %q: %w", name, value, err)
+		}
+		if quantity.Sign() < 0 {
+			return fmt.Errorf("%s must be zero or greater", name)
+		}
+	}
+	return nil
+}
+
+// Check returns an error when the projected usage exceeds the quota.
+func (q Quota) Check(usage Usage) error {
+	if q.MaxWorkspaces != nil && usage.Workspaces > *q.MaxWorkspaces {
+		return fmt.Errorf("workspace quota exceeded: %d of %d", usage.Workspaces, *q.MaxWorkspaces)
+	}
+	checks := []struct {
+		name  string
+		limit string
+		used  resource.Quantity
+	}{
+		{"CPU", q.CPU, usage.CPU},
+		{"memory", q.Memory, usage.Memory},
+		{"storage", q.Storage, usage.Storage},
+	}
+	for _, check := range checks {
+		limit := strings.TrimSpace(check.limit)
+		if limit == "" {
+			continue
+		}
+		quantity, err := resource.ParseQuantity(limit)
+		if err != nil {
+			return fmt.Errorf("invalid %s quota %q: %w", check.name, limit, err)
+		}
+		if check.used.Cmp(quantity) > 0 {
+			return fmt.Errorf("%s quota exceeded: %s of %s", check.name, check.used.String(), limit)
+		}
+	}
+	return nil
+}
+
+// Validate checks team and user quota entries.
+func (c Config) Validate() error {
+	for name, team := range c.Teams {
+		if err := ValidateTeamName(name); err != nil {
+			return err
+		}
+		if team.Quota == nil {
+			continue
+		}
+		quota := *team.Quota
+		quota.Normalize()
+		if err := quota.Validate(); err != nil {
+			return fmt.Errorf("team %q quota: %w", name, err)
+		}
+	}
+	for identity, quota := range c.UserQuotas {
+		if strings.TrimSpace(identity) == "" {
+			return fmt.Errorf("user quota identity is empty")
+		}
+		quota.Normalize()
+		if err := quota.Validate(); err != nil {
+			return fmt.Errorf("user %q quota: %w", identity, err)
+		}
+	}
+	return nil
+}
+
+// UserQuota returns the explicit user override, if any. Keys may be a plain
+// username/email, user:<username>, or email:<email>.
+func (c Config) UserQuota(id Identity) (Quota, bool) {
+	candidates := []string{id.Username, id.Email}
+	if id.Username != "" {
+		candidates = append(candidates, "user:"+id.Username)
+	}
+	if id.Email != "" {
+		candidates = append(candidates, "email:"+id.Email)
+	}
+	keys := make([]string, 0, len(c.UserQuotas))
+	for key := range c.UserQuotas {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		for _, candidate := range candidates {
+			if candidate != "" && strings.EqualFold(strings.TrimSpace(key), candidate) {
+				return c.UserQuotas[key], true
+			}
+		}
+	}
+	return Quota{}, false
+}
+
+// EffectiveQuota resolves a user override field by field, then fills missing
+// fields from the most permissive team quota. No quota means unlimited.
+func (c Config) EffectiveQuota(id Identity) (Quota, error) {
+	user, hasUser := c.UserQuota(id)
+	user.Normalize()
+	out := user
+	names := c.TeamNames()
+	for _, name := range names {
+		team := c.Teams[name]
+		if team.Quota == nil || !c.InTeam(name, id) {
+			continue
+		}
+		quota := *team.Quota
+		quota.Normalize()
+		if err := out.fillMostPermissive(quota, user, hasUser); err != nil {
+			return Quota{}, fmt.Errorf("team %q quota: %w", name, err)
+		}
+	}
+	return out, nil
+}
+
+func (q *Quota) fillMostPermissive(team, user Quota, hasUser bool) error {
+	if !hasUser || user.MaxWorkspaces == nil {
+		if q.MaxWorkspaces == nil {
+			q.MaxWorkspaces = team.MaxWorkspaces
+		} else if team.MaxWorkspaces != nil && *team.MaxWorkspaces > *q.MaxWorkspaces {
+			q.MaxWorkspaces = team.MaxWorkspaces
+		}
+	}
+	fields := []struct {
+		name  string
+		value *string
+		user  string
+		team  string
+	}{
+		{"cpu", &q.CPU, user.CPU, team.CPU},
+		{"memory", &q.Memory, user.Memory, team.Memory},
+		{"storage", &q.Storage, user.Storage, team.Storage},
+	}
+	for _, field := range fields {
+		if hasUser && strings.TrimSpace(field.user) != "" {
+			continue
+		}
+		if strings.TrimSpace(field.team) == "" {
+			continue
+		}
+		if strings.TrimSpace(*field.value) == "" {
+			*field.value = field.team
+			continue
+		}
+		current, err := resource.ParseQuantity(*field.value)
+		if err != nil {
+			return fmt.Errorf("invalid %s %q: %w", field.name, *field.value, err)
+		}
+		candidate, err := resource.ParseQuantity(field.team)
+		if err != nil {
+			return fmt.Errorf("invalid %s %q: %w", field.name, field.team, err)
+		}
+		if candidate.Cmp(current) > 0 {
+			*field.value = field.team
+		}
 	}
 	return nil
 }
@@ -122,6 +333,9 @@ func (s *Store) Update(ctx context.Context, mutate func(*Config) error) (Config,
 			}
 		}
 		if err := mutate(&cfg); err != nil {
+			return err
+		}
+		if err := cfg.Validate(); err != nil {
 			return err
 		}
 		raw, err := cfg.Marshal()

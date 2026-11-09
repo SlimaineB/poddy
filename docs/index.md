@@ -68,11 +68,12 @@ never need a kubeconfig.
   including live backups and copies between volumes, custom images, and
   templates that declare CPU, memory, storage, and links.
 - **Team-ready access.** OIDC / SSO, global admins, read-only auditors,
-  template owners, teams, and per-template access.
+  template owners, teams, per-template access, and per-user quotas with team
+  defaults.
 - **No database required.** Kubernetes ConfigMaps and Secrets are the source of
   truth. An optional PostgreSQL mirror adds metadata durability, an audit log,
   and disaster-recovery snapshots without becoming the source of truth for
-  workspace or RBAC decisions.
+  workspace, quota, or RBAC decisions.
 - **No cluster credentials for users.** The portal talks to the Kubernetes API;
   users only need a browser or an SSH key.
 - **Observable by default.** Prometheus metrics cover HTTP traffic, workspace

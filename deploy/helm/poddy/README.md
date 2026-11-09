@@ -156,7 +156,8 @@ name (without the leading `v`) is used.
 | `rbac.createConfigMap` | `true` | Seed the RBAC ConfigMap on install. |
 | `rbac.admins` | `[]` | Global admins (emails, `user:`, `group:`). |
 | `rbac.auditors` | `[]` | Read-only audit viewers (emails, `user:`, `group:`). |
-| `rbac.teams` | `{}` | Teams and members. |
+| `rbac.teams` | `{}` | Teams, members, and optional quota defaults. |
+| `rbac.userQuotas` | `{}` | Per-user quota overrides (maxWorkspaces, cpu, memory, storage). |
 | `rbac.templates` | `{}` | Template owners/users/teams. |
 | `rbac.extraRules` | `[]` | Extra PolicyRules to append. |
 | `serviceAccount.create` | `true` | Create ServiceAccount. |
@@ -287,8 +288,8 @@ database:
 ```
 
 Set `autoMigrate: false` when migrations are managed externally. The portal
-mirrors RBAC, OIDC users, templates, and workspaces; the bastion records SSH
-connections. Admins and `rbac.auditors` can read the trail from the **Audit**
+mirrors RBAC, OIDC users, templates, workspaces, and team/user quotas; the
+bastion records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
 page. See [docs/postgres-schema.md](../../../docs/postgres-schema.md) for the
 schema, audit actions, backup, and limitations.
 
@@ -390,6 +391,15 @@ rbac:
     backend:
       members:
         - alice@example.com
+      quota:
+        maxWorkspaces: 5
+        cpu: "4"
+        memory: "8Gi"
+        storage: "50Gi"
+  userQuotas:
+    alice@example.com:
+      maxWorkspaces: 2
+      cpu: "2"
   templates:
     go:
       owners:
