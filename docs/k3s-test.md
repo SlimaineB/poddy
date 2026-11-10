@@ -218,7 +218,7 @@ ssh -i ~/.ssh/poddy-clean \
 ```
 
 The **VS Code** button opens VS Code Desktop through the Poddy extension. Install
-the VSIX once with `code --install-extension poddy-remote-0.1.0.vsix`; the
+the VSIX once with `code --install-extension poddy-remote-<version>.vsix` (from the latest GitHub release or a local `npm run package`); the
 extension enrolls a machine key and writes a `# >>> poddy:<workspace>` block in
 the real `~/.ssh/config`. No manual key copy is needed. The **SSH** button
 remains a manual fallback and produces a `Host poddy-ssh-*` `ProxyJump`

@@ -195,6 +195,16 @@ func writeRegionError(w http.ResponseWriter, err error) {
 	http.Error(w, "region unavailable", http.StatusBadGateway)
 }
 
+func (s *Server) regionTunnel(w http.ResponseWriter, r *http.Request) {
+	if s.RegionTunnel == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.RegionTunnel.Serve(w, r); err != nil {
+		log.Printf("region tunnel: %v", err)
+	}
+}
+
 func (s *Server) regionExternalAuth(w http.ResponseWriter, r *http.Request) {
 	if s.Regions == nil {
 		http.Error(w, "not found", http.StatusNotFound)

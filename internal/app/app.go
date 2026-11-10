@@ -23,6 +23,7 @@ import (
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
 	"poddy/internal/config"
+	"poddy/internal/extension"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
@@ -67,12 +68,14 @@ func Run(ctx context.Context, args []string) error {
 		appMetrics = metrics.New()
 	}
 
-	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
+	metaStore, err := metadata.OpenWithRetry(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate, cfg.DatabaseConnectTimeout)
 	if err != nil {
-		return fmt.Errorf("metadata: %w", err)
+		log.Printf("metadata: PostgreSQL unavailable, continuing without metadata and audit: %v", err)
+		metaStore = metadata.Nop{}
 	}
 	defer metaStore.Close()
-	if cfg.DatabaseURL != "" {
+	metadataEnabled := metaStore.AuditEnabled()
+	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL mirror and audit enabled")
 	}
 
@@ -92,10 +95,12 @@ func Run(ctx context.Context, args []string) error {
 
 	rbacStore := rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap)
 	userStore := userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap)
-	if appMetrics != nil || cfg.DatabaseURL != "" {
+	if appMetrics != nil || metadataEnabled {
 		catalog.SetOnReload(func() {
-			appMetrics.TemplateReload("success")
-			if cfg.DatabaseURL == "" {
+			if appMetrics != nil {
+				appMetrics.TemplateReload("success")
+			}
+			if !metadataEnabled {
 				return
 			}
 			syncCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -210,7 +215,7 @@ func Run(ctx context.Context, args []string) error {
 
 	var metadataStore metadata.Store
 	var metadataAuditor metadata.Auditor
-	if cfg.DatabaseURL != "" {
+	if metadataEnabled {
 		metadataStore = metaStore
 		metadataAuditor = metaStore
 		if err := syncAll(ctx, cfg.Namespace, metaStore, rbacStore, userStore, manager, catalog); err != nil {
@@ -281,13 +286,53 @@ func Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("regions: %w", err)
 	}
 	var hub *region.Hub
+	var regionTunnel *tunnel.RegionBroker
 	if len(registry.All()) > 0 {
 		if cfg.RegionMode {
 			return fmt.Errorf("regions: region mode cannot also act as a central hub")
 		}
+		regionTunnel = tunnel.NewRegionBroker(func(name, token string) error {
+			cfg, ok := registry.Get(name)
+			if !ok {
+				return fmt.Errorf("unknown region %q", name)
+			}
+			claims, err := region.VerifyIdentity(cfg.Key, token)
+			if err != nil {
+				return err
+			}
+			if claims.Region != name || !claims.Admin {
+				return fmt.Errorf("invalid region identity")
+			}
+			return nil
+		})
 		hub = region.NewHub(registry)
+		hub.SetTunnel(regionTunnel)
 		log.Printf("central hub configured with %d regions", len(registry.All()))
 		go syncRegionKeys(ctx, hub, userKeyStore, 2*time.Minute)
+	}
+
+	if cfg.RegionMode && cfg.RegionHubURL != "" {
+		target := localHTTPTarget(cfg.Addr)
+		if target == "" {
+			return fmt.Errorf("region tunnel: cannot derive local HTTP target from %q", cfg.Addr)
+		}
+		agent := tunnel.NewRegionAgent(tunnel.RegionAgentConfig{
+			URL:    cfg.RegionHubURL,
+			Region: cfg.RegionName,
+			Target: target,
+			Token: func() (string, error) {
+				return region.SignIdentity(cfg.RegionKey, region.Identity{
+					User:   auth.User{Username: "region", Subject: cfg.RegionName},
+					Admin:  true,
+					Region: cfg.RegionName,
+				})
+			},
+		})
+		go func() {
+			if err := agent.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("region tunnel stopped: %v", err)
+			}
+		}()
 	}
 
 	var backups *backup.Store
@@ -320,6 +365,7 @@ func Run(ctx context.Context, args []string) error {
 		Local:             editor,
 		Forwards:          forwards,
 		Regions:           hub,
+		RegionTunnel:      regionTunnel,
 		RegionMode:        cfg.RegionMode,
 		RegionKey:         cfg.RegionKey,
 		RegionName:        cfg.RegionName,
@@ -337,8 +383,14 @@ func Run(ctx context.Context, args []string) error {
 		SSHEnabled:        cfg.SSHEnabled && (cfg.SSHAddr == "" || sshBastion != nil),
 		SSHCA:             sshCA,
 		SSHCertTTL:        cfg.SSHCertTTL,
-		OIDC:              oidcAuth,
-		OIDCRedirectURL:   cfg.OIDCRedirectURL,
+		VSCodeExtension: extension.Metadata{
+			ID:          cfg.VSCodeExtensionID,
+			Version:     cfg.VSCodeExtensionVersion,
+			ReleaseURL:  cfg.VSCodeExtensionReleaseURL,
+			DownloadURL: cfg.VSCodeExtensionDownloadURL,
+		},
+		OIDC:            oidcAuth,
+		OIDCRedirectURL: cfg.OIDCRedirectURL,
 
 		ExternalAuth:             externalAuth,
 		ExternalAuthURL:          cfg.ExternalAuthURL,
@@ -426,12 +478,14 @@ func RunBastion(ctx context.Context, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	metaStore, err := metadata.Open(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate)
+	metaStore, err := metadata.OpenWithRetry(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate, cfg.DatabaseConnectTimeout)
 	if err != nil {
-		return fmt.Errorf("metadata: %w", err)
+		log.Printf("metadata: PostgreSQL unavailable, continuing without audit: %v", err)
+		metaStore = metadata.Nop{}
 	}
 	defer metaStore.Close()
-	if cfg.DatabaseURL != "" {
+	metadataEnabled := metaStore.AuditEnabled()
+	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL audit enabled")
 	}
 
@@ -478,7 +532,7 @@ func RunBastion(ctx context.Context, args []string) error {
 	sshBastion.Broker = broker
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = sshCA
-	if cfg.DatabaseURL != "" {
+	if metadataEnabled {
 		sshBastion.Audit = metaStore
 	}
 	if err := sshBastion.Listen(); err != nil {

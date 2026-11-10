@@ -16,7 +16,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **VS Code launch**: Click **VS Code** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy VS Code extension (installed once) enrolls the machine key, writes the SSH config, and opens `vscode://` without manual setup. In local editor mode the portal launches Windows VS Code directly. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
-- **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion; the hub routes workspace operations, terminal, VS Code, logs, external-auth callbacks, and SSH-key sync to the correct region using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Regions](docs/regions.md).
+- **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion and opens an outbound WebSocket tunnel to the hub, so no VPN peering or hub-to-region inbound access is required. The hub routes workspace operations, terminal, VS Code, logs, external-auth callbacks, and SSH-key sync through the tunnel using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Regions](docs/regions.md).
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, security context, central-hub regions, and region-manager mode.
 - **Prometheus metrics**: A dedicated metrics listener exposes HTTP, workspace lifecycle, authentication, template reload, and workspace phase metrics, plus Go/process metrics. The Helm chart creates a ClusterIP metrics Service and can render a ServiceMonitor.
 - **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace, quota, or RBAC decisions; only the admin/auditor audit page reads it.
@@ -39,8 +39,10 @@ the portal for HTTP/API load and the bastion for SSH connections. In local mode,
 In multi-region mode, a central hub runs the portal UI and routes workspace
 requests to one region manager per Kubernetes cluster. Each region manager runs
 the same image in `-region-mode`, trusts only signed hub identities, and keeps
-its own workspace state, SSH bastion, and external-auth-free runtime. The hub
-remains the source of truth for users, RBAC, templates, and external-auth tokens.
+its own workspace state, SSH bastion, and external-auth-free runtime. Region
+managers connect outbound to the hub, so the hub does not need a private network
+path to the region cluster. The hub remains the source of truth for users, RBAC,
+templates, and external-auth tokens.
 
 ## Quick start (Helm + published images)
 
@@ -75,7 +77,7 @@ private, run `helm registry login ghcr.io` first.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.0 \
+  --version 0.1.2 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -116,7 +118,7 @@ Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set 
 - **Terminal**: Click the terminal icon for a browser shell in the workspace user home (`/home/dev`).
 - **SSH keys**: The **VS Code** button enrolls a dedicated `~/.ssh/poddy_<workspace>_ed25519` key automatically through the Poddy extension. You can also open **SSH keys** in the top bar and add any public key manually; keys are bound to your account and work for running workspaces (allow up to a minute for the Secret to reach the pod).
 - **SSH**: Click **SSH** to copy a ready-to-use SSH config (ProxyJump through the bastion).
-- **VS Code**: Click **VS Code** to open Remote-SSH on `/home/dev` in a new window. The first click on a machine requires installing the Poddy extension once (VSIX in `vscode-extension/`, or publish it to your marketplace); afterwards the flow is one click and needs no SSH setup.
+- **VS Code**: Click **VS Code** to open Remote-SSH on `/home/dev` in a new window. The first click on a machine requires installing the Poddy extension once; the portal shows the current extension version and download link, or use the latest [GitHub release](https://github.com/SlimaineB/poddy/releases) (built by CI) / `cd vscode-extension && npm ci && npm run package`. Afterwards the flow is one click and needs no SSH setup.
 - **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Ports**: Click **Ports** on a running workspace to open a dedicated ports window, see its listening TCP ports, and open an app in a new tab. The same list is available in workspace details. The portal authenticates the request, checks workspace ownership, port-forwards to the pod (through the central hub for remote regions), and proxies HTTP and WebSocket traffic. Apps bound to `127.0.0.1` work; apps that use root-relative asset URLs may need a base path. Use SSH `-L` for raw TCP.
 - **Template links**: Each template declares its own buttons for JetBrains, dashboards, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
@@ -292,6 +294,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
 - **Publish images** builds and pushes the portal/bastion image, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
+- **VS Code extension** packages the VSIX on changes and attaches it to `v*` GitHub releases; manual releases validate the tag, create it when needed, and update the release. Branch builds are available as workflow artifacts. The portal shows the extension version and download link.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
 Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, `ghcr.io/slimaineb/poddy-workspace`, `ghcr.io/slimaineb/poddy-workspace-node`, and `ghcr.io/slimaineb/poddy-workspace-python`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template. Set `workspace.imageRegistry` and `workspace.imagePullSecrets` to pull workspace and sidecar images through a private registry mirror.

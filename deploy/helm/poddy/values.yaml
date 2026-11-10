@@ -67,6 +67,8 @@ database:
   # Apply the embedded schema migrations on startup. Disable when migrations
   # are managed externally.
   autoMigrate: true
+  # How long to retry before starting without metadata and audit.
+  connectTimeout: 30s
 
 # Workspace volume backups to S3-compatible object storage. When enabled, the
 # portal creates a short-lived helper pod that mounts a stopped workspace volume
@@ -178,7 +180,6 @@ workspace:
 regions: []
 # - name: eu
 #   displayName: Europe
-#   url: http://poddy-eu.poddy-eu.svc.cluster.local
 #   key: a-long-random-region-key
 #   sshHost: ssh.eu.example.com
 #   sshPort: 2222
@@ -189,8 +190,7 @@ regionsExistingSecret: ""
 regionsKey: regions.yaml
 
 # Region manager only. Enable this in each region cluster. The region manager
-# trusts signed identities from the central hub and must not be exposed without
-# network controls.
+# opens an outbound tunnel to hubUrl and trusts signed identities from the hub.
 regionManager:
   enabled: false
   name: ""
@@ -377,6 +377,12 @@ metrics:
 portal:
   addr: ":8080"
 
+vscodeExtension:
+  id: ""
+  version: ""
+  releaseUrl: ""
+  downloadUrl: ""
+
 ingress:
   enabled: false
   className: ""
@@ -398,6 +404,7 @@ defaultTemplate: base
 
 podAnnotations: {}
 podLabels: {}
+hostAliases: []
 
 podSecurityContext:
   fsGroup: 65532

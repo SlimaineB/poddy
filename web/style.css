@@ -207,6 +207,41 @@ select {
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
 }
 
+.pill-link {
+  text-decoration: none;
+}
+
+.pill-link::before {
+  display: none;
+}
+
+.pill-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.pill .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.extension-release {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+
+.extension-release .hint {
+  margin: 4px 0 0;
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -2557,6 +2592,11 @@ select {
 
   .pill {
     display: none;
+  }
+
+  .extension-release {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .region-switcher select {

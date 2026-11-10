@@ -19,6 +19,7 @@ const (
 
 	frameHeaderSize = 5
 	maxFrameSize    = 1 << 20
+	maxPayloadSize  = maxFrameSize - frameHeaderSize
 )
 
 var (
@@ -111,10 +112,19 @@ func (s *stream) Write(p []byte) (int, error) {
 	if closed {
 		return 0, io.ErrClosedPipe
 	}
-	if err := s.session.writeFrame(frameData, s.id, p); err != nil {
-		return 0, err
+	written := 0
+	for len(p) > 0 {
+		chunk := p
+		if len(chunk) > maxPayloadSize {
+			chunk = chunk[:maxPayloadSize]
+		}
+		if err := s.session.writeFrame(frameData, s.id, chunk); err != nil {
+			return written, err
+		}
+		written += len(chunk)
+		p = p[len(chunk):]
 	}
-	return len(p), nil
+	return written, nil
 }
 
 func (s *stream) Close() error {

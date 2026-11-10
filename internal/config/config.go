@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"poddy/internal/extension"
 )
 
 type Config struct {
@@ -48,8 +50,9 @@ type Config struct {
 	BackupS3UseSSL    bool
 	BackupHelperImage string
 
-	DatabaseURL         string
-	DatabaseAutoMigrate bool
+	DatabaseURL            string
+	DatabaseAutoMigrate    bool
+	DatabaseConnectTimeout time.Duration
 
 	SSHEnabled           bool
 	SSHAddr              string
@@ -68,6 +71,11 @@ type Config struct {
 	AgentKey             string
 	AgentTokenTTL        time.Duration
 
+	VSCodeExtensionID          string
+	VSCodeExtensionVersion     string
+	VSCodeExtensionReleaseURL  string
+	VSCodeExtensionDownloadURL string
+
 	OIDCIssuer           string
 	OIDCDiscoveryURL     string
 	OIDCAuthorizationURL string
@@ -85,6 +93,7 @@ type Config struct {
 }
 
 func Load(args []string) (Config, error) {
+	ext := extension.Default()
 	cfg := Config{
 		Addr:                      env("PODDY_ADDR", ":8090"),
 		MetricsAddr:               os.Getenv("PODDY_METRICS_ADDR"),
@@ -123,8 +132,9 @@ func Load(args []string) (Config, error) {
 		BackupS3UseSSL:    envBool("PODDY_BACKUP_S3_USE_SSL", true),
 		BackupHelperImage: env("PODDY_BACKUP_HELPER_IMAGE", "busybox:1.36"),
 
-		DatabaseURL:         os.Getenv("PODDY_DATABASE_URL"),
-		DatabaseAutoMigrate: envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
+		DatabaseURL:            os.Getenv("PODDY_DATABASE_URL"),
+		DatabaseAutoMigrate:    envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
+		DatabaseConnectTimeout: envDuration("PODDY_DATABASE_CONNECT_TIMEOUT", 30*time.Second),
 
 		SSHEnabled:           envBool("PODDY_SSH_ENABLED", true),
 		SSHAddr:              env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
@@ -142,6 +152,11 @@ func Load(args []string) (Config, error) {
 		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
 		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
 		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", 7*24*time.Hour),
+
+		VSCodeExtensionID:          env("PODDY_VSCODE_EXTENSION_ID", ext.ID),
+		VSCodeExtensionVersion:     env("PODDY_VSCODE_EXTENSION_VERSION", ext.Version),
+		VSCodeExtensionReleaseURL:  env("PODDY_VSCODE_EXTENSION_RELEASE_URL", ext.ReleaseURL),
+		VSCodeExtensionDownloadURL: env("PODDY_VSCODE_EXTENSION_DOWNLOAD_URL", ext.DownloadURL),
 
 		OIDCIssuer:           os.Getenv("PODDY_OIDC_ISSUER"),
 		OIDCDiscoveryURL:     os.Getenv("PODDY_OIDC_DISCOVERY_URL"),
@@ -196,6 +211,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.BackupHelperImage, "backup-helper-image", cfg.BackupHelperImage, "image used by temporary volume backup pods")
 	fs.StringVar(&cfg.DatabaseURL, "database-url", cfg.DatabaseURL, "PostgreSQL URL for optional metadata mirror and audit events")
 	fs.BoolVar(&cfg.DatabaseAutoMigrate, "database-auto-migrate", cfg.DatabaseAutoMigrate, "apply embedded PostgreSQL migrations on startup")
+	fs.DurationVar(&cfg.DatabaseConnectTimeout, "database-connect-timeout", cfg.DatabaseConnectTimeout, "how long to retry PostgreSQL before disabling metadata and audit")
 	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
 	fs.StringVar(&cfg.SSHAddr, "ssh-addr", cfg.SSHAddr, "SSH bastion listen address, empty disables the local bastion")
 	fs.StringVar(&cfg.SSHHostKey, "ssh-host-key", cfg.SSHHostKey, "SSH bastion host key path")
@@ -212,6 +228,10 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.AgentURL, "agent-url", cfg.AgentURL, "URL injected into workspaces for the agent tunnel")
 	fs.StringVar(&cfg.AgentKey, "agent-key", cfg.AgentKey, "shared key used to sign and verify workspace agent tokens")
 	fs.DurationVar(&cfg.AgentTokenTTL, "agent-token-ttl", cfg.AgentTokenTTL, "lifetime of workspace agent tokens")
+	fs.StringVar(&cfg.VSCodeExtensionID, "vscode-extension-id", cfg.VSCodeExtensionID, "VS Code extension identifier shown in the portal")
+	fs.StringVar(&cfg.VSCodeExtensionVersion, "vscode-extension-version", cfg.VSCodeExtensionVersion, "VS Code extension version shown in the portal")
+	fs.StringVar(&cfg.VSCodeExtensionReleaseURL, "vscode-extension-release-url", cfg.VSCodeExtensionReleaseURL, "VS Code extension release page")
+	fs.StringVar(&cfg.VSCodeExtensionDownloadURL, "vscode-extension-download-url", cfg.VSCodeExtensionDownloadURL, "VS Code extension VSIX download URL")
 
 	fs.StringVar(&cfg.OIDCIssuer, "oidc-issuer", cfg.OIDCIssuer, "OIDC issuer URL (enables OIDC login)")
 	fs.StringVar(&cfg.OIDCDiscoveryURL, "oidc-discovery-url", cfg.OIDCDiscoveryURL, "OIDC discovery URL (defaults to the issuer)")

@@ -4,13 +4,32 @@
   "description": "Open Poddy workspaces in VS Code Remote-SSH without editing your SSH config.",
   "publisher": "slimaineb",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SlimaineB/poddy.git",
+    "directory": "vscode-extension"
+  },
   "engines": {
     "vscode": "^1.84.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "poddy",
+    "remote-ssh",
+    "workspace"
+  ],
   "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js",
+    "vscode:prepublish": "npm run check",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.1.0"
+  },
   "activationEvents": [
     "onUri"
   ],

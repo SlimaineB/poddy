@@ -455,8 +455,9 @@ The Helm chart's top-level `imagePullSecrets` applies only to the portal and bas
 
 - The UI sends `parameters` from the create dialog (only declared parameters).
 - Deprecated API fields `cpu`, `memory`, `storage` in `CreateRequest` override parameters of the same name (for backward compatibility).
-- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The defaults mount it at `/home/dev`; a template can override the `workspace` volume or mount. Set `workspace.storageClass` in the Helm chart (or `PODDY_STORAGE_CLASS`) to apply a default when the template leaves the parameter empty.
+- `storage` and `storageClass` are special: if `storage` is non-empty, the portal creates a PVC named `poddy-<workspace>` in the workspace namespace using the given `storageClass` (or default). The defaults mount it at `/home/dev`; a template can override the `workspace` volume or mount. Set `workspace.storageClass` in the Helm chart (or `PODDY_STORAGE_CLASS`) to apply a default when the template omits the parameter or leaves it empty.
 - Set `workspace.imageRegistry` in the Helm chart (or `PODDY_IMAGE_REGISTRY`) to rewrite workspace and sidecar images through a registry mirror. The mirror must expose the same image paths. Set `workspace.imagePullSecrets` (or `PODDY_WORKSPACE_IMAGE_PULL_SECRETS`) for a private mirror; the Secrets must exist in the workspace namespace.
+- Limitation: `workspace.imageRegistry` is a single global prefix. Poddy replaces the original registry host and keeps the repository path; it does not support per-host or per-image mirror mappings.
 - If you don't want a PVC, set `storage` default to `""` in your template. The defaults then use an `emptyDir`; a template can still define additional PVCs of its own.
 
 ## Validation & debugging

@@ -57,6 +57,10 @@
           New workspace
         </button>
         <span id="ssh-endpoint" class="pill" hidden></span>
+        <a id="vscode-extension" class="pill pill-link" href="#" target="_blank" rel="noopener" hidden>
+          <svg class="icon"><use href="#icon-vscode"></use></svg>
+          <span>VS Code ext <span id="vscode-extension-version"></span></span>
+        </a>
         <button id="user-chip" class="user-chip" type="button" title="Account settings" hidden>
           <span id="user-avatar" class="user-avatar"></span>
           <span id="user-name" class="user-name"></span>
@@ -636,6 +640,16 @@
         <pre class="code-block"><code id="ssh-config"></code></pre>
       </div>
       <p id="ssh-note" class="hint"></p>
+      <div id="vscode-extension-release" class="extension-release" hidden>
+        <div>
+          <strong>Poddy Remote <span id="vscode-extension-release-version"></span></strong>
+          <p class="hint">Install the VS Code extension once to open workspaces without editing SSH config.</p>
+        </div>
+        <a id="vscode-extension-download" class="button ghost small" href="#" target="_blank" rel="noopener">
+          <svg class="icon"><use href="#icon-external"></use></svg>
+          <span id="vscode-extension-download-label">Download VSIX</span>
+        </a>
+      </div>
     </div>
     <footer class="dialog-footer">
       <button id="copy-ssh" class="button ghost" type="button">

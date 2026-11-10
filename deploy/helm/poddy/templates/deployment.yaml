@@ -89,6 +89,10 @@ spec:
       {{- with .Values.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -117,8 +121,8 @@ spec:
             {{- end }}
             {{- if .Values.regionManager.enabled }}
             - -region-mode=true
-            - -region-name={{ .Values.regionManager.name }}
-            - -region-hub-url={{ .Values.regionManager.hubUrl }}
+            - -region-name={{ required "regionManager.name is required when enabled" .Values.regionManager.name }}
+            - -region-hub-url={{ required "regionManager.hubUrl is required when enabled" .Values.regionManager.hubUrl }}
             - -instance-id=$(PODDY_INSTANCE_ID)
             {{- end }}
             {{- if .Values.ssh.enabled }}
@@ -204,6 +208,8 @@ spec:
                   key: {{ .Values.database.urlKey }}
             - name: PODDY_DATABASE_AUTO_MIGRATE
               value: {{ .Values.database.autoMigrate | quote }}
+            - name: PODDY_DATABASE_CONNECT_TIMEOUT
+              value: {{ .Values.database.connectTimeout | quote }}
             {{- end }}
             {{- if .Values.oidc.enabled }}
             - name: PODDY_OIDC_ISSUER
@@ -373,6 +379,22 @@ spec:
               value: /etc/poddy/ssh-ca/{{ .Values.ssh.ca.keyKey }}
             - name: PODDY_SSH_CERT_TTL
               value: {{ .Values.ssh.certTtl | quote }}
+            {{- end }}
+            {{- with .Values.vscodeExtension.id }}
+            - name: PODDY_VSCODE_EXTENSION_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.vscodeExtension.version }}
+            - name: PODDY_VSCODE_EXTENSION_VERSION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.vscodeExtension.releaseUrl }}
+            - name: PODDY_VSCODE_EXTENSION_RELEASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.vscodeExtension.downloadUrl }}
+            - name: PODDY_VSCODE_EXTENSION_DOWNLOAD_URL
+              value: {{ . | quote }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

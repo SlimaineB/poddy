@@ -44,7 +44,8 @@ Registry overrides are separate:
 - **Workspace and sidecar images**: set `workspace.imageRegistry` to a mirror
   that exposes the same image paths, and `workspace.imagePullSecrets` for a
   private registry. Individual templates can still set `image` or override a
-  sidecar.
+  sidecar. The registry setting is a single global prefix; per-host mirror
+  mappings are not supported.
 - **Helm chart**: install from your OCI mirror or from the source path
   `deploy/helm/poddy` instead of `oci://ghcr.io/slimaineb/charts/poddy`.
 
@@ -120,9 +121,39 @@ database:
 
 The chart injects `PODDY_DATABASE_URL` into the portal and bastion. The portal
 applies embedded migrations on startup by default. Set `autoMigrate: false` if
-migrations are managed externally. If PostgreSQL is configured but unreachable
-at startup, the portal exits; later audit/sync failures are logged without
-blocking workspace operations.
+migrations are managed externally. If PostgreSQL is configured but not ready,
+the portal retries for `database.connectTimeout` (default `30s`) and then starts
+without metadata and audit; later audit/sync failures are logged without
+blocking workspace operations. Restart the portal after the database is
+available to re-enable the mirror and audit page.
+
+#### PostgreSQL on EBS
+
+Poddy does not deploy PostgreSQL. With the official `postgres` image on an
+EBS-backed PVC, set `PGDATA` to a subdirectory. Otherwise `initdb` fails because
+the volume root contains `lost+found`.
+
+```yaml
+spec:
+  containers:
+    - name: postgres
+      image: postgres:16
+      env:
+        - name: POSTGRES_DB
+          value: poddy
+        - name: POSTGRES_USER
+          value: poddy
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+```
 
 ### 3. Minimal values.yaml
 ```yaml
@@ -183,10 +214,10 @@ ingress:
 ### 4. Install
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.0 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.2 -f values.yaml
 
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.0 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.2 -f templates-values.yaml
 ```
 If the GHCR chart package is private, run `helm registry login ghcr.io` first. From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.0` with the published chart version when a new release is cut.
 
@@ -219,16 +250,17 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
 - **ConfigMap size**: stopped workspace specs and RBAC/users data live in ConfigMaps (1 MiB limit per ConfigMap). Thousands of stopped workspaces with large rendered specs will hit this limit.
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
-- **HA**: portal replicas are stateless except for the OIDC session key (and external-auth key when providers are enabled). Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains.
+- **HA**: portal replicas are stateless except for the OIDC session key, the external-auth key when providers are enabled, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and quota reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace, quota, or RBAC decisions; it does not remove the ConfigMap size limit by itself.
 
 ### Replicas and namespaces
 
-- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable VS Code desktop tickets.
+- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable VS Code desktop tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
 - **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
 - **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
 - **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads require PostgreSQL; the page returns `501` when the database is not configured.
+- **DNS overrides**: set `hostAliases` to add `/etc/hosts` entries to the portal and bastion pods, for example when OIDC or a database hostname is not resolvable through cluster DNS.
 
 ### Multi-region
 
@@ -242,16 +274,21 @@ See [Regions](regions.md) for the full step-by-step checklist to add, verify,
 rotate, and remove a region.
 
 ```text
-Browser ──► central hub ── signed identity ──► region manager (eu) ──► pods
-                       └─ signed identity ──► region manager (us) ──► pods
+Browser ──► central hub ── signed identity ──► region tunnel (eu) ──► region manager ──► pods
+                       └─ signed identity ──► region tunnel (us) ──► region manager ──► pods
+
+region manager ── outbound WSS ──► central hub
 ```
 
-The hub sends `X-Poddy-Region-Identity`, an HMAC-signed short-lived identity
-(2 minutes) containing the user and admin flag. Region managers reject every
-untrusted request, including direct browser requests without the signature.
-Workspace operations, logs, terminal WebSocket, browser VS Code, SSH details,
-desktop tickets, and external-auth workspace callbacks are routed by the hub.
-SSH public keys are replicated from the hub registry to every region.
+Each region manager opens an outbound WebSocket tunnel to the hub. No VPN
+peering or hub-to-region inbound access is required. The hub sends
+`X-Poddy-Region-Identity`, an HMAC-signed short-lived identity (2 minutes)
+containing the user and admin flag. Region managers reject every untrusted
+request, including direct browser requests without the signature. Workspace
+operations, logs, terminal WebSocket, browser VS Code, SSH details, desktop
+tickets, and external-auth workspace callbacks are routed by the hub through
+the tunnel. SSH public keys are replicated from the hub registry to every
+region.
 
 Central hub values:
 
@@ -266,7 +303,6 @@ The Secret must contain a `regions.yaml` file:
 regions:
   - name: eu
     displayName: Europe
-    url: http://poddy-eu.poddy-eu.svc.cluster.local
     key: <same random key as regionManager.key in the eu cluster>
     sshHost: ssh.eu.example.com
     sshPort: 2222
@@ -275,7 +311,6 @@ regions:
     default: true
   - name: us
     displayName: United States
-    url: http://poddy-us.poddy-us.svc.cluster.local
     key: <same random key as regionManager.key in the us cluster>
     sshHost: ssh.us.example.com
     sshPort: 2222
@@ -285,7 +320,9 @@ regions:
 
 `lat` and `lon` are optional coordinates for the World map view. Regions
 without them fall back to coordinates based on the region name, then to
-`0, 0`.
+`0, 0`. `url` is optional; omit it for tunnel-only routing. If set, the hub
+falls back to direct HTTP when the tunnel is down, which still requires a
+network path from the hub to the region.
 
 The top bar region filter applies to workspace lists, topology, and the world map.
 
@@ -305,13 +342,15 @@ ssh:
   existingHostKeySecret: poddy-host-key
 ```
 
-Use a private network or NetworkPolicy between the hub and region managers.
-Region keys are shared secrets: rotate them by updating the hub Secret and the
-region Secret, then restarting the region Deployment. The hub tolerates a
-region being unavailable for list/topology by returning partial data and
-logging the failure; workspace-specific requests return `502` until the region
-recovers. Cross-region placement is explicit at creation time; there is no
-automatic failover of an existing workspace between regions.
+The hub ingress must forward WebSocket upgrades for
+`/api/internal/region/tunnel`. Region keys are shared secrets: rotate them by
+updating the hub Secret and the region Secret, then restarting the region
+Deployment. The hub tolerates a region being unavailable for list/topology by
+returning partial data and logging the failure; workspace-specific requests
+return `502` until the region tunnel reconnects. Tunnel sessions live in the
+hub process, so run a single hub replica or configure sticky routing when using
+region tunnels. Cross-region placement is explicit at creation time; there is
+no automatic failover of an existing workspace between regions.
 - **Workspace namespace**: `workspaceNamespace` defaults to the release namespace. Set it to a dedicated namespace (e.g., `team-a`) to isolate teams.
   - `createWorkspaceNamespace: true` creates the namespace. **Warning**: `helm uninstall` will delete that namespace and all workspaces inside it. For production, create the namespace yourself (`kubectl create ns team-a`) and set `createWorkspaceNamespace: false`.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
@@ -459,7 +498,7 @@ A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@examp
 - For local clusters, a NodePort works (`ssh.service.type: NodePort`); users connect to `<node-ip>:<nodePort>`.
 - Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 
-**VS Code Desktop**: the **VS Code** button targets VS Code Desktop, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from `vscode-extension/` once per machine) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows VS Code.
+**VS Code Desktop**: the **VS Code** button targets VS Code Desktop, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from the latest GitHub release once per machine) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The portal shows the current extension version and a VSIX download link in the top bar and in the **SSH** dialog; override `vscodeExtension.*` when you host releases elsewhere. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows VS Code.
 
 **Short-lived certificates**: the portal exposes `POST /api/me/ssh-certificate` and signs certificates with the CA mounted from `ssh.ca`. Workspace `authorized_keys` includes the matching `cert-authority` line, so the same certificate authenticates to the bastion and to workspace `sshd`. The CA line is loopback-restricted only when `ssh.requireAgent=true`; with the port-forward fallback it is unrestricted. See [SSH access](ssh.md).
 
@@ -741,9 +780,9 @@ Set `database.url` or `database.existingSecret` in the Helm chart, or
 workspaces, and team/user quotas, and records audit events; the bastion records
 SSH audit events. Kubernetes remains authoritative and PostgreSQL is never read
 for access or quota decisions. If PostgreSQL is configured but unavailable at
-startup, the process
-exits; if it fails later, sync/audit errors are logged and workspace operations
-continue. Back up PVCs with volume snapshots or the built-in
+startup, the process retries for `database.connectTimeout` and then continues
+without the mirror and audit; if it fails later, sync/audit errors are logged
+and workspace operations continue. Back up PVCs with volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
 for migrations, tables, and restore guidance.
 
@@ -758,7 +797,7 @@ for migrations, tables, and restore guidance.
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
 | No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
-| VS Code does nothing or cannot connect | Install/update the Poddy VS Code extension (VSIX from `vscode-extension/`), then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
+| VS Code does nothing or cannot connect | Install/update the Poddy VS Code extension (VSIX from the latest GitHub release), then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
 | **VS Code Web** button is missing | The workspace pod has no `code-server` container. Check that the template declares `browserVSCode` with default `"true"` (or explicitly `"true"`), and that the workspace was not created with `browserVSCode: "false"`. |
 | **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
@@ -793,7 +832,7 @@ if unauthenticated users should install them.
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.0 -f values.yaml
+  -n poddy-system --version 0.1.2 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.

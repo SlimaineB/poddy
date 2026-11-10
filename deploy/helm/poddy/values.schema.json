@@ -7,6 +7,27 @@
       "type": "integer",
       "minimum": 0
     },
+    "hostAliases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ip",
+          "hostnames"
+        ],
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "hostnames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
     "image": {
       "type": "object",
       "properties": {
@@ -464,6 +485,23 @@
         }
       }
     },
+    "vscodeExtension": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "releaseUrl": {
+          "type": "string"
+        },
+        "downloadUrl": {
+          "type": "string"
+        }
+      }
+    },
     "ingress": {
       "type": "object",
       "properties": {
@@ -497,6 +535,9 @@
         },
         "autoMigrate": {
           "type": "boolean"
+        },
+        "connectTimeout": {
+          "type": "string"
         }
       }
     },
@@ -556,7 +597,6 @@
         "type": "object",
         "required": [
           "name",
-          "url",
           "key"
         ],
         "properties": {
@@ -568,8 +608,7 @@
             "type": "string"
           },
           "url": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "lat": {
             "type": "number",

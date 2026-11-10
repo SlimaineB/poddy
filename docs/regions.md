@@ -7,11 +7,16 @@ Kubernetes API connection, workspace pods, PVCs, stopped-state ConfigMap,
 terminal and VS Code proxying, and the region SSH bastion.
 
 ```text
-Browser ──► central hub ── signed identity ──► region manager (eu) ──► pods
-                       └─ signed identity ──► region manager (us) ──► pods
+Browser ──► central hub ── signed identity ──► region tunnel (eu) ──► region manager ──► pods
+                       └─ signed identity ──► region tunnel (us) ──► region manager ──► pods
+
+region manager ── outbound WSS ──► central hub
 ```
 
-The hub sends `X-Poddy-Region-Identity`, an HMAC-signed short-lived identity
+Each region manager opens an outbound WebSocket tunnel to the hub. The hub
+routes workspace HTTP and WebSocket traffic through that tunnel, so it does not
+need inbound access to the region cluster and no VPN peering is required. The
+hub sends `X-Poddy-Region-Identity`, an HMAC-signed short-lived identity
 (2 minutes) containing the user and admin flag. Region managers reject every
 untrusted request, including direct browser requests without the signature.
 Workspace operations, logs, terminal WebSocket, browser VS Code, SSH details,
@@ -32,8 +37,20 @@ SSH public keys are replicated from the hub registry to every region.
 
 Region managers do not need OIDC. They only accept requests signed by the hub.
 Do not expose a region manager portal Service publicly; the hub proxies all
-user traffic. Use a private network or NetworkPolicy between the hub and region
-managers.
+user traffic through the outbound tunnel.
+
+### Network requirements
+
+- Hub ingress: HTTPS/WSS `443` from users and from region managers. The ingress
+  must forward WebSocket upgrades for `/api/internal/region/tunnel`.
+- Region manager egress: HTTPS/WSS to `regionManager.hubUrl`.
+- No hub-to-region inbound path and no VPN peering are required.
+- Region SSH bastions remain directly reachable by users on their public
+  `sshHost`/`sshPort`.
+
+Tunnel sessions live in the hub process. When using region tunnels, run a
+single hub replica or configure sticky routing so all hub requests reach the
+replica that owns the region tunnel.
 
 ## Add a region
 
@@ -104,9 +121,8 @@ auth:
 regionManager:
   enabled: true
   name: eu
-  # Reachable from the region manager. Use the public hub URL when the hub is
-  # in another cluster.
-  hubUrl: http://poddy.poddy-system.svc.cluster.local
+  # Public hub URL. The region manager opens an outbound WSS tunnel to it.
+  hubUrl: https://poddy.example.com
   existingSecret: poddy-eu-region-key
   keyKey: region-key
 
@@ -116,7 +132,7 @@ createWorkspaceNamespace: false
 rbac:
   create: true
   createConfigMap: false
-  # Required by workspace schedules in chart 0.1.0, which updates the
+  # Required by workspace schedules in current charts, which update the
   # schedule annotation on the workspace Pod. Remove this once the chart Role
   # includes pods update/patch.
   extraRules:
@@ -140,7 +156,7 @@ ssh:
     port: 2222
     nodePort: 30224
 
-# The hub reaches the region manager through its ClusterIP Service.
+# The hub uses the outbound tunnel. This Service is local to the region.
 http:
   service:
     type: ClusterIP
@@ -153,24 +169,27 @@ metrics:
   enabled: false
 ```
 
-`sshHost` and `sshPort` on the hub must point to the endpoint users can reach,
-not to the internal `http` Service. On a cloud load balancer, use the region
-bastion's external hostname and port. On k3s, use the node IP and the SSH
-NodePort.
+`hubUrl` must be reachable from the region manager over outbound HTTPS/WSS. In
+the same cluster it can be the hub ClusterIP Service; across clusters use the
+public hub URL. `sshHost` and `sshPort` on the hub must point to the endpoint
+users can reach, not to the internal `http` Service. On a cloud load balancer,
+use the region bastion's external hostname and port. On k3s, use the node IP
+and the SSH NodePort. Set `replicaCount > 1` for region-manager HA; each replica
+opens its own tunnel and the hub load-balances requests across them.
 
 ### 5. Install the region manager
 
 ```bash
 helm upgrade --install poddy-eu oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.0 \
+  --version 0.1.2 \
   -n poddy-eu \
   -f values-eu.yaml \
   --wait
 ```
 
 The region manager Service is named `poddy-eu` by default when
-`fullnameOverride: poddy-eu` is set. The hub will call
-`http://poddy-eu.poddy-eu.svc.cluster.local` in the same cluster.
+`fullnameOverride: poddy-eu` is set. It does not need to be reachable from the
+hub; the region manager connects outbound to `regionManager.hubUrl`.
 
 ### 6. Register the region on the hub
 
@@ -188,8 +207,6 @@ kubectl -n poddy-system create secret generic poddy-regions \
 regions:
   - name: eu
     displayName: Europe
-    # Hub -> region manager, internal and private.
-    url: http://poddy-eu.poddy-eu.svc.cluster.local
     # Must match regionManager.key in the eu region.
     key: <REGION_KEY>
     # User -> region bastion, public endpoint.
@@ -223,7 +240,6 @@ the chart create the Secret:
 regions:
   - name: eu
     displayName: Europe
-    url: http://poddy-eu.poddy-eu.svc.cluster.local
     key: <REGION_KEY>
     sshHost: 172.29.74.141
     sshPort: 30224
@@ -232,11 +248,15 @@ regions:
     default: true
 ```
 
+`url` is optional. Omit it for tunnel-only routing. If set, the hub falls back
+to direct HTTP when the tunnel is down; that fallback still requires a network
+path from the hub to the region.
+
 ### 7. Upgrade the hub
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.0 \
+  --version 0.1.2 \
   -n poddy-system \
   -f values-hub.yaml \
   --wait
@@ -257,7 +277,8 @@ kubectl -n poddy-eu get pods
 kubectl -n poddy-system logs deployment/poddy --tail=50
 ```
 
-The hub logs `central hub configured with N regions`. Check the API:
+The hub logs `central hub configured with N regions` and
+`region tunnel connected: eu` when the region connects. Check the API:
 
 ```bash
 curl -fsS http://<hub>/api/regions

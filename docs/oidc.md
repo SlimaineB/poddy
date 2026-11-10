@@ -179,6 +179,14 @@ oidc:
   redirectUrl: https://poddy.example.com/oidc/callback
 ```
 
+Split-horizon is not automatic. `issuer` must match the provider's `iss` claim
+exactly. If the provider is not reachable at that URL from the portal pod, set
+`discoveryUrl`; if the browser cannot reach the authorization endpoint
+advertised by discovery, set `authorizationUrl`. Without these overrides, the
+issuer must be reachable from both the pod and the browser. If the issuer
+hostname resolves publicly for browsers but not inside the cluster, add a
+`hostAliases` entry for the portal and bastion pods instead.
+
 ## Callback behind a proxy
 
 Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empty, the portal derives it from the request and honors `X-Forwarded-Proto` / `X-Forwarded-Host` set by ingress controllers.

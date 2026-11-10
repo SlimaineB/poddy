@@ -8,12 +8,12 @@ func RewriteImageRegistry(image, registry string) string {
 	if image == "" || registry == "" {
 		return image
 	}
+	if image == registry || strings.HasPrefix(image, registry+"/") {
+		return image
+	}
 
 	first, rest, ok := strings.Cut(image, "/")
 	if ok && isRegistryHost(first) {
-		if first == registry {
-			return image
-		}
 		return registry + "/" + rest
 	}
 	return registry + "/" + image

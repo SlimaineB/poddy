@@ -65,9 +65,6 @@ func Parse(raw []byte) (*Registry, error) {
 		if cfg.Name == "" {
 			return nil, fmt.Errorf("regions[%d].name is required", i)
 		}
-		if cfg.URL == "" {
-			return nil, fmt.Errorf("region %q url is required", cfg.Name)
-		}
 		if cfg.Key == "" {
 			return nil, fmt.Errorf("region %q key is required", cfg.Name)
 		}

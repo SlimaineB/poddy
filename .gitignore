@@ -2,3 +2,4 @@
 *.test
 /site/
 vscode-extension/*.vsix
+vscode-extension/node_modules/
