@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +22,8 @@ type Config struct {
 	DefaultTemplate           string
 	StorageClass              string
 	ImageRegistry             string
+	ImageRegistryMapRaw       string
+	ImageRegistryMap          map[string]string
 	WorkspaceImagePullSecrets string
 
 	ExternalAuthSecret       string
@@ -104,6 +107,7 @@ func Load(args []string) (Config, error) {
 		DefaultTemplate:           env("PODDY_TEMPLATE", "base"),
 		StorageClass:              os.Getenv("PODDY_STORAGE_CLASS"),
 		ImageRegistry:             os.Getenv("PODDY_IMAGE_REGISTRY"),
+		ImageRegistryMapRaw:       os.Getenv("PODDY_IMAGE_REGISTRY_MAP"),
 		WorkspaceImagePullSecrets: os.Getenv("PODDY_WORKSPACE_IMAGE_PULL_SECRETS"),
 
 		ExternalAuthSecret:       env("PODDY_EXTERNAL_AUTH_SECRET", "poddy-external-auth"),
@@ -184,6 +188,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.DefaultTemplate, "template", cfg.DefaultTemplate, "default workspace template")
 	fs.StringVar(&cfg.StorageClass, "storage-class", cfg.StorageClass, "default StorageClass for workspace home volumes")
 	fs.StringVar(&cfg.ImageRegistry, "image-registry", cfg.ImageRegistry, "registry mirror applied to workspace and sidecar images")
+	fs.StringVar(&cfg.ImageRegistryMapRaw, "image-registry-map", cfg.ImageRegistryMapRaw, "per-host registry mirrors (JSON object or host=target pairs)")
 	fs.StringVar(&cfg.WorkspaceImagePullSecrets, "workspace-image-pull-secrets", cfg.WorkspaceImagePullSecrets, "comma-separated imagePullSecrets applied to workspace pods")
 	fs.StringVar(&cfg.ExternalAuthSecret, "external-auth-secret", cfg.ExternalAuthSecret, "Secret storing per-user external auth tokens")
 	fs.StringVar(&cfg.ExternalAuthKey, "external-auth-key", cfg.ExternalAuthKey, "key used to encrypt external auth tokens and sign workspace tokens")
@@ -251,6 +256,11 @@ func Load(args []string) (Config, error) {
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
+	imageRegistryMap, err := parseImageRegistryMap(cfg.ImageRegistryMapRaw)
+	if err != nil {
+		return cfg, fmt.Errorf("image-registry-map: %w", err)
+	}
+	cfg.ImageRegistryMap = imageRegistryMap
 	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
 	if cfg.RegionMode {
 		cfg.RegionName = strings.TrimSpace(cfg.RegionName)
@@ -262,6 +272,43 @@ func Load(args []string) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func parseImageRegistryMap(raw string) (map[string]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	if strings.HasPrefix(raw, "{") {
+		var mappings map[string]string
+		if err := json.Unmarshal([]byte(raw), &mappings); err != nil {
+			return nil, err
+		}
+		if len(mappings) == 0 {
+			return nil, nil
+		}
+		return mappings, nil
+	}
+	mappings := map[string]string{}
+	for _, pair := range strings.Split(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(pair, "=")
+		if !ok {
+			return nil, fmt.Errorf("expected host=target, got %q", pair)
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("empty registry host")
+		}
+		mappings[key] = strings.TrimSpace(value)
+	}
+	if len(mappings) == 0 {
+		return nil, nil
+	}
+	return mappings, nil
 }
 
 func env(key, fallback string) string {

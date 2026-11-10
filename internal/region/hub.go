@@ -434,7 +434,7 @@ func (h *Hub) SyncSSHKeys(ctx context.Context, owner string, keys []string, iden
 	)
 	for _, cfg := range h.Configs() {
 		client := h.clients[cfg.Name]
-		if client == nil {
+		if client == nil || !client.available() {
 			continue
 		}
 		wg.Add(1)

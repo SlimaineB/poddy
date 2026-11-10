@@ -8,15 +8,16 @@ import (
 	"poddy/internal/templates"
 )
 
-func rewritePodImages(pod *corev1.Pod, registry string) {
-	if registry == "" {
+func rewritePodImages(pod *corev1.Pod, registry string, mappings map[string]string) {
+	if registry == "" && len(mappings) == 0 {
 		return
 	}
+	rewriter := templates.NewImageRewriter(registry, mappings)
 	for i := range pod.Spec.InitContainers {
-		pod.Spec.InitContainers[i].Image = templates.RewriteImageRegistry(pod.Spec.InitContainers[i].Image, registry)
+		pod.Spec.InitContainers[i].Image = rewriter.Rewrite(pod.Spec.InitContainers[i].Image)
 	}
 	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Image = templates.RewriteImageRegistry(pod.Spec.Containers[i].Image, registry)
+		pod.Spec.Containers[i].Image = rewriter.Rewrite(pod.Spec.Containers[i].Image)
 	}
 }
 

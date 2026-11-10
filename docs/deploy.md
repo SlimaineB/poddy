@@ -41,11 +41,10 @@ Registry overrides are separate:
 
 - **Portal and bastion**: set `image.repository`, `image.tag`, and
   `imagePullSecrets`.
-- **Workspace and sidecar images**: set `workspace.imageRegistry` to a mirror
-  that exposes the same image paths, and `workspace.imagePullSecrets` for a
-  private registry. Individual templates can still set `image` or override a
-  sidecar. The registry setting is a single global prefix; per-host mirror
-  mappings are not supported.
+- **Workspace and sidecar images**: set `workspace.imageRegistry` as a global
+  mirror fallback, or `workspace.imageRegistryMap` for per-host mappings such
+  as `ghcr.io` and `docker.io`. Set `workspace.imagePullSecrets` for a private
+  registry. Individual templates can still set `image` or override a sidecar.
 - **Helm chart**: install from your OCI mirror or from the source path
   `deploy/helm/poddy` instead of `oci://ghcr.io/slimaineb/charts/poddy`.
 
@@ -188,6 +187,8 @@ workspace:
   storageClass: ""
   # Optional registry mirror for workspace and sidecar images.
   imageRegistry: ""
+  # Optional per-host mirrors; exact host wins, then "*", then imageRegistry.
+  imageRegistryMap: {}
   # Existing Secrets in the workspace namespace for a private registry.
   imagePullSecrets: []
 
@@ -214,10 +215,10 @@ ingress:
 ### 4. Install
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.2 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.3 -f values.yaml
 
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.2 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.3 -f templates-values.yaml
 ```
 If the GHCR chart package is private, run `helm registry login ghcr.io` first. From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.0` with the published chart version when a new release is cut.
 
@@ -355,7 +356,7 @@ no automatic failover of an existing workspace between regions.
   - `createWorkspaceNamespace: true` creates the namespace. **Warning**: `helm uninstall` will delete that namespace and all workspaces inside it. For production, create the namespace yourself (`kubectl create ns team-a`) and set `createWorkspaceNamespace: false`.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
   - Set `workspace.storageClass` when the cluster has no default StorageClass. The value is used only when the template's `storageClass` parameter is empty.
-  - Set `workspace.imageRegistry` to pull workspace and sidecar images through a registry mirror. The mirror must expose the same image paths. Set `workspace.imagePullSecrets` to existing Secrets in `workspaceNamespace` for a private mirror.
+  - Set `workspace.imageRegistry` for a global mirror fallback and `workspace.imageRegistryMap` for per-host mirrors (`ghcr.io`, `docker.io`, `localhost:5000`, or `*`). Set `workspace.imagePullSecrets` to existing Secrets in `workspaceNamespace` for a private mirror.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
 ## Volume backups
@@ -832,7 +833,7 @@ if unauthenticated users should install them.
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.2 -f values.yaml
+  -n poddy-system --version 0.1.3 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.

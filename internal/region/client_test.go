@@ -112,3 +112,15 @@ func TestClientProxyWebSocketThroughTunnel(t *testing.T) {
 		t.Fatalf("message = %d %q", kind, data)
 	}
 }
+
+func TestSyncSSHKeysSkipsUnavailableTunnelOnlyRegion(t *testing.T) {
+	registry, err := Parse([]byte("regions:\n- name: eu\n  key: secret\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(registry)
+	problems := hub.SyncSSHKeys(context.Background(), "token", []string{"ssh-ed25519 AAAA test"}, Identity{User: auth.User{Username: "token"}, Admin: true})
+	if len(problems) != 0 {
+		t.Fatalf("problems = %v", problems)
+	}
+}

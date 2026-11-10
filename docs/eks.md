@@ -159,15 +159,16 @@ Copy `examples/eks/values.yaml` and replace:
   `oidc.authorizationUrl` if your provider uses internal endpoints;
 - the public hostnames;
 - `workspace.storageClass` if you use a different EBS class than `poddy-gp3`;
-- `workspace.imageRegistry` and `workspace.imagePullSecrets` if you mirror
-  workspace images through a private registry;
+- `workspace.imageRegistry`, `workspace.imageRegistryMap`, and
+  `workspace.imagePullSecrets` if you mirror workspace images through a
+  private registry;
 - the image tag, if you pin a release.
 
 Then install:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.2 \
+  -n poddy-system --create-namespace --version 0.1.3 \
   -f examples/eks/values.yaml
 ```
 

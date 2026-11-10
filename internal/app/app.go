@@ -89,6 +89,7 @@ func Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("templates: %w", err)
 	}
 	catalog.SetImageRegistry(cfg.ImageRegistry)
+	catalog.SetImageRegistryMap(cfg.ImageRegistryMap)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -149,6 +150,7 @@ func Run(ctx context.Context, args []string) error {
 		DefaultTemplate:     cfg.DefaultTemplate,
 		DefaultStorageClass: cfg.StorageClass,
 		ImageRegistry:       cfg.ImageRegistry,
+		ImageRegistryMap:    cfg.ImageRegistryMap,
 		ImagePullSecrets:    splitList(cfg.WorkspaceImagePullSecrets),
 		AuthorizedKeys:      keys,
 		SSHKeys:             keyring,
@@ -158,7 +160,7 @@ func Run(ctx context.Context, args []string) error {
 		PortalURL:           portalURL,
 		InstanceID:          cfg.InstanceID,
 		Region:              cfg.RegionName,
-		HelperImage:         templates.RewriteImageRegistry(cfg.BackupHelperImage, cfg.ImageRegistry),
+		HelperImage:         templates.RewriteImageRegistryWithMap(cfg.BackupHelperImage, cfg.ImageRegistry, cfg.ImageRegistryMap),
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
@@ -307,8 +309,15 @@ func Run(ctx context.Context, args []string) error {
 		})
 		hub = region.NewHub(registry)
 		hub.SetTunnel(regionTunnel)
+		keySync := make(chan struct{}, 1)
+		regionTunnel.SetOnConnect(func(string) {
+			select {
+			case keySync <- struct{}{}:
+			default:
+			}
+		})
 		log.Printf("central hub configured with %d regions", len(registry.All()))
-		go syncRegionKeys(ctx, hub, userKeyStore, 2*time.Minute)
+		go syncRegionKeys(ctx, hub, userKeyStore, 2*time.Minute, keySync)
 	}
 
 	if cfg.RegionMode && cfg.RegionHubURL != "" {
@@ -743,7 +752,7 @@ func serve(ctx context.Context, srv *http.Server) error {
 	}
 }
 
-func syncRegionKeys(ctx context.Context, hub *region.Hub, store *userkeys.Store, interval time.Duration) {
+func syncRegionKeys(ctx context.Context, hub *region.Hub, store *userkeys.Store, interval time.Duration, trigger <-chan struct{}) {
 	sync := func() {
 		keys, err := store.List(ctx)
 		if err != nil {
@@ -771,6 +780,8 @@ func syncRegionKeys(ctx context.Context, hub *region.Hub, store *userkeys.Store,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			sync()
+		case <-trigger:
 			sync()
 		}
 	}

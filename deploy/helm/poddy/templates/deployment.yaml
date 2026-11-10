@@ -150,6 +150,8 @@ spec:
               value: {{ .Values.workspace.storageClass | quote }}
             - name: PODDY_IMAGE_REGISTRY
               value: {{ .Values.workspace.imageRegistry | quote }}
+            - name: PODDY_IMAGE_REGISTRY_MAP
+              value: {{ .Values.workspace.imageRegistryMap | toJson | quote }}
             - name: PODDY_WORKSPACE_IMAGE_PULL_SECRETS
               value: {{ join "," .Values.workspace.imagePullSecrets | quote }}
             {{- if .Values.backup.enabled }}

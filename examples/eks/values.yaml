@@ -67,6 +67,7 @@ workspace:
   storageClass: poddy-gp3
   # Optional: mirror workspace and sidecar images through a private registry.
   imageRegistry: ""
+  imageRegistryMap: {}
   imagePullSecrets: []
 
 ingress:
