@@ -25,6 +25,36 @@ func TestLoadEmbedded(t *testing.T) {
 	}
 }
 
+func TestImageRegistryIsDisplayOnly(t *testing.T) {
+	catalog, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := catalog.Get("base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := base.Image
+	catalog.SetImageRegistry("mirror.example.com/cache")
+
+	base, err = catalog.Get("base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base.Image != original {
+		t.Fatalf("template image mutated: %q, want %q", base.Image, original)
+	}
+	for _, info := range catalog.List() {
+		if info.Name == "base" {
+			if want := "mirror.example.com/cache/slimaineb/poddy-workspace-base:latest"; info.Image != want {
+				t.Fatalf("listed image = %q, want %q", info.Image, want)
+			}
+			return
+		}
+	}
+	t.Fatal("base template not listed")
+}
+
 func TestResolve(t *testing.T) {
 	catalog, err := Load("")
 	if err != nil {

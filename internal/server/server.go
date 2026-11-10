@@ -9,6 +9,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/backup"
+	"poddy/internal/extension"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
@@ -18,6 +19,7 @@ import (
 	"poddy/internal/region"
 	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
+	regiontunnel "poddy/internal/tunnel"
 	"poddy/internal/userkeys"
 	"poddy/internal/userstore"
 )
@@ -25,17 +27,18 @@ import (
 const cookieName = "poddy_token"
 
 type Server struct {
-	Workspaces *k8s.Manager
-	WebFS      fs.FS
-	Token      string
-	TokenAdmin bool
-	Local      *local.Local
-	Forwards   *Forwarder
-	Regions    *region.Hub
-	RegionMode bool
-	RegionKey  string
-	RegionName string
-	HubURL     string
+	Workspaces   *k8s.Manager
+	WebFS        fs.FS
+	Token        string
+	TokenAdmin   bool
+	Local        *local.Local
+	Forwards     *Forwarder
+	Regions      *region.Hub
+	RegionTunnel *regiontunnel.RegionBroker
+	RegionMode   bool
+	RegionKey    string
+	RegionName   string
+	HubURL       string
 
 	SSHHost           string
 	SSHPort           string
@@ -50,6 +53,7 @@ type Server struct {
 	SSHCertTTL        time.Duration
 	UserKeys          *userkeys.Store
 	DesktopSecret     []byte
+	VSCodeExtension   extension.Metadata
 
 	OIDC            *auth.OIDC
 	OIDCRedirectURL string
@@ -94,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}/external-auth/{id}/token", s.workspaceExternalAuthToken)
 	mux.HandleFunc("GET /api/workspaces/{name}/git-askpass", s.workspaceGitAskpass)
 	mux.HandleFunc("PUT /api/internal/ssh-keys/{owner}", s.regionReplaceSSHKeys)
+	mux.HandleFunc("GET /api/internal/region/tunnel", s.regionTunnel)
 	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)
 	mux.HandleFunc("GET /api/users", s.users)
 	mux.HandleFunc("GET /api/user-quotas", s.userQuotas)
@@ -159,6 +164,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"windows":           s.Windows,
 		"windowsSSHKeyPath": s.WindowsSSHKeyPath,
 		"localVSCode":       s.Local != nil,
+		"vscodeExtension":   s.VSCodeExtension,
 		"regionMode":        s.RegionMode,
 		"regionName":        s.RegionName,
 		"regions":           regions,

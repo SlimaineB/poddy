@@ -109,6 +109,17 @@ func localAgentURL(addr string) string {
 	return "http://" + net.JoinHostPort(host, port)
 }
 
+func localHTTPTarget(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port)
+}
+
 func startAgentServer(ctx context.Context, addr string, handler http.Handler) (*http.Server, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {

@@ -11,7 +11,7 @@ directly from the registry:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.0 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.2 -f values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -30,10 +30,10 @@ Workspace templates are a separate release:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.0 -f templates-values.yaml
+  -n poddy-system --version 0.1.2 -f templates-values.yaml
 ```
 
-Replace `0.1.0` with the published chart version when a new release is cut.
+Replace `0.1.2` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
@@ -85,6 +85,7 @@ name (without the leading `v`) is used.
 | `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |
 | `image.tag` | `latest` | Portal and bastion image tag. |
 | `imagePullSecrets` | `[]` | Secrets for portal/bastion images (use `workspace.imagePullSecrets` for workspaces). |
+| `hostAliases` | `[]` | Extra `/etc/hosts` entries for the portal and bastion pods. |
 | `ssh.allowUnmappedKeys` | `false` | Legacy: allow keys without an owner comment to reach every workspace. Insecure. |
 | `ssh.requireAgent` | `true` | Require the outbound workspace agent tunnel and disable Kubernetes port-forward fallback. Custom workspace images must include `poddy-agent`; restart existing workspaces after upgrading. Set `false` to keep the port-forward fallback. |
 | `ssh.agent.enabled` | `true` | Run the bastion agent listener and inject agent URL/token into workspaces. |
@@ -99,15 +100,19 @@ name (without the leading `v`) is used.
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
 | `workspace.storageClass` | `""` | Default StorageClass for workspace home PVCs when the template leaves it empty. |
-| `workspace.imageRegistry` | `""` | Registry mirror for workspace and sidecar images. |
+| `workspace.imageRegistry` | `""` | Single global registry prefix for workspace and sidecar images. Path prefixes such as `mirror.example.com/cache` are supported and applied once; per-host mappings are not supported. |
 | `workspace.imagePullSecrets` | `[]` | Image pull Secrets applied to workspace pods (private registry mirror). |
+| `vscodeExtension.id` | `slimaineb.poddy-remote` | Extension identifier shown in the portal. Empty uses the metadata embedded in the image. |
+| `vscodeExtension.version` | `0.1.0` | Extension version shown in the portal. Empty uses the metadata embedded in the image. |
+| `vscodeExtension.releaseUrl` | GitHub release | Release page linked from the portal. Empty uses the metadata embedded in the image. |
+| `vscodeExtension.downloadUrl` | GitHub VSIX | VSIX download linked from the portal. Empty uses the metadata embedded in the image. |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | ConfigMap for stopped workspace specs. |
-| `regions` | `[]` | Central hub only. Region list with `name`, `url`, `key`, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
+| `regions` | `[]` | Central hub only. Region list with `name`, `key`, optional `url` fallback, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
 | `regionsExistingSecret` | `""` | Existing Secret containing `regionsKey` instead of inline `regions`. |
 | `regionsKey` | `regions.yaml` | Key in the regions Secret. |
 | `regionManager.enabled` | `false` | Run this release as a region manager trusted by a central hub. |
 | `regionManager.name` | `""` | Region identifier. Required when enabled. |
-| `regionManager.hubUrl` | `""` | Central hub public URL used by workspace pods for external auth. Required when enabled. |
+| `regionManager.hubUrl` | `""` | Central hub public URL. The region manager uses it for the outbound tunnel and external auth. Required when enabled. |
 | `regionManager.key` | `""` | Shared key used to verify hub identities. Required unless `regionManager.existingSecret` is set. |
 | `regionManager.existingSecret` | `""` | Existing Secret containing `regionManager.keyKey`. |
 | `desktop.secret` | `""` | Stable key for VS Code desktop tickets. Recommended for `replicaCount > 1`. |
@@ -141,6 +146,7 @@ name (without the leading `v`) is used.
 | `database.existingSecret` | `""` | Existing Secret with the connection string. Set either `url` or this. |
 | `database.urlKey` | `database-url` | Key in the database Secret. |
 | `database.autoMigrate` | `true` | Apply embedded schema migrations on startup. |
+| `database.connectTimeout` | `30s` | Retry window before starting without metadata and audit when PostgreSQL is not ready. |
 | `ssh.addr` | `:2222` | Bastion listen address in pod. |
 | `ssh.publicPort` | `2222` | Port users connect to. |
 | `ssh.existingKeysSecret` | `""` | Use existing Secret for authorized_keys. |
@@ -305,9 +311,13 @@ database:
   autoMigrate: true
 ```
 
-Set `autoMigrate: false` when migrations are managed externally. The portal
-mirrors RBAC, OIDC users, templates, workspaces, and team/user quotas; the
-bastion records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
+Set `autoMigrate: false` when migrations are managed externally. If PostgreSQL
+is not ready, the portal retries for `database.connectTimeout` (default `30s`)
+and then starts without metadata and audit. Poddy does not deploy PostgreSQL.
+With the official `postgres` image on an EBS-backed PVC, set
+`PGDATA=/var/lib/postgresql/data/pgdata`; otherwise `initdb` fails on
+`lost+found`. The portal mirrors RBAC, OIDC users, templates, workspaces, and
+team/user quotas; the bastion records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
 page. See [docs/postgres-schema.md](../../../docs/postgres-schema.md) for the
 schema, audit actions, backup, and limitations.
 
@@ -364,10 +374,12 @@ across replicas.
 ## Multi-region
 
 Use one central hub and one `regionManager.enabled=true` release per region. The
-hub owns auth/RBAC/templates/external auth and routes workspace traffic to the
-region manager selected at creation. See the main
-[multi-region documentation](../../docs/deploy.md#multi-region) for the Secret
-format and network requirements.
+region manager opens an outbound WebSocket tunnel to `regionManager.hubUrl`, so
+the hub does not need inbound access or VPN peering to the region cluster. The
+hub owns auth/RBAC/templates/external auth and routes workspace HTTP/WebSocket
+traffic through that tunnel. See the main
+[multi-region documentation](../../docs/regions.md) for the Secret format and
+network requirements.
 
 ## RBAC
 
@@ -439,7 +451,7 @@ The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` 
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.0 -f values.yaml
+  -n poddy-system --version 0.1.2 -f values.yaml
 ```
 
 ## Uninstalling

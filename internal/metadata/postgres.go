@@ -54,6 +54,40 @@ func Open(ctx context.Context, url string, autoMigrate bool) (Store, error) {
 	return &Postgres{pool: pool}, nil
 }
 
+func OpenWithRetry(ctx context.Context, url string, autoMigrate bool, timeout time.Duration) (Store, error) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return Nop{}, nil
+	}
+	if timeout <= 0 {
+		return Open(ctx, url, autoMigrate)
+	}
+
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		if remaining := time.Until(deadline); remaining < 10*time.Second {
+			cancel()
+			attemptCtx, cancel = context.WithDeadline(ctx, deadline)
+		}
+		store, err := Open(attemptCtx, url, autoMigrate)
+		cancel()
+		if err == nil {
+			return store, nil
+		}
+		lastErr = err
+		if time.Now().Add(2 * time.Second).After(deadline) {
+			return nil, lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 func (p *Postgres) Close() error {
 	p.pool.Close()
 	return nil

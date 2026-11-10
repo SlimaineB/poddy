@@ -115,6 +115,12 @@ const els = {
   templatesPagination: document.getElementById("templates-pagination"),
   toasts: document.getElementById("toasts"),
   sshEndpoint: document.getElementById("ssh-endpoint"),
+  vscodeExtension: document.getElementById("vscode-extension"),
+  vscodeExtensionVersion: document.getElementById("vscode-extension-version"),
+  vscodeExtensionRelease: document.getElementById("vscode-extension-release"),
+  vscodeExtensionReleaseVersion: document.getElementById("vscode-extension-release-version"),
+  vscodeExtensionDownload: document.getElementById("vscode-extension-download"),
+  vscodeExtensionDownloadLabel: document.getElementById("vscode-extension-download-label"),
   userChip: document.getElementById("user-chip"),
   userName: document.getElementById("user-name"),
   userAvatar: document.getElementById("user-avatar"),
@@ -476,12 +482,32 @@ function sshConfigFor() {
 function renderConfig() {
   renderRegionOptions();
   renderRegionFilter();
+  renderVSCodeExtension();
   if (!state.config.ssh) return;
   els.sshEndpoint.hidden = false;
   const regions = configuredRegions();
   els.sshEndpoint.textContent = regions.length > 1
     ? `SSH ${regions.length} regions`
     : `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
+}
+function renderVSCodeExtension() {
+  const ext = state.config.vscodeExtension;
+  const href = ext && (ext.downloadUrl || ext.releaseUrl);
+  const version = ext && ext.version ? `v${ext.version}` : "";
+  if (els.vscodeExtension) {
+    els.vscodeExtension.hidden = !href || !version;
+    if (href) els.vscodeExtension.href = href;
+    els.vscodeExtension.title = version ? `Poddy Remote ${version}` : "Poddy Remote";
+  }
+  if (els.vscodeExtensionVersion) els.vscodeExtensionVersion.textContent = version;
+  if (els.vscodeExtensionRelease) {
+    els.vscodeExtensionRelease.hidden = !href || !version;
+  }
+  if (els.vscodeExtensionReleaseVersion) els.vscodeExtensionReleaseVersion.textContent = version;
+  if (els.vscodeExtensionDownload && href) els.vscodeExtensionDownload.href = href;
+  if (els.vscodeExtensionDownloadLabel) {
+    els.vscodeExtensionDownloadLabel.textContent = ext && ext.downloadUrl ? "Download VSIX" : "View release";
+  }
 }
 function configuredRegions() {
   return Array.isArray(state.config.regions) ? state.config.regions : [];

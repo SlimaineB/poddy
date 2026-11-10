@@ -126,3 +126,12 @@ func (s *session) expired() error {
 	}
 	return nil
 }
+
+func (s *session) alive() bool {
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
+	return s.expired() == nil
+}

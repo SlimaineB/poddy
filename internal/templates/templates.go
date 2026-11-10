@@ -251,12 +251,6 @@ func (c *Catalog) swap(next *Catalog) {
 	c.mu.Lock()
 	c.templates = next.templates
 	c.dir = next.dir
-	registry := c.imageRegistry
-	if registry != "" {
-		for _, tmpl := range c.templates {
-			tmpl.Image = RewriteImageRegistry(tmpl.Image, registry)
-		}
-	}
 	onReload := c.onReload
 	c.mu.Unlock()
 	if onReload != nil {
@@ -268,12 +262,6 @@ func (c *Catalog) SetImageRegistry(registry string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.imageRegistry = strings.TrimSuffix(strings.TrimSpace(registry), "/")
-	if c.imageRegistry == "" {
-		return
-	}
-	for _, tmpl := range c.templates {
-		tmpl.Image = RewriteImageRegistry(tmpl.Image, c.imageRegistry)
-	}
 }
 
 // SetOnReload registers a callback invoked after the catalog is replaced.
@@ -437,7 +425,7 @@ func (c *Catalog) List() []Info {
 			Name:         t.Name,
 			DisplayName:  t.DisplayName,
 			Description:  t.Description,
-			Image:        t.Image,
+			Image:        RewriteImageRegistry(t.Image, c.imageRegistry),
 			Version:      t.Version,
 			Parameters:   t.Parameters,
 			Links:        t.Links,

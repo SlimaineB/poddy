@@ -323,7 +323,10 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if req.Storage != "" {
 		params["storage"] = req.Storage
 	}
-	if _, ok := params["storageClass"]; ok && strings.TrimSpace(params["storageClass"]) == "" && m.DefaultStorageClass != "" {
+	if strings.TrimSpace(params["storageClass"]) == "" && m.DefaultStorageClass != "" {
+		if params == nil {
+			params = map[string]string{}
+		}
 		params["storageClass"] = m.DefaultStorageClass
 	}
 	storage := params["storage"]

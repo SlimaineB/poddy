@@ -56,6 +56,15 @@ func (h *Hub) Client(name string) *Client {
 	return h.clients[name]
 }
 
+func (h *Hub) SetTunnel(d TunnelDialer) {
+	if h == nil {
+		return
+	}
+	for _, client := range h.clients {
+		client.SetTunnel(d)
+	}
+}
+
 func (h *Hub) List(ctx context.Context, identity Identity) ([]k8s.Workspace, []error) {
 	if h == nil {
 		return nil, nil

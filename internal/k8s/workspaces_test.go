@@ -5,6 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +105,59 @@ func TestCreateAppliesDefaultStorageClass(t *testing.T) {
 	}
 }
 
+func TestCreateAppliesDefaultStorageClassWithoutTemplateParameter(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"custom.template.yaml": `name: custom
+displayName: Custom
+image: example/workspace:latest
+parameters:
+  - name: storage
+    default: 5Gi
+`,
+		"custom.pod.yaml": `apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: workspace
+      image: example/workspace:latest
+      volumeMounts:
+        - name: home
+          mountPath: /home/dev
+  volumes:
+    - name: home
+      persistentVolumeClaim:
+        claimName: "{{ .PVCName }}"
+`,
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	catalog, err := templates.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestManager()
+	m.Templates = catalog
+	m.DefaultTemplate = "custom"
+	m.DefaultStorageClass = "gp3"
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pvc, err := m.Client.CoreV1().PersistentVolumeClaims("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "gp3" {
+		t.Fatalf("storage class = %v", pvc.Spec.StorageClassName)
+	}
+}
+
 func TestCreateRewritesImageRegistry(t *testing.T) {
 	m := newTestManager()
 	m.ImageRegistry = "mirror.example.com"
@@ -133,6 +188,35 @@ func TestCreateRewritesImageRegistry(t *testing.T) {
 	}
 	if len(pod.Spec.ImagePullSecrets) != 1 || pod.Spec.ImagePullSecrets[0].Name != "registry-pull" {
 		t.Fatalf("image pull secrets = %+v", pod.Spec.ImagePullSecrets)
+	}
+}
+
+func TestCreateRewritesImageRegistryPathOnce(t *testing.T) {
+	m := newTestManager()
+	m.ImageRegistry = "mirror.example.com/cache"
+	ctx := context.Background()
+
+	ws, err := m.Create(ctx, CreateRequest{Name: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "mirror.example.com/cache/slimaineb/poddy-workspace-base:latest"; ws.Image != want {
+		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
+	}
+
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	images := map[string]string{}
+	for _, container := range pod.Spec.Containers {
+		images[container.Name] = container.Image
+	}
+	if want := "mirror.example.com/cache/slimaineb/poddy-workspace-base:latest"; images[ContainerName] != want {
+		t.Fatalf("workspace container image = %q, want %q", images[ContainerName], want)
+	}
+	if want := "mirror.example.com/cache/gitpod/openvscode-server:latest"; images["code-server"] != want {
+		t.Fatalf("code-server image = %q, want %q", images["code-server"], want)
 	}
 }
 

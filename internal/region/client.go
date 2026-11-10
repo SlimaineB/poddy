@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -31,9 +32,15 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("region returned HTTP %d: %s", e.Status, e.Message)
 }
 
+type TunnelDialer interface {
+	Dial(ctx context.Context, region, target string) (net.Conn, error)
+	Connected(region string) bool
+}
+
 type Client struct {
-	cfg  Config
-	http *http.Client
+	cfg    Config
+	http   *http.Client
+	tunnel TunnelDialer
 }
 
 type WorkspaceInfo struct {
@@ -97,23 +104,54 @@ type Topology struct {
 }
 
 func NewClient(cfg Config) *Client {
+	c := &Client{cfg: cfg}
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			if c.tunnelConnected() {
+				return nil, nil
+			}
+			return http.ProxyFromEnvironment(req)
+		},
+		DialContext:           c.dialContext,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   32,
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 60 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
-	return &Client{
-		cfg: cfg,
-		http: &http.Client{
-			Transport: transport,
-		},
-	}
+	c.http = &http.Client{Transport: transport}
+	return c
 }
 
 func (c *Client) Config() Config { return c.cfg }
+
+func (c *Client) SetTunnel(d TunnelDialer) { c.tunnel = d }
+
+func (c *Client) tunnelConnected() bool {
+	return c.tunnel != nil && c.tunnel.Connected(c.cfg.Name)
+}
+
+func (c *Client) baseURL() string {
+	if strings.TrimSpace(c.cfg.URL) != "" {
+		return c.cfg.URL
+	}
+	return "http://region.invalid"
+}
+
+func (c *Client) available() bool {
+	return strings.TrimSpace(c.cfg.URL) != "" || c.tunnelConnected()
+}
+
+func (c *Client) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if c.tunnelConnected() {
+		return c.tunnel.Dial(ctx, c.cfg.Name, "region-http")
+	}
+	if strings.TrimSpace(c.cfg.URL) == "" {
+		return nil, fmt.Errorf("region %s tunnel is not connected", c.cfg.Name)
+	}
+	var dialer net.Dialer
+	return dialer.DialContext(ctx, network, addr)
+}
 
 func (c *Client) List(ctx context.Context, identity Identity) ([]k8s.Workspace, error) {
 	var out []k8s.Workspace
@@ -228,6 +266,9 @@ func (c *Client) ReplaceSSHKeys(ctx context.Context, owner string, keys []string
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, identity Identity, body, out any) error {
+	if !c.available() {
+		return fmt.Errorf("region %s is not connected", c.cfg.Name)
+	}
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -236,7 +277,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, identity Ident
 		}
 		reader = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.cfg.URL+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL()+path, reader)
 	if err != nil {
 		return err
 	}
@@ -266,7 +307,11 @@ func (c *Client) doJSON(ctx context.Context, method, path string, identity Ident
 }
 
 func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity) {
-	target, err := url.Parse(c.cfg.URL)
+	if !c.available() {
+		http.Error(w, "region unavailable", http.StatusBadGateway)
+		return
+	}
+	target, err := url.Parse(c.baseURL())
 	if err != nil {
 		http.Error(w, "invalid region URL", http.StatusBadGateway)
 		return
@@ -277,6 +322,7 @@ func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity
 		return
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = c.http.Transport
 	proxy.FlushInterval = 100 * time.Millisecond
 	originalHost := r.Host
 	originalProto := "http"
