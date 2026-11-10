@@ -11,7 +11,7 @@ directly from the registry:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.2 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.3 -f values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -30,10 +30,10 @@ Workspace templates are a separate release:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.2 -f templates-values.yaml
+  -n poddy-system --version 0.1.3 -f templates-values.yaml
 ```
 
-Replace `0.1.2` with the published chart version when a new release is cut.
+Replace `0.1.3` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
@@ -100,7 +100,8 @@ name (without the leading `v`) is used.
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
 | `workspace.storageClass` | `""` | Default StorageClass for workspace home PVCs when the template leaves it empty. |
-| `workspace.imageRegistry` | `""` | Single global registry prefix for workspace and sidecar images. Path prefixes such as `mirror.example.com/cache` are supported and applied once; per-host mappings are not supported. |
+| `workspace.imageRegistry` | `""` | Global fallback registry prefix for workspace and sidecar images. Path prefixes such as `mirror.example.com/cache` are supported and applied once. |
+| `workspace.imageRegistryMap` | `{}` | Per-host registry mirrors. Keys are source hosts (`ghcr.io`, `docker.io`, `localhost:5000`) or `*`; values are target prefixes. Exact host wins, then `*`, then `imageRegistry`. An empty value leaves that host untouched. |
 | `workspace.imagePullSecrets` | `[]` | Image pull Secrets applied to workspace pods (private registry mirror). |
 | `vscodeExtension.id` | `slimaineb.poddy-remote` | Extension identifier shown in the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.version` | `0.1.0` | Extension version shown in the portal. Empty uses the metadata embedded in the image. |
@@ -451,7 +452,7 @@ The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` 
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.2 -f values.yaml
+  -n poddy-system --version 0.1.3 -f values.yaml
 ```
 
 ## Uninstalling

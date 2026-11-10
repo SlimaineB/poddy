@@ -220,6 +220,38 @@ func TestCreateRewritesImageRegistryPathOnce(t *testing.T) {
 	}
 }
 
+func TestCreateRewritesImageRegistryMap(t *testing.T) {
+	m := newTestManager()
+	m.ImageRegistryMap = map[string]string{
+		"ghcr.io":   "mirror.example.com/ghcr",
+		"docker.io": "mirror.example.com/docker",
+	}
+	ctx := context.Background()
+
+	ws, err := m.Create(ctx, CreateRequest{Name: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "mirror.example.com/ghcr/slimaineb/poddy-workspace-base:latest"; ws.Image != want {
+		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
+	}
+
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	images := map[string]string{}
+	for _, container := range pod.Spec.Containers {
+		images[container.Name] = container.Image
+	}
+	if want := "mirror.example.com/ghcr/slimaineb/poddy-workspace-base:latest"; images[ContainerName] != want {
+		t.Fatalf("workspace container image = %q, want %q", images[ContainerName], want)
+	}
+	if want := "mirror.example.com/docker/gitpod/openvscode-server:latest"; images["code-server"] != want {
+		t.Fatalf("code-server image = %q, want %q", images["code-server"], want)
+	}
+}
+
 func TestCreateWithTemplateParameters(t *testing.T) {
 	m := newTestManager()
 	ctx := context.Background()

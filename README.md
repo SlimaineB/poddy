@@ -77,7 +77,7 @@ private, run `helm registry login ghcr.io` first.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.2 \
+  --version 0.1.3 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -297,7 +297,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 - **VS Code extension** packages the VSIX on changes and attaches it to `v*` GitHub releases; manual releases validate the tag, create it when needed, and update the release. Branch builds are available as workflow artifacts. The portal shows the extension version and download link.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
-Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, `ghcr.io/slimaineb/poddy-workspace`, `ghcr.io/slimaineb/poddy-workspace-node`, and `ghcr.io/slimaineb/poddy-workspace-python`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template. Set `workspace.imageRegistry` and `workspace.imagePullSecrets` to pull workspace and sidecar images through a private registry mirror.
+Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, `ghcr.io/slimaineb/poddy-workspace`, `ghcr.io/slimaineb/poddy-workspace-node`, and `ghcr.io/slimaineb/poddy-workspace-python`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template. Set `workspace.imageRegistry` (global fallback), `workspace.imageRegistryMap` (per-host mirrors), and `workspace.imagePullSecrets` to pull workspace and sidecar images through a private registry mirror.
 
 Documentation lives under `docs/` and is configured by `mkdocs.yml`. The live site is <https://slimaineb.github.io/poddy/>. Start at [`docs/index.md`](docs/index.md) or go straight to [Getting started](docs/getting-started.md). Preview locally with `pip install -r requirements-docs.txt && mkdocs serve`. Enable Pages once in **Settings → Pages → Source: GitHub Actions**; the default `GITHUB_TOKEN` cannot create the Pages site. Keep the published docs self-contained: links to files outside `docs/` (for example `deploy/`) will not resolve on the Pages site.
 

@@ -63,7 +63,7 @@ it works without a LoadBalancer or ingress:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.2 \
+  --version 0.1.3 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -77,7 +77,7 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set createWorkspaceNamespace=true
 ```
 
-`--version 0.1.2` pins the published chart. Omit it to use the latest chart
+`--version 0.1.3` pins the published chart. Omit it to use the latest chart
 version, or run `helm show chart oci://ghcr.io/slimaineb/charts/poddy` to see
 what is available.
 

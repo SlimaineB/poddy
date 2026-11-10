@@ -170,6 +170,11 @@ workspace:
   # Registry mirror for workspace and sidecar images. The registry must expose
   # the same image paths, for example mirror.example.com/slimaineb/....
   imageRegistry: ""
+  # Optional per-registry mirror map. Keys are source registry hosts
+  # (ghcr.io, docker.io, localhost:5000, or "*"); values are target prefixes.
+  # Exact host wins, then "*", then imageRegistry. An empty value leaves that
+  # host untouched.
+  imageRegistryMap: {}
   # Existing image pull Secrets in the workspace namespace, applied to every
   # workspace pod. Use this for a private registry mirror.
   imagePullSecrets: []

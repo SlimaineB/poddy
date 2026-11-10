@@ -24,6 +24,8 @@ func TestRegionTunnelHTTP(t *testing.T) {
 		}
 		return nil
 	})
+	connected := make(chan string, 1)
+	broker.SetOnConnect(func(region string) { connected <- region })
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = broker.Serve(w, r)
 	}))
@@ -45,6 +47,14 @@ func TestRegionTunnelHTTP(t *testing.T) {
 			t.Fatal("region tunnel did not connect")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	select {
+	case region := <-connected:
+		if region != "eu" {
+			t.Fatalf("connected region = %q", region)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("connect callback was not called")
 	}
 
 	client := &http.Client{Transport: &http.Transport{

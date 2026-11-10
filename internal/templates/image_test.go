@@ -28,3 +28,90 @@ func TestRewriteImageRegistry(t *testing.T) {
 		})
 	}
 }
+
+func TestRewriteImageRegistryWithMap(t *testing.T) {
+	cases := []struct {
+		name     string
+		image    string
+		registry string
+		mappings map[string]string
+		want     string
+	}{
+		{
+			name:     "exact host",
+			image:    "ghcr.io/team/app:1",
+			mappings: map[string]string{"ghcr.io": "mirror.example.com/ghcr"},
+			want:     "mirror.example.com/ghcr/team/app:1",
+		},
+		{
+			name:     "docker hub namespace",
+			image:    "gitpod/openvscode-server:latest",
+			mappings: map[string]string{"docker.io": "mirror.example.com/docker"},
+			want:     "mirror.example.com/docker/gitpod/openvscode-server:latest",
+		},
+		{
+			name:     "docker hub official",
+			image:    "busybox:1.36",
+			mappings: map[string]string{"docker.io": "mirror.example.com/docker"},
+			want:     "mirror.example.com/docker/busybox:1.36",
+		},
+		{
+			name:     "docker hub alias",
+			image:    "index.docker.io/library/busybox:1.36",
+			mappings: map[string]string{"docker.io": "mirror.example.com/docker"},
+			want:     "mirror.example.com/docker/library/busybox:1.36",
+		},
+		{
+			name:     "wildcard",
+			image:    "quay.io/team/app:1",
+			mappings: map[string]string{"*": "mirror.example.com/cache"},
+			want:     "mirror.example.com/cache/team/app:1",
+		},
+		{
+			name:     "exact wins over wildcard",
+			image:    "ghcr.io/team/app:1",
+			mappings: map[string]string{"ghcr.io": "mirror.example.com/ghcr", "*": "mirror.example.com/cache"},
+			want:     "mirror.example.com/ghcr/team/app:1",
+		},
+		{
+			name:     "fallback",
+			image:    "quay.io/team/app:1",
+			registry: "mirror.example.com",
+			mappings: map[string]string{"ghcr.io": "mirror.example.com/ghcr"},
+			want:     "mirror.example.com/team/app:1",
+		},
+		{
+			name:     "empty target opts out",
+			image:    "ghcr.io/team/app:1",
+			registry: "mirror.example.com",
+			mappings: map[string]string{"ghcr.io": ""},
+			want:     "ghcr.io/team/app:1",
+		},
+		{
+			name:     "already mirrored",
+			image:    "mirror.example.com/ghcr/team/app:1",
+			registry: "mirror.example.com",
+			mappings: map[string]string{"ghcr.io": "mirror.example.com/ghcr"},
+			want:     "mirror.example.com/ghcr/team/app:1",
+		},
+		{
+			name:     "uppercase host key",
+			image:    "ghcr.io/team/app:1",
+			mappings: map[string]string{"GHCR.IO": "mirror.example.com/ghcr/"},
+			want:     "mirror.example.com/ghcr/team/app:1",
+		},
+		{
+			name:     "localhost registry",
+			image:    "localhost:5000/team/app:1",
+			mappings: map[string]string{"localhost:5000": "mirror.example.com/local"},
+			want:     "mirror.example.com/local/team/app:1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RewriteImageRegistryWithMap(tc.image, tc.registry, tc.mappings); got != tc.want {
+				t.Fatalf("RewriteImageRegistryWithMap(%q, %q, %v) = %q, want %q", tc.image, tc.registry, tc.mappings, got, tc.want)
+			}
+		})
+	}
+}

@@ -31,7 +31,8 @@ type RegionBroker struct {
 	sessions map[string][]*session
 	next     map[string]uint32
 
-	upgrader websocket.Upgrader
+	upgrader  websocket.Upgrader
+	onConnect func(region string)
 }
 
 func NewRegionBroker(auth RegionAuthFunc) *RegionBroker {
@@ -84,8 +85,19 @@ func (b *RegionBroker) register(s *session) {
 	b.mu.Lock()
 	b.sessions[s.workspace] = append(b.sessions[s.workspace], s)
 	count := len(b.sessions[s.workspace])
+	onConnect := b.onConnect
 	b.mu.Unlock()
 	log.Printf("region tunnel connected: %s (%d session(s))", s.workspace, count)
+	if onConnect != nil {
+		onConnect(s.workspace)
+	}
+}
+
+// SetOnConnect registers a callback invoked after a region tunnel connects.
+func (b *RegionBroker) SetOnConnect(fn func(region string)) {
+	b.mu.Lock()
+	b.onConnect = fn
+	b.mu.Unlock()
 }
 
 func (b *RegionBroker) unregister(s *session) {
@@ -97,14 +109,19 @@ func (b *RegionBroker) unregister(s *session) {
 			break
 		}
 	}
-	if len(list) == 0 {
+	remaining := len(list)
+	if remaining == 0 {
 		delete(b.sessions, s.workspace)
 		delete(b.next, s.workspace)
 	} else {
 		b.sessions[s.workspace] = list
 	}
 	b.mu.Unlock()
-	log.Printf("region tunnel disconnected: %s", s.workspace)
+	if remaining == 0 {
+		log.Printf("region tunnel disconnected: %s", s.workspace)
+		return
+	}
+	log.Printf("region tunnel session closed: %s (%d remaining)", s.workspace, remaining)
 }
 
 func (b *RegionBroker) run(s *session) error {

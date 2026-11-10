@@ -117,6 +117,7 @@ type Manager struct {
 	DefaultTemplate     string
 	DefaultStorageClass string
 	ImageRegistry       string
+	ImageRegistryMap    map[string]string
 	ImagePullSecrets    []string
 	AuthorizedKeys      []string
 	SSHKeys             sshkeys.Keyring
@@ -349,7 +350,7 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if err != nil {
 		return resolvedCreate{}, err
 	}
-	rewritePodImages(pod, m.ImageRegistry)
+	rewritePodImages(pod, m.ImageRegistry, m.ImageRegistryMap)
 	applyImagePullSecrets(pod, m.ImagePullSecrets)
 	if !hasContainer(pod, ContainerName) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)

@@ -469,6 +469,12 @@
         "imageRegistry": {
           "type": "string"
         },
+        "imageRegistryMap": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "imagePullSecrets": {
           "type": "array",
           "items": {

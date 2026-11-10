@@ -181,7 +181,7 @@ opens its own tunnel and the hub load-balances requests across them.
 
 ```bash
 helm upgrade --install poddy-eu oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.2 \
+  --version 0.1.3 \
   -n poddy-eu \
   -f values-eu.yaml \
   --wait
@@ -256,7 +256,7 @@ path from the hub to the region.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.2 \
+  --version 0.1.3 \
   -n poddy-system \
   -f values-hub.yaml \
   --wait

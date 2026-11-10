@@ -80,11 +80,12 @@ type Info struct {
 }
 
 type Catalog struct {
-	mu            sync.RWMutex
-	templates     map[string]*Template
-	dir           string
-	imageRegistry string
-	onReload      func()
+	mu               sync.RWMutex
+	templates        map[string]*Template
+	dir              string
+	imageRegistry    string
+	imageRegistryMap map[string]string
+	onReload         func()
 }
 
 // Source is a template loaded from an external store, such as a Kubernetes
@@ -264,6 +265,19 @@ func (c *Catalog) SetImageRegistry(registry string) {
 	c.imageRegistry = strings.TrimSuffix(strings.TrimSpace(registry), "/")
 }
 
+func (c *Catalog) SetImageRegistryMap(mappings map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(mappings) == 0 {
+		c.imageRegistryMap = nil
+		return
+	}
+	c.imageRegistryMap = make(map[string]string, len(mappings))
+	for key, value := range mappings {
+		c.imageRegistryMap[key] = value
+	}
+}
+
 // SetOnReload registers a callback invoked after the catalog is replaced.
 func (c *Catalog) SetOnReload(fn func()) {
 	c.mu.Lock()
@@ -425,7 +439,7 @@ func (c *Catalog) List() []Info {
 			Name:         t.Name,
 			DisplayName:  t.DisplayName,
 			Description:  t.Description,
-			Image:        RewriteImageRegistry(t.Image, c.imageRegistry),
+			Image:        RewriteImageRegistryWithMap(t.Image, c.imageRegistry, c.imageRegistryMap),
 			Version:      t.Version,
 			Parameters:   t.Parameters,
 			Links:        t.Links,
