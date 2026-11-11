@@ -41,6 +41,7 @@ theme:
 
 nav:
   - Overview: index.md
+  - Guided tour: guided-tour.md
   - Getting started: getting-started.md
   - Deployment:
       - Kubernetes (Helm): deploy.md

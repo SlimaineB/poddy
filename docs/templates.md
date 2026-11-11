@@ -194,110 +194,51 @@ the template-specific environment (`GOPATH`, `NODE_ENV`/`NPM_CONFIG_PREFIX`, or
 The images point at the upstream GHCR namespace; forks should override the
 `image` field with their own published images.
 
-## Adding external templates (local)
+## Adding a template
 
-```bash
-./poddy -templates-dir ./my-templates ...
-```
-Structure:
-```
-my-templates/
-├── node/
-│   ├── template.yaml
-│   └── pod.yaml
-└── python/
-    ├── template.yaml
-    └── pod.yaml
-```
-The portal watches the directory and reloads templates after changes; no restart is needed. Flat `<name>.template.yaml` / `<name>.pod.yaml` files are also supported.
-
-## Pushing templates to Kubernetes
-
-Templates are deliberately separate from the portal Helm chart. Use the `poddy-templates` chart, or apply labeled ConfigMaps directly.
-
-### Option A: separate Helm chart
-
-```bash
-helm upgrade --install poddy-templates deploy/helm/poddy-templates \
-  -n poddy-system -f templates-values.yaml
-```
-
-```yaml
-# templates-values.yaml
-templates:
-  node:
-    active: "2.0.0"
-    versions:
-      "1.0.0":
-        template: |
-          name: node
-          displayName: Node.js
-          image: ghcr.io/org/poddy-workspace-node:1
-          parameters:
-            - name: cpu
-              default: "1"
-        pod: |
-          apiVersion: v1
-          kind: Pod
-          spec: {}
-      "2.0.0":
-        template: |
-          name: node
-          displayName: Node.js
-          image: ghcr.io/org/poddy-workspace-node:2
-        pod: |
-          apiVersion: v1
-          kind: Pod
-          spec:
-            containers:
-              - name: workspace
-                env:
-                  - name: NODE_ENV
-                    value: production
-```
-
-The chart creates one ConfigMap per template version with `poddy.io/template=true`. Install it in the portal's workspace namespace (`workspaceNamespace`, usually the release namespace). A single unversioned `template`/`pod` entry is still supported.
-
-### Option B: apply a ConfigMap directly
-
-This is the closest to the Grafana dashboard pattern: push a labeled ConfigMap whenever you want.
+You do **not** need to clone the repository or rebuild the portal. The simplest
+way is to push a labeled ConfigMap to the workspace namespace:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: node-template
-  namespace: poddy-system
+  name: my-template
+  namespace: poddy-workspaces   # your workspaceNamespace
   labels:
     poddy.io/template: "true"
-    poddy.io/template-name: node
-    poddy.io/template-version: "1.0.0"
+    poddy.io/template-name: my-template
     poddy.io/template-active: "true"
 data:
   template.yaml: |
-    name: node
-    displayName: Node.js
-    image: ghcr.io/org/poddy-workspace-node:1
+    name: my-template
+    displayName: My template
+    image: ghcr.io/my-org/my-workspace:latest
     parameters:
       - name: cpu
-        default: "1"
+        default: "500m"
+      - name: memory
+        default: 1Gi
   pod.yaml: |
     apiVersion: v1
     kind: Pod
-    spec:
-      containers:
-        - name: workspace
-          env:
-            - name: NODE_ENV
-              value: development
+    spec: {}
 ```
 
 ```bash
-kubectl -n poddy-system apply -f node-template.yaml
-kubectl -n poddy-system delete configmap node-template   # remove it
+kubectl -n poddy-workspaces apply -f my-template.yaml
 ```
 
-The portal reloads within a few seconds. If the update is invalid, it logs the error and keeps the previous catalog active.
+The portal reloads within a few seconds and the template appears on the
+**Templates** page. A template without an RBAC entry is public. To remove it:
+
+```bash
+kubectl -n poddy-workspaces delete configmap my-template
+```
+
+No portal restart or `helm upgrade` is required. If the workspace image is
+private, add `imagePullSecrets` to the `pod.yaml` spec; the chart's top-level
+`imagePullSecrets` only covers the portal and bastion pods.
 
 ## Versioning and rollback
 

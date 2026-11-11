@@ -1,37 +1,23 @@
 # Getting started
 
-This is the shortest path to a running workspace on a local Kubernetes or k3s
-cluster. It uses the published GHCR images and Helm, so you do **not** need Go,
-Docker, or a local image build.
-
-!!! tip "Just want the production path?"
-    See [Kubernetes deployment](deploy.md) for TLS, a LoadBalancer, multiple
-    replicas, and a stable SSH host key.
-
-## Before you start
+The shortest path to a running workspace on a local Kubernetes or k3s cluster.
+It uses the published GHCR images and Helm, so you do **not** need Go, Docker,
+or a local image build.
 
 You need:
 
 - A running Kubernetes or k3s cluster
 - `kubectl`
 - Helm 3.13+
-- `ssh-keygen` and `openssl`
 - Optional: VS Code with **Remote-SSH**, Cursor with Remote-SSH, PyCharm via JetBrains Gateway, or a browser for JupyterLab
 
-The commands below use your current kubeconfig context. Check it first:
+The commands below use your current kubeconfig context:
 
 ```bash
 kubectl config current-context
 ```
 
-The portal chart is published as an OCI artifact in GHCR, so no repository
-checkout is required. If the package is private, authenticate first:
-
-```bash
-helm registry login ghcr.io
-```
-
-## 1. Create the namespace and secrets
+## 1. Create the namespace and the portal secret
 
 ```bash
 kubectl create namespace poddy-system --dry-run=client -o yaml | kubectl apply -f -
@@ -42,18 +28,8 @@ kubectl -n poddy-system create secret generic poddy-auth \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For SSH and desktop IDEs, you can either add your public key later from the portal's
-**SSH keys** page, or create an administrator-managed key now. The `user:token`
-comment binds this key to the token identity used by this local setup:
-
-```bash
-ssh-keygen -t ed25519 -N '' -C 'user:token' -f ./poddy_key
-ssh-keygen -t ed25519 -N '' -f ./poddy_host_ed25519
-
-kubectl -n poddy-system create secret generic poddy-host-key \
-  --from-file=ssh_host_ed25519_key=./poddy_host_ed25519 \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
+This token signs you in the first time. For a team, replace it with OIDC later
+(see the [guided tour](guided-tour.md)).
 
 ## 2. Install poddy
 
@@ -71,15 +47,9 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set ssh.service.type=ClusterIP \
   --set ssh.publicHost=127.0.0.1 \
   --set ssh.publicPort=2222 \
-  --set-string ssh.authorizedKeys[0]="$(cat ./poddy_key.pub)" \
-  --set ssh.existingHostKeySecret=poddy-host-key \
   --set workspaceNamespace=poddy-workspaces \
   --set createWorkspaceNamespace=true
 ```
-
-`--version 0.1.3` pins the published chart. Omit it to use the latest chart
-version, or run `helm show chart oci://ghcr.io/slimaineb/charts/poddy` to see
-what is available.
 
 Wait for the portal and bastion:
 
@@ -88,26 +58,13 @@ kubectl -n poddy-system rollout status deploy/poddy
 kubectl -n poddy-system rollout status deploy/poddy-bastion
 ```
 
-If the GHCR packages are private, make the image and chart packages public or
-authenticate with `helm registry login ghcr.io`. The chart's `imagePullSecrets`
-only covers the portal and bastion; workspace templates need their own
-`imagePullSecrets` in the pod spec.
-
-## 3. Start the local port-forwards
-
-Keep each command running in its own terminal:
+## 3. Open the portal
 
 ```bash
 kubectl -n poddy-system port-forward svc/poddy 8080:80
 ```
 
-```bash
-kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222
-```
-
-## 4. Open the portal
-
-Read the generated token:
+Read the token:
 
 ```bash
 kubectl -n poddy-system get secret poddy-auth \
@@ -116,20 +73,18 @@ kubectl -n poddy-system get secret poddy-auth \
 
 Open <http://127.0.0.1:8080> and sign in with that token.
 
-## 5. Create your first workspace
+## 4. Create your first workspace
 
 1. Click **New workspace**.
 2. Pick **Base**, **Go**, **Node.js**, or **Python**.
 3. Adjust CPU, memory, or storage if you want.
-4. Optionally enable **Auto-stop schedule**, choose the timezone, and set the
-   daily start and stop times.
-5. Click **Create**.
-6. Wait for the workspace to reach **Running**.
+4. Click **Create**.
+5. Wait for the workspace to reach **Running**.
 
 Python workspaces include a JupyterLab sidecar on port `8888`; open it with the
 **JupyterLab** button on the workspace card.
 
-## 6. Connect
+## 5. Connect
 
 Use the buttons on the workspace card:
 
@@ -151,19 +106,11 @@ Use the buttons on the workspace card:
   templates).
 - **Ports** opens a dedicated ports window and lists TCP ports listening in the
   pod; the same list is available in workspace details. Click **Open** to proxy
-  an app through the portal in a new tab, or enter a port manually. HTTP, WebSocket, and HMR work when the app uses
-  relative URLs; root-relative asset URLs may need a base path. Apps bound to
-  `127.0.0.1` are supported. Workspaces in remote regions are proxied through
-  the central hub. Use SSH `-L` for raw TCP such as a database.
-
-For the manual SSH path only, load the private key once:
-
-```bash
-ssh-add ./poddy_key
-```
+  an app through the portal in a new tab, or enter a port manually.
 
 ## What to try next
 
+- [Guided tour](guided-tour.md): OIDC, PostgreSQL, and installing in production.
 - [Workspace templates](templates.md): add your own image, parameters, and
   action buttons.
 - [External authentication](external-auth.md): inject a refreshed GitHub or
@@ -179,9 +126,9 @@ ssh-add ./poddy_key
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Workspace stays in `ImagePullBackOff` | GHCR packages are private or not accessible | Make the packages public or add an image pull secret |
+| Workspace stays in `ImagePullBackOff` | Image not accessible from the cluster | Check the image/tag and that nodes can reach GHCR |
 | `pods is forbidden` or namespace errors | Portal points at the wrong namespace | Check `workspaceNamespace` and the RoleBinding in that namespace |
 | SSH connection refused | The SSH port-forward is not running | Start `kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222` |
-| VS Code or Cursor cannot connect | The Poddy extension is not installed, the workspace is still propagating keys, or the SSH fallback was used without saving the config | Install the extension in that editor, retry after the workspace is `Running`, or save the config from the **SSH** dialog and run `ssh-add ./poddy_key` |
+| VS Code or Cursor cannot connect | The Poddy extension is not installed, the workspace is still propagating keys, or the SSH fallback was used without saving the config | Install the extension in that editor, retry after the workspace is `Running`, or save the config from the **SSH** dialog |
 | PyCharm cannot connect | Gateway is not parsing the SSH config, or the config still uses `ProxyJump` | Enable **Parse config file ~/.ssh/config** and save the generated config with `ProxyCommand` from the **SSH** dialog |
 | Login fails | Wrong token | Read the token from the `poddy-auth` secret again |

@@ -57,47 +57,22 @@ kubectl create secret generic poddy-auth \
   -n poddy-system
 ```
 
-**SSH host key** (required for `bastion.replicaCount > 1`, recommended always):
+**OIDC / SSO** (recommended for humans). The portal supports OpenID Connect with
+PKCE. Users sign in with their identity provider instead of a shared token.
+Create a Secret with your provider's client credentials:
+
 ```bash
-ssh-keygen -t ed25519 -N '' -f poddy_host_ed25519
-kubectl create secret generic poddy-host-key \
-  --from-file=ssh_host_ed25519_key=poddy_host_ed25519 \
+kubectl create secret generic poddy-oidc \
+  --from-literal=oidc-client-id=poddy \
+  --from-literal=oidc-client-secret="..." \
+  --from-literal=oidc-session-key="$(openssl rand -hex 32)" \
   -n poddy-system
 ```
-The key name in the secret **must** match `ssh.hostKeySecretKey` (default `ssh_host_ed25519_key`).
 
-**Authorized keys** are optional. For normal teams, leave this empty and let
-users add their public key from the portal's **SSH keys** page. Self-service
-keys are bound to the signed-in OIDC identity and cannot be reassigned through
-a comment.
-
-Administrator-managed keys remain useful for break-glass access and automation:
-```yaml
-# In values.yaml, or create a Secret:
-ssh:
-  authorizedKeys:
-    - "ssh-ed25519 AAAA... alice@example.com"
-    - "ssh-ed25519 AAAA... bob@example.com"
-    - "ssh-ed25519 AAAA... admin"
-```
-For these administrator-managed keys, the comment binds the key to a workspace owner:
-- `alice@example.com` or `user:alice@example.com` — may only open workspaces owned by `alice@example.com`.
-- `user:<identity>` — use this form for non-email identities, for example `user:token` with token auth or `user:alice` with an OIDC username.
-- `admin` or `*` — break-glass key that may open every workspace.
-- Any other comment (or no comment) is **denied** by default.
-
-With token auth the owner identity is `token`, so an administrator-managed key comment must be `user:token` (a bare `token` comment is unmapped and denied). With OIDC, use the user's email or `user:<username>`. Self-service keys do not need a comment.
-
-The bastion checks both the key and the target workspace owner on every `direct-tcpip` request. Workspace pods receive only their owner's keys plus admin keys through a per-workspace Secret mounted at `/etc/poddy/ssh/authorized_keys`. Registry changes are picked up without a workspace restart.
-
-For legacy local setups only, `ssh.allowUnmappedKeys: true` restores the old "any key can reach any workspace" behavior. Do not enable it in production. It is enabled automatically in trusted local mode with no token and no OIDC. In local editor mode, the portal also marks the SSH keys it manages as admin keys so local SSH, VS Code, and Cursor keep working with token or OIDC auth.
-
-Or use an existing Secret:
-```yaml
-ssh:
-  existingKeysSecret: poddy-ssh-keys
-  keysSecretKey: authorized_keys
-```
+**SSH keys**: nothing to do here. Users add their own public key from the
+portal's **SSH keys** page after signing in. Each key is bound to their
+identity and only reaches their own workspaces. Administrator-managed keys are
+optional break-glass keys; see [RBAC and SSH keys](rbac.md) if you need them.
 
 **Optional: PostgreSQL metadata and audit.** Kubernetes remains the source of
 truth, but you can mirror RBAC, users, templates, workspaces, and audit events
@@ -166,14 +141,19 @@ auth:
   # every workspace.
   tokenAdmin: false
 
+oidc:
+  enabled: true
+  existingSecret: poddy-oidc
+  issuer: https://sso.example.com/realms/dev
+  clientId: poddy
+  redirectUrl: https://poddy.example.com/oidc/callback
+  scopes: "openid,profile,email,groups"
+  # allowedGroups: ["devs"]  # restrict sign-in to a group
+
 ssh:
   enabled: true
   publicHost: ssh.dev.example.com
   publicPort: 2222
-  authorizedKeys:
-    - "ssh-ed25519 AAAA... alice@example.com"
-  allowUnmappedKeys: false
-  existingHostKeySecret: poddy-host-key
 
 bastion:
   enabled: true
@@ -220,9 +200,9 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
   -n poddy-workspaces --version 0.1.3 -f templates-values.yaml
 ```
-If the GHCR chart package is private, run `helm registry login ghcr.io` first. From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.0` with the published chart version when a new release is cut.
+From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.3` with the published chart version when a new release is cut.
 
-The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#pushing-templates-to-kubernetes).
+The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#adding-a-template).
 
 ### 5. Access
 - **Web UI**: `https://poddy.example.com` (or port-forward `kubectl -n poddy-system port-forward svc/poddy 8080:80`).
@@ -454,6 +434,38 @@ The portal stores global admins, teams, and per-template access in the `poddy-rb
 
 See [rbac.md](rbac.md) for the document format, matching rules, and API. The chart's `rbac.createConfigMap` defaults to `true`; `helm upgrade` will re-apply the seed values. Set it to `false` after the first install if admins should manage access only from the UI.
 
+## Prometheus metrics
+
+The portal exposes Prometheus metrics on a dedicated listener. The listener is
+disabled by default when running the binary directly; the Helm chart enables it
+on port `9090`.
+
+- **Flag / environment**: `-metrics-addr=:9090` or `PODDY_METRICS_ADDR=:9090`.
+  Leave both empty to disable the listener.
+- **Helm**: `metrics.enabled` (default `true`), `metrics.service.port` (default
+  `9090`). The chart creates a ClusterIP Service named
+  `<fullname>-metrics`. Metrics are never routed through the portal Ingress.
+- **ServiceMonitor**: set `metrics.serviceMonitor.enabled=true` if the
+  Prometheus Operator CRDs are installed. Optional settings include `interval`,
+  `scrapeTimeout`, `labels`, `relabelings`, and `metricRelabelings`.
+
+```yaml
+metrics:
+  enabled: true
+  service:
+    port: 9090
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: kubernetes-prometheus-stack
+```
+
+The metrics listener has no authentication and must not be exposed publicly.
+Keep the metrics Service `ClusterIP` and restrict access with a NetworkPolicy or
+your monitoring stack's scrape configuration.
+
 ## SSH bastion configuration
 
 | Value | Description |
@@ -627,209 +639,6 @@ The portal reads the username, email and groups from the ID token. If a claim is
 Set `oidc.redirectUrl` (or `PODDY_OIDC_REDIRECT_URL`) to the public URL. If empty, the portal derives it from the request and honors `X-Forwarded-Proto` / `X-Forwarded-Host` set by ingress controllers.
 
 `oidc.issuer`, `oidc.discoveryUrl`, `oidc.authorizationUrl`, and `oidc.redirectUrl` are independent. Use `discoveryUrl` when discovery must use an internal URL, and `authorizationUrl` when the browser needs a different authorization endpoint. See [OIDC / SSO](oidc.md#issuer-discovery-authorization-and-callback-urls).
-
-### Local test
-
-The repository includes a Dex demo:
-
-```bash
-kubectl --context local create namespace poddy   # once
-./scripts/dev-oidc.sh
-```
-
-It starts Dex, applies a demo RBAC ConfigMap, and runs the portal with OIDC. See [oidc.md](oidc.md#local-demo-with-dex).
-
-To use another provider, start the portal with:
-
-```bash
-PODDY_OIDC_ISSUER=http://localhost:8081/realms/dev \
-PODDY_OIDC_CLIENT_ID=poddy \
-PODDY_OIDC_CLIENT_SECRET=... \
-PODDY_OIDC_REDIRECT_URL=http://localhost:8090/oidc/callback \
-./poddy -context local -namespace poddy
-```
-
-Register `http://localhost:8090/oidc/callback` as a valid redirect URI in the provider.
-
-## External auth for workspaces
-
-External auth is separate from OIDC login. Configure OAuth2 providers and templates can receive refreshed Git tokens inside workspaces. The portal stores per-user tokens in a Secret, so the Role needs `secrets` access (included in the Helm chart and quick-start manifest).
-
-```yaml
-externalAuth:
-  url: https://poddy.example.com
-  existingSecret: poddy-external-auth-config
-  providers:
-    - id: github
-      type: github
-      clientId: Iv1.abc123
-      existingSecret: poddy-external-auth-config
-      clientSecretKey: provider-github-client-secret
-```
-
-See [external-auth.md](external-auth.md) for provider defaults, callbacks, template declarations, and troubleshooting.
-
-## Prometheus metrics
-
-The portal can expose Prometheus metrics on a dedicated listener. The listener is
-disabled by default when running the binary directly; the Helm chart enables it
-on port `9090`.
-
-- **Flag / environment**: `-metrics-addr=:9090` or `PODDY_METRICS_ADDR=:9090`.
-  Leave both empty to disable the listener.
-- **Helm**: `metrics.enabled` (default `true`), `metrics.service.port` (default
-  `9090`). The chart creates a ClusterIP Service named
-  `<fullname>-metrics`. Metrics are never routed through the portal Ingress.
-- **ServiceMonitor**: set `metrics.serviceMonitor.enabled=true` if the
-  Prometheus Operator CRDs are installed. Optional settings include `interval`,
-  `scrapeTimeout`, `labels`, `relabelings`, and `metricRelabelings`.
-
-```yaml
-metrics:
-  enabled: true
-  service:
-    port: 9090
-  serviceMonitor:
-    enabled: true
-    interval: 30s
-    scrapeTimeout: 10s
-    labels:
-      release: kube-prometheus-stack
-```
-
-Metrics include:
-
-| Metric | Labels | Description |
-|--------|--------|-------------|
-| `poddy_http_requests_total` | `method`, `route`, `status` | HTTP requests handled by the portal. |
-| `poddy_http_request_duration_seconds` | `method`, `route` | HTTP request latency histogram. |
-| `poddy_http_in_flight_requests` | | Requests currently being handled. |
-| `poddy_workspace_operations_total` | `operation`, `result` | Workspace create/delete/stop/start/restart outcomes. |
-| `poddy_workspace_create_duration_seconds` | `template`, `result` | Workspace creation latency histogram. |
-| `poddy_auth_attempts_total` | `method`, `result` | Successful and denied authentication attempts. |
-| `poddy_template_reloads_total` | `result` | Template catalog reloads. |
-| `poddy_workspaces` | `phase`, `template` | Current workspaces, queried from Kubernetes on scrape. |
-| `poddy_build_info` | `version`, `go_version` | Build metadata. |
-
-The standard Go runtime and process metrics are also exposed. The `route` label
-uses the Go `http.ServeMux` pattern (for example
-`GET /api/workspaces/{name}`), which keeps cardinality bounded.
-
-The metrics listener has no authentication and must not be exposed publicly.
-Keep the metrics Service `ClusterIP` and restrict access with a NetworkPolicy or
-your monitoring stack's scrape configuration.
-
-## Security hardening
-
-The chart applies:
-- **PodSecurityContext**: `runAsNonRoot: true`, `runAsUser: 65532`, `runAsGroup: 65532`, `fsGroup: 65532`, `seccompProfile: RuntimeDefault`.
-- **ContainerSecurityContext**: `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]`.
-- **SSH key isolation**: self-service keys are bound to the signed-in identity server-side; administrator-managed keys are mapped by their `authorized_keys` comment. Unmapped administrator keys are denied. The bastion re-checks the workspace owner for every forwarded connection, and workspace pods only receive their owner's keys plus admin keys.
-- **Admin keys are powerful**: an `admin`/`*` SSH key can reach every workspace. Protect admin private keys and rotate them like any other cluster credential.
-- **Ephemeral host key**: If `ssh.existingHostKeySecret` is not set, an `emptyDir` at `/tmp/poddy` holds a generated host key. This is fine for a single replica but **not** for HA.
-- **Network policies**: Not included; add your own to restrict pod-to-pod traffic. In particular, restrict access to the SSH Service to trusted networks.
-- **Token rotation**: Update the Secret and rollout the deployment (`kubectl rollout restart deployment/poddy -n poddy-system`).
-- **OIDC**: Prefer OIDC over the shared token for human access. Set `allowedGroups`/`allowedUsers` to restrict sign-in, and use a stable `oidc.sessionKey` for HA.
-- **Namespace isolation**: For hard tenant isolation, deploy one release per team/namespace. SSH isolation prevents cross-owner access inside one portal, but a shared namespace still shares network and storage classes.
-- **Local editor keys**: In local editor mode the portal marks keys it manages as admin keys, which is intended for a single operator workstation. Cluster deployments use `-editor=` and do not add local keys.
-- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/desktop IDE, SSH, team/template access, user quotas, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
-
-## Workspace images
-
-The portal does not build workspace images. The publish workflow pushes the
-built-in workspace images to GHCR:
-- Base: `ghcr.io/slimaineb/poddy-workspace-base:latest` (Debian 12)
-- Go: `ghcr.io/slimaineb/poddy-workspace:latest` (Go 1.25.5)
-- Node.js: `ghcr.io/slimaineb/poddy-workspace-node:latest` (Node.js 22)
-- Python: `ghcr.io/slimaineb/poddy-workspace-python:latest` (Python 3.11 + uv)
-- Custom: build on `ghcr.io/slimaineb/poddy-workspace-base` (see [templates.md](templates.md#building-custom-workspace-images)).
-
-The built-in `base`, `go`, `node`, and `python` templates use the GHCR images
-above. If you use a private registry, add `imagePullSecrets` to the pod template.
-
-## Quick-start manifest (no Helm)
-
-`deploy/poddy.yaml` is a single-file manifest for local testing. It runs the
-portal and bastion in one Deployment; the Helm chart splits them. It creates:
-- Namespace `poddy`
-- ServiceAccount, Role, RoleBinding
-- ConfigMap `poddy-ssh-keys` (add your keys; with the default token auth comment them `user:token`, or use `admin`)
-- ConfigMap `poddy-rbac` (demo seed; the portal updates it)
-- ConfigMap `poddy-state` (created on first stop; stopped workspace specs)
-- Secret `poddy-token` (change the token!)
-- Deployment `poddy` (non-root, read-only rootfs, ephemeral host key)
-- Service `poddy` (ports 80 and 2222)
-
-Apply:
-```bash
-kubectl apply -f deploy/poddy.yaml
-```
-**Not for production** — no TLS, no stable host key, no ingress, single replica.
-
-## Do I need PostgreSQL?
-
-**No. Kubernetes is the source of truth.**
-- Workspaces = Pods + PVCs (listable, watchable, deletable via API).
-- Templates = versioned files / ConfigMaps / Helm values (GitOps-friendly).
-- No separate DB is required to run poddy.
-
-**Workspace ownership, RBAC, quotas, and stopped specs work without a database:**
-- The owner is a pod annotation (`poddy.io/owner`).
-- Admins, teams, template access, and team/user quotas are a small ConfigMap (`poddy-rbac`), updated through the API.
-- Stopped workspace specs are a small ConfigMap (`poddy-state`).
-- Users seen through OIDC are a small ConfigMap (`poddy-users`), written on sign-in. It is only a suggestion directory for access/team editors; authentication and sessions remain with the OIDC provider.
-
-**When you might add PostgreSQL:**
-- You need metadata to survive loss of the cluster.
-- You need a queryable audit log of workspace, terminal, desktop IDE, SSH, team, template, quota, and external-auth actions.
-- You need a durable copy of quota configuration for reporting.
-- You want a durable copy of the metadata mirror for restore tooling.
-
-Set `database.url` or `database.existingSecret` in the Helm chart, or
-`PODDY_DATABASE_URL` outside Helm. The portal mirrors RBAC, users, templates,
-workspaces, and team/user quotas, and records audit events; the bastion records
-SSH audit events. Kubernetes remains authoritative and PostgreSQL is never read
-for access or quota decisions. If PostgreSQL is configured but unavailable at
-startup, the process retries for `database.connectTimeout` and then continues
-without the mirror and audit; if it fails later, sync/audit errors are logged
-and workspace operations continue. Back up PVCs with volume snapshots or the built-in
-[S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
-for migrations, tables, and restore guidance.
-
-## Troubleshooting
-
-| Symptom | Check |
-|---------|-------|
-| Portal pod `CrashLoopBackOff` | `kubectl logs -n poddy-system deploy/poddy` — usually missing token, SSH keys, host key, or an unreachable configured PostgreSQL URL. |
-| SSH "Host key verification failed" | `ssh.existingHostKeySecret` not set and replica restarted; or user's `known_hosts` has old key. |
-| SSH "not authorized for this workspace" | The key's comment is mapped to another owner. Use `user:<owner-identity>` (for example `user:alice@example.com` or `user:token`) or an `admin` key. |
-| SSH "unknown public key" | The key is not registered by that user under **SSH keys**, or is not in `ssh.authorizedKeys` / the keys Secret. |
-| Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
-| Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
-| No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
-| VS Code or Cursor does nothing or cannot connect | Install/update the Poddy extension (VSIX from the latest GitHub release) in that editor, then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
-| PyCharm cannot connect | Enable **Parse config file ~/.ssh/config** in JetBrains Gateway, save the config from the **SSH** dialog, and confirm the `poddy-ssh-*` block uses `ProxyCommand`. Gateway does not support `ProxyJump`. |
-| **VS Code Web** button is missing | The workspace pod has no `code-server` container. Check that the template declares `browserVSCode` with default `"true"` (or explicitly `"true"`), and that the workspace was not created with `browserVSCode: "false"`. |
-| **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
-| "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |
-| PVC not created | `storage` parameter empty or not declared in template. |
-| Metrics endpoint refuses connections | Check `metrics.enabled`, the `-metrics-addr` flag, and portal logs for `metrics listening on`. The metrics listener is separate from the portal HTTP port. |
-
-## Validation and smoke test
-
-The chart ships a `values.schema.json` (validated by Helm) and a `helm test` hook:
-
-```bash
-helm lint deploy/helm/poddy -f values.yaml
-helm test poddy -n poddy-system
-```
-
-The test pod calls `/healthz` through the HTTP Service. To check metrics:
-
-```bash
-kubectl -n poddy-system port-forward svc/poddy-metrics 9090:9090
-curl -s http://127.0.0.1:9090/metrics | grep '^poddy_'
-```
 
 ## Chart publishing
 

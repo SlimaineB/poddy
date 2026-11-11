@@ -22,6 +22,14 @@ never need a kubeconfig.
 
     [:octicons-arrow-right-24: Quick start](getting-started.md)
 
+-   :material-home-outline:{ .lg .middle } **Guided tour**
+
+    ---
+
+    OIDC, PostgreSQL, and installing in production.
+
+    [:octicons-arrow-right-24: Read the tour](guided-tour.md)
+
 -   :material-kubernetes:{ .lg .middle } **Deploy**
 
     ---
