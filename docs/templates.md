@@ -64,9 +64,16 @@ parameters:                   # optional list
     type: boolean
     default: "true"
 links:                        # optional list; rendered on workspace cards
-  - name: JetBrains Gateway
-    url: "jetbrains-gateway://connect#host={sshHost}&port={sshPort}&user={user}"
-    icon: jetbrains
+  - name: Cursor
+    url: "cursor://vscode-remote/ssh-remote+{alias}/home/dev"
+    icon: cursor
+  - name: PyCharm
+    url: "jetbrains-gateway://connect#type=ssh&host={alias}&port=22&user=dev&projectPath=/home/dev"
+    icon: pycharm
+  - name: JupyterLab
+    url: "/api/workspaces/{name}/ports/8888/lab"
+    icon: jupyterlab
+    newTab: true
   - name: Docs
     url: "https://docs.example.com/{name}"
     icon: external

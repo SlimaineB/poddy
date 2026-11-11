@@ -2,13 +2,16 @@
 
 function renderCard(workspace) {
   const card = document.createElement("article");
-  card.className = "card";
+  card.className = `card card-${statusClass(workspace.phase) || "unknown"}`;
 
   const top = document.createElement("div");
   top.className = "card-top";
 
   const title = document.createElement("div");
   title.className = "card-title";
+  const mark = document.createElement("span");
+  mark.className = "workspace-mark";
+  mark.innerHTML = icon("box");
   const name = document.createElement("h2");
   const nameButton = document.createElement("button");
   nameButton.type = "button";
@@ -17,7 +20,7 @@ function renderCard(workspace) {
   nameButton.title = workspace.name;
   nameButton.addEventListener("click", () => showDetails(workspace));
   name.append(nameButton);
-  title.append(name);
+  title.append(mark, name);
 
   const status = document.createElement("span");
   status.className = "status";
@@ -55,13 +58,15 @@ function renderCard(workspace) {
 
   const template = document.createElement("span");
   template.className = "badge neutral";
-  template.textContent = workspace.template || "default";
+  template.innerHTML = `${icon("layers")}<span></span>`;
+  template.querySelector("span").textContent = workspace.template || "default";
   metaRow.append(template);
 
   if (workspace.region) {
     const region = document.createElement("span");
     region.className = "badge neutral";
-    region.textContent = workspace.region;
+    region.innerHTML = `${icon("globe")}<span></span>`;
+    region.querySelector("span").textContent = workspace.region;
     region.title = `Region: ${workspace.region}`;
     metaRow.append(region);
   }
@@ -70,7 +75,7 @@ function renderCard(workspace) {
   if (schedule) {
     const badge = document.createElement("span");
     badge.className = "badge schedule";
-    badge.textContent = "Auto-stop";
+    badge.innerHTML = `${icon("clock")}<span>Auto-stop</span>`;
     badge.title = `Auto-stop: ${schedule}`;
     metaRow.append(badge);
   }
@@ -78,15 +83,20 @@ function renderCard(workspace) {
   if (state.me.isAdmin && workspace.owner) {
     const owner = document.createElement("span");
     owner.className = "badge owner";
-    owner.textContent = workspace.owner;
+    owner.innerHTML = `${icon("user")}<span></span>`;
+    owner.querySelector("span").textContent = workspace.owner;
     owner.title = `Owner: ${workspace.owner}`;
     metaRow.append(owner);
   }
 
-  const created = document.createElement("span");
-  created.textContent = workspace.createdAt ? `Created ${formatAge(workspace.createdAt)}` : "";
-
-  meta.append(metaRow, created);
+  meta.append(metaRow);
+  if (workspace.createdAt) {
+    const created = document.createElement("span");
+    created.className = "card-created";
+    created.innerHTML = `${icon("clock")}<span></span>`;
+    created.querySelector("span").textContent = `Created ${formatAge(workspace.createdAt)}`;
+    meta.append(created);
+  }
 
   card.append(top, meta, renderWorkspaceActions(workspace));
   card.classList.add("card-clickable");
@@ -104,48 +114,7 @@ function renderWorkspaceActions(workspace) {
   const running = workspace.phase === "Running";
 
   if (!stopped) {
-    if (state.config.ssh || state.config.localVSCode) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "button small vscode";
-      button.innerHTML = `${icon("vscode", "icon brand-icon")}VS Code`;
-      button.disabled = !running;
-      if (!running) {
-        button.title = "Workspace is not running";
-      } else if (state.config.localVSCode) {
-        button.title = "Open VS Code on the portal machine";
-      } else {
-        button.title = "Open VS Code Desktop (installs the Poddy extension once)";
-      }
-      button.addEventListener("click", () => {
-        if (state.config.localVSCode) {
-          launchVSCode(workspace, button);
-        } else {
-          launchDesktop(workspace, button);
-        }
-      });
-      actions.append(button);
-    }
-
-    if (workspace.browserVSCode) {
-      const web = document.createElement("a");
-      web.className = "button small vscode";
-      web.innerHTML = `${icon("vscode", "icon brand-icon")}VS Code Web`;
-      web.href = withToken(browserVSCodeURL(workspace.name));
-      web.target = "_blank";
-      web.rel = "noopener";
-      if (!running) {
-        web.setAttribute("aria-disabled", "true");
-        web.title = "Workspace is not running";
-        web.tabIndex = -1;
-        web.style.opacity = "0.45";
-        web.style.pointerEvents = "none";
-        web.addEventListener("click", (event) => event.preventDefault());
-      } else {
-        web.title = "Open VS Code in a new browser tab";
-      }
-      actions.append(web);
-    }
+    renderWorkspaceIDEButtons(actions, workspace);
 
     if (state.config.ssh) {
       const button = document.createElement("button");
@@ -185,8 +154,8 @@ function renderWorkspaceActions(workspace) {
       const anchor = document.createElement("a");
       anchor.className = "button small link-button";
       anchor.href = href;
-      const iconName = ["vscode", "jetbrains", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
-      const iconClass = iconName === "vscode" || iconName === "jetbrains" ? "icon brand-icon" : "icon";
+      const iconName = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
+      const iconClass = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab"].includes(iconName) ? "icon brand-icon" : "icon";
       anchor.innerHTML = `${icon(iconName, iconClass)}<span></span>`;
       anchor.querySelector("span").textContent = link.name;
       if (link.newTab) {
@@ -325,13 +294,19 @@ function renderWorkspaceRow(workspace) {
   const row = document.createElement("tr");
 
   const nameCell = document.createElement("td");
+  const nameWrap = document.createElement("div");
+  nameWrap.className = "workspace-name-cell";
+  const nameMark = document.createElement("span");
+  nameMark.className = "workspace-mark small";
+  nameMark.innerHTML = icon("box");
   const nameButton = document.createElement("button");
   nameButton.type = "button";
   nameButton.className = "workspace-name-button";
   nameButton.textContent = workspace.name;
   nameButton.title = workspace.name;
   nameButton.addEventListener("click", () => showDetails(workspace));
-  nameCell.append(nameButton);
+  nameWrap.append(nameMark, nameButton);
+  nameCell.append(nameWrap);
 
   const statusCell = document.createElement("td");
   const status = document.createElement("span");
@@ -458,11 +433,30 @@ async function openCreate() {
   els.createDialog.showModal();
   requestAnimationFrame(() => els.nameInput.focus());
 }
+const detailIcons = {
+  Status: "activity",
+  "Auto-stop": "clock",
+  Region: "globe",
+  Template: "layers",
+  Image: "box",
+  Owner: "user",
+  "Pod IP": "network",
+  Node: "server",
+  "Pod Phase": "activity",
+  Storage: "database",
+  Volumes: "hard-drive",
+  Created: "calendar",
+  Owners: "shield",
+  Users: "users",
+  Teams: "users",
+};
+
 function detailRow(label, value, { mono = false } = {}) {
   const row = document.createElement("div");
   row.className = "detail-row";
   const key = document.createElement("dt");
-  key.textContent = label;
+  key.innerHTML = `${icon(detailIcons[label] || "info")}<span></span>`;
+  key.querySelector("span").textContent = label;
   const val = document.createElement("dd");
   if (mono) val.className = "mono";
   if (value instanceof Node) {
@@ -507,7 +501,7 @@ async function showDetails(workspace) {
   state.detailWorkspace = workspace;
   state.manifests = null;
   state.manifestTab = "pod";
-  els.detailTitle.textContent = workspace.name;
+  renderDetailHeader(workspace);
   els.detailList.replaceChildren();
   els.detailLogsBody.replaceChildren();
   els.detailManifests.hidden = !(state.me && state.me.isAdmin);
@@ -521,9 +515,49 @@ async function showDetails(workspace) {
   els.detailList.append(loading);
   setLogsMessage("Loading startup logs...");
   setPortsMessage(els.detailPortsBody, "Detecting listening ports...");
-  els.detailDialog.showModal();
+  if (els.workspaceDetailView.hidden) showView("workspace-detail");
 
   await refreshDetails();
+}
+
+function closeWorkspaceDetail() {
+  state.detailWorkspace = null;
+  state.detailRequest += 1;
+  state.manifests = null;
+  state.manifestTab = "pod";
+  state.detailPortsRequest += 1;
+  showView("workspaces");
+  if (typeof syncWorkspaceViewButtons === "function") syncWorkspaceViewButtons();
+  load({ silent: true });
+}
+
+function renderDetailHeader(workspace) {
+  els.detailTitle.textContent = workspace.name || "Workspace";
+  const bits = [];
+  if (workspace.template) bits.push(workspace.template);
+  if (workspace.region) bits.push(workspace.regionDisplayName || workspace.region);
+  if (workspace.owner) bits.push(workspace.owner);
+  els.detailSubtitle.textContent = bits.length
+    ? bits.join(" · ")
+    : "Metadata, ports, rendered manifests, and startup logs for this workspace.";
+
+  const phase = workspace.phase || "Unknown";
+  els.detailStatus.replaceChildren();
+  const badge = document.createElement("span");
+  badge.className = `detail-status-badge ${statusClass(phase)}`;
+  badge.innerHTML = `<span class="dot ${statusClass(phase)}"></span><span></span>`;
+  badge.querySelector("span:last-child").textContent = phase;
+  els.detailStatus.append(badge);
+
+  const actions = renderWorkspaceActions(workspace);
+  actions.classList.add("detail-action-list");
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "button small danger";
+  remove.innerHTML = `${icon("trash")}Delete`;
+  remove.addEventListener("click", () => confirmDelete(workspace));
+  actions.append(remove);
+  els.detailActions.replaceChildren(actions);
 }
 
 async function refreshDetails() {
@@ -843,6 +877,7 @@ function renderLogs(logs) {
   }
 }
 function renderDetails(ws) {
+  renderDetailHeader(ws);
   els.detailList.replaceChildren();
 
   const status = document.createElement("span");
@@ -972,10 +1007,12 @@ function showSSH(workspace) {
   } else {
     els.sshNote.textContent = "Save this config once in ~/.ssh/config. It covers all workspaces.";
   }
-  if (els.openVSCodeWeb) {
-    els.openVSCodeWeb.hidden = !workspace.browserVSCode;
-    els.openVSCodeWeb.href = withToken(browserVSCodeURL(workspace.name));
+  if (state.config.localMode) {
+    els.sshNote.textContent += " The PyCharm button writes the local SSH config automatically.";
+  } else if (state.config.ssh) {
+    els.sshNote.textContent += " For PyCharm, enable \"Parse config file ~/.ssh/config\" in JetBrains Gateway.";
   }
+  renderSSHIDEActions(workspace);
   els.sshDialog.showModal();
 }
 function confirmWorkspaceAction(workspace, action) {
@@ -1003,6 +1040,9 @@ async function runWorkspaceAction(workspace, action, element) {
     const done = action === "stop" ? "stopped" : action === "start" ? "started" : "restarting";
     toast(`Workspace ${workspace.name} ${done}.`, "success");
     await load();
+    if (!els.workspaceDetailView.hidden && state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
+      await refreshDetails();
+    }
   } catch (err) {
     toast(err.message || `Failed to ${action} workspace.`);
   } finally {
@@ -1017,42 +1057,6 @@ function confirmDelete(workspace) {
   state.pendingDelete = workspace;
   els.confirmText.textContent = `Delete "${workspace.name}"? This removes the pod and its persistent volume.`;
   els.confirmDialog.showModal();
-}
-async function launchDesktop(workspace, element) {
-  const original = element.innerHTML;
-  element.disabled = true;
-  element.setAttribute("aria-busy", "true");
-  element.innerHTML = `<span class="spinner small"></span>Opening`;
-
-  try {
-    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/desktop`, { method: "POST" });
-    if (!data || !data.url) throw new Error("VS Code launch is not configured");
-    window.location.href = data.url;
-  } catch (err) {
-    toast(err.message || "Failed to open VS Code Desktop.");
-  } finally {
-    element.disabled = false;
-    element.removeAttribute("aria-busy");
-    element.innerHTML = original;
-  }
-}
-
-async function launchVSCode(workspace, element) {
-  const original = element.innerHTML;
-  element.disabled = true;
-  element.setAttribute("aria-busy", "true");
-  element.innerHTML = `<span class="spinner small"></span>Opening`;
-
-  try {
-    await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/vscode`, { method: "POST" });
-    toast(`VS Code is opening ${workspace.name}.`, "success");
-  } catch (err) {
-    toast(err.message || "Failed to open VS Code.");
-  } finally {
-    element.disabled = false;
-    element.removeAttribute("aria-busy");
-    element.innerHTML = original;
-  }
 }
 async function copySSHConfig() {
   const text = els.sshConfig.textContent;

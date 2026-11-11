@@ -7,7 +7,7 @@ compatibility fallback.
 ## Connection paths
 
 ```text
-ssh / VS Code
+ssh / VS Code / Cursor / PyCharm
      │
      ▼
 poddy-bastion :2222
@@ -24,6 +24,11 @@ The workspace pod runs `poddy-agent`. It opens an outbound WebSocket to the
 bastion and multiplexes TCP streams back to the workspace's loopback SSH port.
 The bastion never accepts an inbound connection from the workspace, and the
 agent only permits `127.0.0.1:22`, `localhost:22`, or `[::1]:22`.
+
+Desktop IDEs use the same bastion: VS Code and Cursor through the Poddy
+extension, and PyCharm through JetBrains Gateway and the generated SSH config.
+Gateway must parse `~/.ssh/config`; the generated block uses `ProxyCommand`
+because Gateway does not support `ProxyJump`.
 
 The portal signs a workspace-bound agent token and injects it into the pod as
 `PODDY_AGENT_TOKEN`, together with `PODDY_AGENT_URL` and

@@ -221,13 +221,7 @@ els.detailPortForm.addEventListener("submit", (event) => {
   event.preventDefault();
   openDetailPort();
 });
-els.detailDialog.addEventListener("close", () => {
-  state.detailWorkspace = null;
-  state.detailRequest += 1;
-  state.manifests = null;
-  state.manifestTab = "pod";
-  state.detailPortsRequest += 1;
-});
+els.detailBack.addEventListener("click", closeWorkspaceDetail);
 els.portsRefresh.addEventListener("click", refreshPorts);
 els.portsForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -236,17 +230,6 @@ els.portsForm.addEventListener("submit", (event) => {
 els.portsDialog.addEventListener("close", () => {
   state.portsWorkspace = null;
   state.portsRequest += 1;
-});
-
-els.openVSCode.addEventListener("click", () => {
-  const workspace = state.sshWorkspace;
-  if (!workspace) return;
-  els.sshDialog.close();
-  if (state.config.localVSCode) {
-    launchVSCode(workspace, els.openVSCode);
-  } else {
-    location.href = vscodeURL(workspace);
-  }
 });
 
 els.confirmDelete.addEventListener("click", async () => {
@@ -262,7 +245,11 @@ els.confirmDelete.addEventListener("click", async () => {
     els.confirmDialog.close();
     state.pendingDelete = null;
     toast(`Workspace ${workspace.name} deleted.`, "success");
-    await load();
+    if (state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
+      closeWorkspaceDetail();
+    } else {
+      await load();
+    }
   } catch (err) {
     toast(err.message || "Failed to delete workspace.");
   } finally {

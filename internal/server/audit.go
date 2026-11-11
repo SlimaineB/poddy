@@ -98,6 +98,12 @@ func auditRoute(r *http.Request) (string, string) {
 		return "workspace.manifests.view", "workspace"
 	case "POST /api/workspaces/{name}/vscode":
 		return "workspace.vscode.open", "workspace"
+	case "POST /api/workspaces/{name}/cursor":
+		return "workspace.cursor.open", "workspace"
+	case "POST /api/workspaces/{name}/gateway":
+		return "workspace.gateway.open", "workspace"
+	case "POST /api/workspaces/{name}/desktop":
+		return "workspace.desktop.open", "workspace"
 	case "PUT /api/templates/{name}/access":
 		return "template.access.update", "template"
 	case "PUT /api/teams/{name}":

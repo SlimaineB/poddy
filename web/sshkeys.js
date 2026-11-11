@@ -28,7 +28,7 @@ function renderSSHKeys() {
   const keys = state.sshKeys || [];
   els.sshKeysCount.textContent = `${keys.length} key${keys.length === 1 ? "" : "s"}`;
   if (!keys.length) {
-    els.sshKeysList.append(emptyInline("No SSH keys yet. Add your public key to connect from VS Code or a terminal."));
+    els.sshKeysList.append(emptyInline("No SSH keys yet. Add your public key to connect from VS Code, Cursor, PyCharm, or a terminal."));
     return;
   }
   for (const key of keys) els.sshKeysList.append(sshKeyRow(key));

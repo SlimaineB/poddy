@@ -217,24 +217,28 @@ ssh -i ~/.ssh/poddy-clean \
   dev@poddy-demo
 ```
 
-The **VS Code** button opens VS Code Desktop through the Poddy extension. Install
-the VSIX once with `code --install-extension poddy-remote-<version>.vsix` (from the latest GitHub release or a local `npm run package`); the
-extension enrolls a machine key and writes a `# >>> poddy:<workspace>` block in
-the real `~/.ssh/config`. No manual key copy is needed. The **SSH** button
-remains a manual fallback and produces a `Host poddy-ssh-*` `ProxyJump`
-configuration. Keys mapped to another owner are rejected with
+The **VS Code** and **Cursor** buttons open the desktop editor through the
+Poddy extension. Install the VSIX once with
+`code --install-extension poddy-remote-<version>.vsix` or
+`cursor --install-extension poddy-remote-<version>.vsix` (from the latest GitHub
+release or a local `npm run package`); the extension enrolls a machine key and
+writes a `# >>> poddy:<workspace>` block in the real `~/.ssh/config`. No manual
+key copy is needed. The **PyCharm** button opens JetBrains Gateway; enable
+**Parse config file ~/.ssh/config** in Gateway. The **SSH** button remains a
+manual fallback and produces a `Host poddy-ssh-*` `ProxyCommand` configuration.
+Keys mapped to another owner are rejected with
 `not authorized for this workspace`; keys not present in the Secret are
 rejected with `Permission denied (publickey)`.
 
 ### Windows / WSL
 
-Windows VS Code uses Windows OpenSSH, not WSL. The extension installs into the
-Windows VS Code profile and writes `C:\Users\<you>\.ssh\config`, so the
-Remote-SSH window uses the same key. The first connection can take up to a
+Windows VS Code and Cursor use Windows OpenSSH, not WSL. The extension installs
+into the Windows editor profile and writes
+`C:\Users\<you>\.ssh\config`, so the Remote-SSH window uses the same key. The first connection can take up to a
 minute while Kubernetes propagates the workspace Secret. If you use the manual
 **SSH** fallback, save that config in `C:\Users\<you>\.ssh\config` and copy
 the private key to `C:\Users\<you>\.ssh\`; a config saved only in WSL is
-ignored by Windows VS Code, which reports
+ignored by Windows editors, which report
 `Could not resolve hostname poddy-ssh-<name>`.
 
 ## 9. Upgrade and cleanup

@@ -1,7 +1,7 @@
 {
   "name": "poddy-remote",
   "displayName": "Poddy Remote",
-  "description": "Open Poddy workspaces in VS Code Remote-SSH without editing your SSH config.",
+  "description": "Open Poddy workspaces in VS Code or Cursor Remote-SSH without editing your SSH config.",
   "publisher": "slimaineb",
   "version": "0.1.0",
   "license": "MIT",
@@ -19,6 +19,7 @@
   "keywords": [
     "poddy",
     "remote-ssh",
+    "cursor",
     "workspace"
   ],
   "main": "./extension.js",

@@ -25,6 +25,9 @@ type Local struct {
 	WindowsConfig  string
 	WindowsKeyFile string
 	WindowsKeyPath string
+
+	CursorEditor        string
+	WindowsCursorEditor string
 }
 
 func New(editor string) (*Local, error) {
@@ -43,7 +46,18 @@ func New(editor string) (*Local, error) {
 	if os.Getenv("PODDY_NO_WINDOWS") == "" {
 		l.detectWindows()
 	}
+	l.detectCursor()
 	return l, nil
+}
+
+// HasVSCode reports whether a local VS Code command is available.
+func (l *Local) HasVSCode() bool {
+	return l != nil && (l.Editor != "" || l.WindowsEditor != "")
+}
+
+// HasCursor reports whether a local Cursor command is available.
+func (l *Local) HasCursor() bool {
+	return l != nil && (l.CursorEditor != "" || l.WindowsCursorEditor != "")
 }
 
 func (l *Local) Windows() bool {
@@ -129,21 +143,33 @@ func (l *Local) RemoveSSHConfig(name string) error {
 }
 
 func (l *Local) Launch(name string) error {
+	return l.launch(l.Editor, l.WindowsEditor, "VS Code", name)
+}
+
+// LaunchCursor opens the workspace in a local Cursor window.
+func (l *Local) LaunchCursor(name string) error {
+	return l.launch(l.CursorEditor, l.WindowsCursorEditor, "Cursor", name)
+}
+
+func (l *Local) launch(editor, windowsEditor, label, name string) error {
 	args := []string{"--new-window", "--remote", "ssh-remote+" + Alias(name), HomePath}
 
-	if l.WindowsEditor != "" {
-		cmd := exec.Command("cmd.exe", append([]string{"/c", l.WindowsEditor}, args...)...)
+	if windowsEditor != "" {
+		cmd := exec.Command("cmd.exe", append([]string{"/c", windowsEditor}, args...)...)
 		cmd.Dir = "/mnt/c"
 		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("launch Windows VS Code: %w", err)
+			return fmt.Errorf("launch Windows %s: %w", label, err)
 		}
 		go cmd.Wait()
 		return nil
 	}
+	if editor == "" {
+		return fmt.Errorf("%s is not installed", label)
+	}
 
-	cmd := exec.Command(l.Editor, args...)
+	cmd := exec.Command(editor, args...)
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("launch %s: %w", l.Editor, err)
+		return fmt.Errorf("launch %s: %w", label, err)
 	}
 	go cmd.Wait()
 	return nil
@@ -189,6 +215,38 @@ func detectWindowsHome() string {
 		return ""
 	}
 	return home
+}
+
+func (l *Local) detectCursor() {
+	if value := os.Getenv("PODDY_CURSOR"); value != "" && value != "off" {
+		l.CursorEditor = value
+	} else if path, err := exec.LookPath("cursor"); err == nil {
+		l.CursorEditor = path
+	}
+
+	if l.WindowsConfig == "" {
+		return
+	}
+	if value := os.Getenv("PODDY_WINDOWS_CURSOR"); value != "" && value != "off" {
+		l.WindowsCursorEditor = value
+		return
+	}
+	l.WindowsCursorEditor = detectWindowsCursor()
+}
+
+func detectWindowsCursor() string {
+	out, err := runCmd("where", "cursor")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(strings.TrimRight(line, "\r"))
+		lower := strings.ToLower(line)
+		if strings.HasSuffix(lower, `\cursor.cmd`) || strings.HasSuffix(lower, `\cursor.exe`) {
+			return line
+		}
+	}
+	return ""
 }
 
 func detectWindowsCode() string {

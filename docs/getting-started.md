@@ -16,7 +16,7 @@ You need:
 - `kubectl`
 - Helm 3.13+
 - `ssh-keygen` and `openssl`
-- Optional: VS Code with the **Remote-SSH** extension
+- Optional: VS Code with **Remote-SSH**, Cursor with Remote-SSH, PyCharm via JetBrains Gateway, or a browser for JupyterLab
 
 The commands below use your current kubeconfig context. Check it first:
 
@@ -42,7 +42,7 @@ kubectl -n poddy-system create secret generic poddy-auth \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For SSH/VS Code, you can either add your public key later from the portal's
+For SSH and desktop IDEs, you can either add your public key later from the portal's
 **SSH keys** page, or create an administrator-managed key now. The `user:token`
 comment binds this key to the token identity used by this local setup:
 
@@ -132,10 +132,17 @@ Use the buttons on the workspace card:
 
 - **Terminal** opens a browser shell in the workspace user home (`/home/dev`).
 - **VS Code** opens Remote-SSH on `/home/dev` in a new window. In cluster mode
-  the Poddy VS Code extension enrolls a dedicated machine key and writes the
-  SSH config automatically; install the extension once per machine.
+  the Poddy extension enrolls a dedicated machine key and writes the SSH config
+  automatically; install the extension once per machine.
+- **Cursor** uses the same extension and Remote-SSH flow. Install the same VSIX
+  in Cursor, then click **Cursor**; the portal opens a signed `cursor://` URL.
+- **PyCharm** opens JetBrains Gateway on `/home/dev`. Copy the **SSH** config
+  once and enable **Parse config file ~/.ssh/config** in Gateway. The generated
+  config uses `ProxyCommand`, which Gateway supports.
+- **JupyterLab** opens port `8888` in a new tab through the portal proxy. The
+  workspace image must run JupyterLab on that port.
 - **SSH** (manual fallback) copies a ready-to-use SSH config. It uses the
-  bastion as a `ProxyJump`, so you do not need direct access to the pod.
+  bastion as a `ProxyCommand`, so you do not need direct access to the pod.
 - **VS Code Web** opens the browser editor on `/home/dev` in a new tab when
   browser VS Code is enabled (`browserVSCode`, default `true` for the built-in
   templates).
@@ -172,5 +179,6 @@ ssh-add ./poddy_key
 | Workspace stays in `ImagePullBackOff` | GHCR packages are private or not accessible | Make the packages public or add an image pull secret |
 | `pods is forbidden` or namespace errors | Portal points at the wrong namespace | Check `workspaceNamespace` and the RoleBinding in that namespace |
 | SSH connection refused | The SSH port-forward is not running | Start `kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222` |
-| VS Code cannot connect | The Poddy extension is not installed, the workspace is still propagating keys, or the SSH fallback was used without saving the config | Install the extension, retry after the workspace is `Running`, or save the config from the **SSH** dialog and run `ssh-add ./poddy_key` |
+| VS Code or Cursor cannot connect | The Poddy extension is not installed, the workspace is still propagating keys, or the SSH fallback was used without saving the config | Install the extension in that editor, retry after the workspace is `Running`, or save the config from the **SSH** dialog and run `ssh-add ./poddy_key` |
+| PyCharm cannot connect | Gateway is not parsing the SSH config, or the config still uses `ProxyJump` | Enable **Parse config file ~/.ssh/config** and save the generated config with `ProxyCommand` from the **SSH** dialog |
 | Login fails | Wrong token | Read the token from the `poddy-auth` secret again |

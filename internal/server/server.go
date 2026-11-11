@@ -129,6 +129,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/restart", s.restart)
 	mux.HandleFunc("PUT /api/workspaces/{name}/schedule", s.updateWorkspaceSchedule)
 	mux.HandleFunc("POST /api/workspaces/{name}/vscode", s.vscode)
+	mux.HandleFunc("POST /api/workspaces/{name}/cursor", s.cursor)
+	mux.HandleFunc("POST /api/workspaces/{name}/gateway", s.gateway)
 	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
 	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)
 	mux.HandleFunc("GET /api/workspaces/{name}/code/", s.browserVSCode)
@@ -163,7 +165,9 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"sshKeyPath":        s.SSHKeyPath,
 		"windows":           s.Windows,
 		"windowsSSHKeyPath": s.WindowsSSHKeyPath,
-		"localVSCode":       s.Local != nil,
+		"localMode":         s.Local != nil,
+		"localVSCode":       s.Local != nil && s.Local.HasVSCode(),
+		"localCursor":       s.Local != nil && s.Local.HasCursor(),
 		"vscodeExtension":   s.VSCodeExtension,
 		"regionMode":        s.RegionMode,
 		"regionName":        s.RegionName,

@@ -421,14 +421,17 @@ func newEditor(cfg config.Config) *local.Local {
 	}
 	editor, err := local.New(cfg.Editor)
 	if err != nil {
-		log.Printf("VS Code launch disabled: %v", err)
+		log.Printf("local editor launch disabled: %v", err)
 		return nil
 	}
-	if editor.WindowsEditor == "" {
-		if _, err := exec.LookPath(cfg.Editor); err != nil {
-			log.Printf("VS Code launch disabled: %q not found in PATH", cfg.Editor)
-			return nil
+	if editor.Editor != "" && editor.WindowsEditor == "" {
+		if _, err := exec.LookPath(editor.Editor); err != nil {
+			editor.Editor = ""
 		}
+	}
+	if !editor.HasVSCode() && !editor.HasCursor() {
+		log.Printf("local editor launch disabled: neither VS Code nor Cursor was found in PATH")
+		return nil
 	}
 	return editor
 }

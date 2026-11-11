@@ -56,7 +56,7 @@ If your k3s context is not named `local`, set `KUBE_CONTEXT`. If the workspace n
 Each signed-in user can add their public key under **SSH keys**. The portal
 binds it to their OIDC identity, so the key only reaches their own workspaces.
 Administrator-managed keys are optional. In local editor mode the portal also
-authorizes the SSH key it manages as an admin key, so the **SSH** and **VS Code**
+authorizes the SSH key it manages as an admin key, so the **SSH**, **VS Code**, and **Cursor**
 buttons work for workspaces created by any demo user.
 
 ### Stop
