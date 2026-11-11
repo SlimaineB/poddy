@@ -708,6 +708,24 @@
         </header>
         <dl id="detail-list" class="detail-list"></dl>
       </section>
+      <section class="detail-panel workspace-ports">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Ports</h3>
+            <p>Applications listening in this workspace.</p>
+          </div>
+          <button id="detail-ports-refresh" class="button ghost small" type="button">Refresh</button>
+        </header>
+        <div id="detail-ports-body" class="workspace-ports-body"></div>
+        <form id="detail-port-form" class="port-form">
+          <div class="field">
+            <label for="detail-port-input">Ouvrir un autre port</label>
+            <input id="detail-port-input" type="number" min="1" max="65535" placeholder="3000" inputmode="numeric">
+          </div>
+          <button class="button primary small" type="submit">Ouvrir</button>
+        </form>
+        <p class="hint">Apps bound to 127.0.0.1 work. Absolute asset URLs may need a base path. Internal share links require a portal login; public links do not.</p>
+      </section>
       <section class="detail-panel">
         <header class="workspace-logs-header">
           <div>
@@ -764,24 +782,6 @@
           <button class="button ghost small" type="button" data-manifest-tab="pvc" aria-pressed="false">PVC</button>
         </div>
         <pre id="detail-manifests-body" class="log-output manifest-output"><code></code></pre>
-      </section>
-      <section class="detail-panel workspace-ports">
-        <header class="workspace-logs-header">
-          <div>
-            <h3>Ports</h3>
-            <p>Applications listening in this workspace.</p>
-          </div>
-          <button id="detail-ports-refresh" class="button ghost small" type="button">Refresh</button>
-        </header>
-        <div id="detail-ports-body" class="workspace-ports-body"></div>
-        <form id="detail-port-form" class="port-form">
-          <div class="field">
-            <label for="detail-port-input">Open another port</label>
-            <input id="detail-port-input" type="number" min="1" max="65535" placeholder="3000" inputmode="numeric">
-          </div>
-          <button class="button primary small" type="submit">Open</button>
-        </form>
-        <p class="hint">Apps bound to 127.0.0.1 work. Absolute asset URLs may need a base path. Internal share links require a portal login; public links do not.</p>
       </section>
       <section class="detail-panel workspace-logs">
         <header class="workspace-logs-header">

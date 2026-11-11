@@ -3986,12 +3986,13 @@ body {
 .detail-heading h1 {
   margin: 0;
   overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: 32px;
   font-weight: 720;
   letter-spacing: -0.045em;
   line-height: 1.1;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .detail-heading p {
