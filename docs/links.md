@@ -22,7 +22,7 @@ links:
     url: "jetbrains-gateway://connect#type=ssh&host={alias}&port=22&user=dev&projectPath=/home/dev"
     icon: pycharm
   - name: JupyterLab
-    url: "/api/workspaces/{name}/ports/8888/lab"
+    url: "/api/workspaces/{name}/lab/"
     icon: jupyterlab
     newTab: true
   - name: Internal docs
@@ -73,11 +73,11 @@ the editor in a new window; in cluster mode they open a short-lived signed
 `vscode://` or `cursor://slimaineb.poddy-remote/...` URL. The Poddy extension
 enrolls the machine key and writes the SSH config automatically, so no manual
 `~/.ssh/config` edit is required. The **PyCharm** button opens JetBrains Gateway
-with the generated SSH alias. The **JupyterLab** button opens port `8888` through
-the portal proxy in a new tab; the workspace image must run JupyterLab on that
-port. The **SSH** dialog remains available as a manual fallback. When browser VS
-Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev`
-in a new browser tab through the portal proxy.
+with the generated SSH alias. The **JupyterLab** button opens `/lab/` through the
+portal proxy in a new tab; it is shown only when the workspace has the
+`jupyterlab` sidecar. The **SSH** dialog remains available as a manual fallback.
+When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button
+opens `/home/dev` in a new browser tab through the portal proxy.
 
 ## Built-in IDE registry
 
@@ -91,6 +91,10 @@ label, icon, launch kind, availability, and URL builder:
   `jetbrains-gateway://` URL directly.
 - `browser`: web IDEs. The entry provides a URL and optionally a `port` to check
   before opening a new tab.
+
+The built-in **JupyterLab** entry is available when `workspace.jupyterLab` is
+true. The Python template enables the `jupyterLab` parameter by default; other
+templates can opt in with the same parameter.
 
 To add an IDE, add its SVG symbol to `web/index.html`, then add one entry to
 `IDE_INTEGRATIONS`. No card or SSH-dialog markup needs to change.

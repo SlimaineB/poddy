@@ -63,6 +63,10 @@ parameters:                   # optional list
     description: Run VS Code in the browser
     type: boolean
     default: "true"
+  - name: jupyterLab
+    description: Run JupyterLab on port 8888
+    type: boolean
+    default: "false"
 links:                        # optional list; rendered on workspace cards
   - name: Cursor
     url: "cursor://vscode-remote/ssh-remote+{alias}/home/dev"
@@ -71,7 +75,7 @@ links:                        # optional list; rendered on workspace cards
     url: "jetbrains-gateway://connect#type=ssh&host={alias}&port=22&user=dev&projectPath=/home/dev"
     icon: pycharm
   - name: JupyterLab
-    url: "/api/workspaces/{name}/ports/8888/lab"
+    url: "/api/workspaces/{name}/lab/"
     icon: jupyterlab
     newTab: true
   - name: Docs

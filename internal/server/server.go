@@ -134,6 +134,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
 	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)
 	mux.HandleFunc("GET /api/workspaces/{name}/code/", s.browserVSCode)
+	mux.HandleFunc("GET /api/workspaces/{name}/lab", s.browserJupyterRedirect)
+	mux.HandleFunc("GET /api/workspaces/{name}/lab/", s.browserJupyter)
 	mux.HandleFunc("GET /ws", s.terminal)
 	return s.metricsMiddleware(s.auth(s.audit(mux)))
 }

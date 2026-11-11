@@ -51,6 +51,7 @@ type WorkspaceInfo struct {
 	Owner         string    `json:"owner"`
 	Persistent    bool      `json:"persistent"`
 	BrowserVSCode bool      `json:"browserVSCode"`
+	JupyterLab    bool      `json:"jupyterLab"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -72,6 +73,7 @@ type TopologyWorkspace struct {
 	Image         string             `json:"image,omitempty"`
 	Persistent    bool               `json:"persistent"`
 	BrowserVSCode bool               `json:"browserVSCode,omitempty"`
+	JupyterLab    bool               `json:"jupyterLab,omitempty"`
 	CreatedAt     string             `json:"createdAt,omitempty"`
 	Region        string             `json:"region,omitempty"`
 	Resources     []TopologyResource `json:"resources"`
@@ -357,6 +359,7 @@ func infoFromMap(value map[string]any) WorkspaceInfo {
 	out.Owner, _ = value["owner"].(string)
 	out.Persistent, _ = value["persistent"].(bool)
 	out.BrowserVSCode, _ = value["browserVSCode"].(bool)
+	out.JupyterLab, _ = value["jupyterLab"].(bool)
 	if raw, ok := value["createdAt"].(string); ok {
 		out.CreatedAt, _ = time.Parse(time.RFC3339, raw)
 	}

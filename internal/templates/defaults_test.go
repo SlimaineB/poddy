@@ -82,6 +82,39 @@ func TestApplyDefaultsInjectsWorkspace(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsInjectsJupyterLab(t *testing.T) {
+	data := testData()
+	data.Parameters["jupyterLab"] = "true"
+
+	pod, err := ApplyDefaults([]byte("apiVersion: v1\nkind: Pod\nspec: {}\n"), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pod.Spec.Containers) != 3 {
+		t.Fatalf("containers = %+v", pod.Spec.Containers)
+	}
+	jupyter := containerByName(pod.Spec.Containers, "jupyterlab")
+	if jupyter == nil {
+		t.Fatalf("jupyterlab container missing: %+v", pod.Spec.Containers)
+	}
+	if jupyter.Image != "quay.io/jupyter/base-notebook:latest" {
+		t.Fatalf("jupyterlab image = %q", jupyter.Image)
+	}
+	if jupyter.WorkingDir != WorkspacePath {
+		t.Fatalf("jupyterlab workingDir = %q", jupyter.WorkingDir)
+	}
+	if !hasVolumeMount(jupyter.VolumeMounts, "workspace") {
+		t.Fatalf("jupyterlab volumeMounts = %+v", jupyter.VolumeMounts)
+	}
+	args := strings.Join(jupyter.Args, " ")
+	if !strings.Contains(args, "--ServerApp.base_url=/api/workspaces/app/lab/") {
+		t.Fatalf("jupyterlab args = %+v", jupyter.Args)
+	}
+	if !strings.Contains(args, "--ServerApp.root_dir=/home/dev") {
+		t.Fatalf("jupyterlab args = %+v", jupyter.Args)
+	}
+}
+
 func TestApplyDefaultsEphemeral(t *testing.T) {
 	data := testData()
 	data.Storage = ""
