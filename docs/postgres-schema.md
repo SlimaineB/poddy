@@ -230,7 +230,7 @@ owner as appropriate.
 | Area | Actions |
 |------|---------|
 | Authentication | `auth.login`, `auth.logout`, `auth.denied` |
-| Workspaces | `workspace.create`, `workspace.start`, `workspace.stop`, `workspace.restart`, `workspace.delete`, `workspace.logs.view`, `workspace.vscode.open`, `workspace.cursor.open`, `workspace.gateway.open`, `workspace.desktop.open`, `workspace.terminal.open` |
+| Workspaces | `workspace.create`, `workspace.start`, `workspace.stop`, `workspace.restart`, `workspace.delete`, `workspace.logs.view`, `workspace.vscode.open`, `workspace.cursor.open`, `workspace.gateway.open`, `workspace.desktop.open`, `workspace.terminal.open`, `workspace.share.update` |
 | SSH | `ssh.connect` |
 | Templates | `template.access.update` |
 | Teams | `team.update`, `team.delete` |

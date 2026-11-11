@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"sort"
@@ -424,6 +425,9 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	result = "success"
 	s.deleteWorkspaceMetadata(r.Context(), name)
+	if err := s.shareStore().DeleteWorkspace(r.Context(), name); err != nil {
+		log.Printf("workspace shares %s: delete: %v", name, err)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -309,6 +309,14 @@ func (c *Client) doJSON(ctx context.Context, method, path string, identity Ident
 }
 
 func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity) {
+	c.proxy(w, r, &identity)
+}
+
+func (c *Client) ProxyAnonymous(w http.ResponseWriter, r *http.Request) {
+	c.proxy(w, r, nil)
+}
+
+func (c *Client) proxy(w http.ResponseWriter, r *http.Request, identity *Identity) {
 	if !c.available() {
 		http.Error(w, "region unavailable", http.StatusBadGateway)
 		return
@@ -318,10 +326,13 @@ func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity
 		http.Error(w, "invalid region URL", http.StatusBadGateway)
 		return
 	}
-	token, err := SignIdentity(c.cfg.Key, identity)
-	if err != nil {
-		http.Error(w, "cannot sign region identity", http.StatusInternalServerError)
-		return
+	token := ""
+	if identity != nil {
+		token, err = SignIdentity(c.cfg.Key, *identity)
+		if err != nil {
+			http.Error(w, "cannot sign region identity", http.StatusInternalServerError)
+			return
+		}
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Transport = c.http.Transport
@@ -337,8 +348,11 @@ func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		director(req)
-		req.Header.Set(IdentityHeader, token)
+		req.Header.Del(IdentityHeader)
 		req.Header.Del("Authorization")
+		if identity != nil {
+			req.Header.Set(IdentityHeader, token)
+		}
 		req.Header.Set("X-Forwarded-Host", originalHost)
 		req.Header.Set("X-Forwarded-Proto", originalProto)
 		req.Host = originalHost

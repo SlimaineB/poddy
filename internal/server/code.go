@@ -20,6 +20,7 @@ const (
 type browserIDEConfig struct {
 	label    string
 	port     int
+	path     string
 	enabled  func(k8s.Workspace) bool
 	disabled string
 }
@@ -28,6 +29,7 @@ func (s *Server) browserVSCode(w http.ResponseWriter, r *http.Request) {
 	s.browserIDE(w, r, browserIDEConfig{
 		label:    "browser VS Code",
 		port:     browserVSCodePort,
+		path:     "/code/",
 		enabled:  func(ws k8s.Workspace) bool { return ws.BrowserVSCode },
 		disabled: "browser VS Code is not enabled for this workspace",
 	})
@@ -37,6 +39,7 @@ func (s *Server) browserJupyter(w http.ResponseWriter, r *http.Request) {
 	s.browserIDE(w, r, browserIDEConfig{
 		label:    "JupyterLab",
 		port:     browserJupyterPort,
+		path:     "/lab/",
 		enabled:  func(ws k8s.Workspace) bool { return ws.JupyterLab },
 		disabled: "JupyterLab is not enabled for this workspace",
 	})
@@ -56,19 +59,23 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 		s.proxyWorkspace(w, r)
 		return
 	}
+	targetPath := workspaceIDEPath(name, cfg.path)
 	id, ok := s.currentIdentity(r)
-	if !ok {
+	if ok {
+		rbac, err := s.loadRBAC(r)
+		if err != nil {
+			http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		allowed, err := s.workspaceAllowed(r, name, id, rbac)
+		if err != nil || !allowed {
+			if _, shared := s.shareAccess(r, name, targetPath); !shared {
+				http.Error(w, "workspace not found", http.StatusNotFound)
+				return
+			}
+		}
+	} else if _, shared := s.shareAccess(r, name, targetPath); !shared {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	rbac, err := s.loadRBAC(r)
-	if err != nil {
-		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	allowed, err := s.workspaceAllowed(r, name, id, rbac)
-	if err != nil || !allowed {
-		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
 
@@ -103,6 +110,8 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		director(req)
+		stripPortalCookies(req.Header)
+		stripPortalAuth(req.Header, s.Token)
 		req.Host = r.Host
 		req.Header.Set("X-Forwarded-Host", r.Host)
 		if secureRequest(r) {
@@ -116,4 +125,12 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 		http.Error(w, cfg.label+" is unavailable", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+func workspaceLabURL(name string) string {
+	return workspaceIDEPath(name, "/lab/")
+}
+
+func workspaceIDEPath(name, suffix string) string {
+	return "/api/workspaces/" + url.PathEscape(name) + suffix
 }

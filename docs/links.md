@@ -96,6 +96,33 @@ The built-in **JupyterLab** entry is available when `workspace.jupyterLab` is
 true. The Python template enables the `jupyterLab` parameter by default; other
 templates can opt in with the same parameter.
 
+## Share a workspace port
+
+The **Ports** dialog can turn a listening port into a shareable link. Each port
+has three access modes:
+
+| Mode | Who can open the link |
+|------|-----------------------|
+| **Private** | Only the workspace owner and admins, through the normal portal session. No share link exists. |
+| **Internal** | Any signed-in portal user. The link redirects to the portal login when needed. |
+| **Public** | Anyone with the link, without a portal login. |
+
+Select the mode in the Ports dialog, then use **Copy link**. The link looks like
+`/share/<token>` on a standalone portal, or `/share/<region>/<token>` on a
+central hub. The portal sets a short-lived, path-scoped cookie and redirects to
+the application. Subresources and WebSocket traffic use the same cookie.
+
+For a workspace with a built-in browser IDE, sharing its port creates a link
+to the IDE route instead of the generic port proxy: port `8888` uses `/lab/`
+when JupyterLab is enabled, and port `3000` uses `/code/` when VS Code Web is
+enabled. This keeps the IDE's expected base path.
+
+Share links are stored in the `poddy-shares` Secret in the workspace namespace.
+They survive workspace stop/start, are removed when the workspace is deleted,
+and are revoked immediately when the port is set back to **Private**. Treat a
+public link as a bearer credential: anyone who has it can reach the application
+until you revoke it.
+
 To add an IDE, add its SVG symbol to `web/index.html`, then add one entry to
 `IDE_INTEGRATIONS`. No card or SSH-dialog markup needs to change.
 

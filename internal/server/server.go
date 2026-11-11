@@ -118,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
 	mux.HandleFunc("GET /api/workspaces/{name}/ports", s.workspacePorts)
+	mux.HandleFunc("PUT /api/workspaces/{name}/ports/{port}/share", s.workspaceShare)
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}", s.workspacePortRedirect)
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}/", s.workspacePortProxy)
 	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
@@ -136,6 +137,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}/code/", s.browserVSCode)
 	mux.HandleFunc("GET /api/workspaces/{name}/lab", s.browserJupyterRedirect)
 	mux.HandleFunc("GET /api/workspaces/{name}/lab/", s.browserJupyter)
+	mux.HandleFunc("GET /share/{token}", s.shareLink)
+	mux.HandleFunc("GET /share/{region}/{token}", s.regionShareLink)
 	mux.HandleFunc("GET /ws", s.terminal)
 	return s.metricsMiddleware(s.auth(s.audit(mux)))
 }

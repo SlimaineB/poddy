@@ -680,6 +680,28 @@ function renderPorts(workspace, data, body) {
     address.textContent = [item.protocol || "tcp", item.address].filter(Boolean).join(" · ");
     main.append(number, address);
 
+    const actions = document.createElement("div");
+    actions.className = "port-actions";
+
+    const share = document.createElement("select");
+    share.className = "port-share-select";
+    share.title = "Share access for this port";
+    share.setAttribute("aria-label", `Share access for port ${port}`);
+    for (const [value, label] of [["off", "Private"], ["internal", "Internal"], ["public", "Public"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      share.append(option);
+    }
+    share.value = item.share?.access || "off";
+    share.dataset.current = share.value;
+    share.addEventListener("change", () => updatePortShare(workspace, port, share, actions));
+    actions.append(share);
+
+    if (item.share?.url) {
+      actions.append(shareCopyButton(item.share.url));
+    }
+
     const open = document.createElement("a");
     open.className = "button small";
     open.textContent = "Open";
@@ -688,8 +710,50 @@ function renderPorts(workspace, data, body) {
     open.rel = "noopener";
     open.title = `Open port ${port} in a new tab`;
 
-    row.append(main, open);
+    row.append(main, actions, open);
     body.append(row);
+  }
+}
+
+function shareCopyButton(url) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button ghost small port-share-copy";
+  button.textContent = "Copy link";
+  button.title = "Copy share link";
+  button.addEventListener("click", () => copyShareURL(url));
+  return button;
+}
+
+async function updatePortShare(workspace, port, select, actions) {
+  const access = select.value;
+  select.disabled = true;
+  try {
+    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/ports/${encodeURIComponent(port)}/share`, {
+      method: "PUT",
+      body: JSON.stringify({ access }),
+    });
+    const share = data && data.share ? data.share : null;
+    const current = actions.querySelector(".port-share-copy");
+    if (current) current.remove();
+    if (share?.url) actions.append(shareCopyButton(share.url));
+    select.dataset.current = access;
+    toast(share ? `Port ${port} share set to ${access}.` : `Port ${port} share removed.`, "success");
+  } catch (err) {
+    select.value = select.dataset.current || "off";
+    toast(err.message || "Could not update share.");
+  } finally {
+    select.disabled = false;
+  }
+}
+
+async function copyShareURL(url) {
+  const full = new URL(url, location.origin).href;
+  try {
+    await navigator.clipboard.writeText(full);
+    toast("Share link copied.", "success");
+  } catch {
+    toast(`Copy this link: ${full}`);
   }
 }
 

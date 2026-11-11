@@ -25,7 +25,7 @@ type identity struct {
 func (s *Server) auth(next http.Handler) http.Handler {
 	if s.RegionMode {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isPublic(r.URL.Path) {
+			if isPublic(r.URL.Path) || shareRequestAllowed(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -42,7 +42,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPublic(r.URL.Path) {
+		if isPublic(r.URL.Path) || shareRequestAllowed(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -92,7 +92,7 @@ func (s *Server) cookie(token string, secure bool) *http.Cookie {
 
 func isPublic(path string) bool {
 	if path == "/healthz" || path == "/login" || path == "/logout" || path == "/api/desktop/enroll" ||
-		strings.HasPrefix(path, "/api/internal/region/") ||
+		strings.HasPrefix(path, "/api/internal/region/") || strings.HasPrefix(path, "/share/") ||
 		strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/oidc/") {
 		return true
 	}
@@ -147,6 +147,10 @@ func safeNext(next string) string {
 
 func tokenEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func shareRequestAllowed(r *http.Request) bool {
+	return hasShareCookie(r) && isWorkspaceSharePath(r.URL.Path)
 }
 
 func secureRequest(r *http.Request) bool {

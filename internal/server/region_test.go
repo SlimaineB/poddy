@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"poddy/internal/auth"
 	"poddy/internal/k8s"
 	"poddy/internal/region"
 )
@@ -208,5 +209,67 @@ func TestHubProxiesWorkspacePorts(t *testing.T) {
 	ports, ok := payload["ports"].([]any)
 	if !ok || len(ports) != 0 {
 		t.Fatalf("ports = %#v", payload["ports"])
+	}
+}
+
+func TestHubProxiesShareLink(t *testing.T) {
+	regionServer := newTestServer("")
+	regionServer.RegionMode = true
+	regionServer.RegionKey = "shared"
+	regionServer.RegionName = "eu"
+	backend := httptest.NewServer(regionServer.Handler())
+	defer backend.Close()
+
+	registry, err := region.Parse([]byte("regions:\n- name: eu\n  url: " + backend.URL + "\n  key: shared\n  default: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := newRBACServer(t, rbacTestConfig())
+	hub.Regions = region.NewHub(registry)
+	admin := sessionFor(t, hub, auth.User{Username: "admin", Email: "admin@example.com"})
+
+	rec := requestAs(t, hub, admin, http.MethodPost, "/api/workspaces", map[string]any{"name": "app", "region": "eu"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var ws struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = requestAs(t, hub, admin, http.MethodPut, "/api/workspaces/"+ws.Name+"/ports/4000/share", map[string]string{"access": "public"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("share status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Share struct {
+			URL string `json:"url"`
+		} `json:"share"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Share.URL == "" || created.Share.URL[:7] != "/share/" {
+		t.Fatalf("share url = %q", created.Share.URL)
+	}
+
+	rec = request(t, hub, http.MethodGet, created.Share.URL, nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("share link status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != shareCookie {
+		t.Fatalf("cookies = %+v", cookies)
+	}
+	target := "/api/workspaces/" + ws.Name + "/ports/4000/"
+	if got := rec.Header().Get("Location"); got != target {
+		t.Fatalf("location = %q", got)
+	}
+
+	rec = requestAs(t, hub, cookies[0], http.MethodGet, target, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("target status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }

@@ -28,8 +28,31 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, ok := s.currentIdentity(r)
+	name := r.PathValue("name")
+	if name == "" {
+		name = r.URL.Query().Get("name")
+	}
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		if !shareRequestAllowed(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		regionCfg, _, err := s.Regions.FindWorkspace(r.Context(), name, s.hubAdminIdentity())
+		if err != nil {
+			if region.IsNotFound(err) {
+				http.Error(w, "workspace not found", http.StatusNotFound)
+				return
+			}
+			log.Printf("region lookup %s: %v", name, err)
+			http.Error(w, "region unavailable", http.StatusBadGateway)
+			return
+		}
+		client := s.Regions.Client(regionCfg.Name)
+		if client == nil {
+			http.Error(w, "region unavailable", http.StatusBadGateway)
+			return
+		}
+		client.ProxyAnonymous(w, r)
 		return
 	}
 	cfg, err := s.loadRBAC(r)
@@ -38,10 +61,6 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := s.hubIdentity(id, s.isAdmin(id, cfg))
-	name := r.PathValue("name")
-	if name == "" {
-		name = r.URL.Query().Get("name")
-	}
 	regionCfg, _, err := s.Regions.FindWorkspace(r.Context(), name, identity)
 	if err != nil {
 		if region.IsNotFound(err) {

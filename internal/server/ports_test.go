@@ -69,11 +69,24 @@ func TestRewriteProxyLocation(t *testing.T) {
 
 func TestStripPortalCookies(t *testing.T) {
 	header := http.Header{
-		"Cookie": []string{"theme=dark; poddy_token=secret; poddy_session=session; app=1; poddy_oidc=oidc"},
+		"Cookie": []string{"theme=dark; poddy_token=secret; poddy_session=session; poddy_share=share; app=1; poddy_oidc=oidc"},
 	}
 	stripPortalCookies(header)
 	if got := header.Get("Cookie"); got != "theme=dark; app=1" {
 		t.Fatalf("cookie = %q", got)
+	}
+}
+
+func TestStripPortalAuth(t *testing.T) {
+	header := http.Header{"Authorization": []string{"Bearer secret"}}
+	stripPortalAuth(header, "secret")
+	if got := header.Get("Authorization"); got != "" {
+		t.Fatalf("authorization = %q", got)
+	}
+	header.Set("Authorization", "Bearer other")
+	stripPortalAuth(header, "secret")
+	if got := header.Get("Authorization"); got != "Bearer other" {
+		t.Fatalf("authorization = %q", got)
 	}
 }
 

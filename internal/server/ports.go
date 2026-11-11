@@ -18,7 +18,8 @@ const workspaceSSHPort = 22
 
 type workspacePort struct {
 	k8s.Port
-	URL string `json:"url"`
+	URL   string              `json:"url"`
+	Share *workspaceShareInfo `json:"share,omitempty"`
 }
 
 func (s *Server) workspacePorts(w http.ResponseWriter, r *http.Request) {
@@ -66,12 +67,30 @@ func (s *Server) workspacePorts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shares, err := s.shareStore().Load(r.Context())
+	if err != nil {
+		log.Printf("workspace shares %s: %v", name, err)
+		shares = map[string]k8s.Share{}
+	}
+	shareByPath := map[string]k8s.Share{}
+	for _, share := range shares {
+		if share.Workspace == name {
+			shareByPath[share.Path] = share
+		}
+	}
+
 	out := make([]workspacePort, 0, len(ports))
 	for _, port := range ports {
-		out = append(out, workspacePort{
+		target := workspaceShareTarget(name, port.Port, ws)
+		item := workspacePort{
 			Port: port,
 			URL:  workspacePortURL(name, port.Port),
-		})
+		}
+		if share, ok := shareByPath[target]; ok {
+			info := s.shareInfo(share)
+			item.Share = &info
+		}
+		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ports": out})
 }
@@ -92,19 +111,23 @@ func (s *Server) workspacePortProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shareTarget := workspacePortURL(name, port)
 	id, ok := s.currentIdentity(r)
-	if !ok {
+	if ok {
+		cfg, err := s.loadRBAC(r)
+		if err != nil {
+			http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		allowed, err := s.workspaceAllowed(r, name, id, cfg)
+		if err != nil || !allowed {
+			if _, shared := s.shareAccess(r, name, shareTarget); !shared {
+				http.Error(w, "workspace not found", http.StatusNotFound)
+				return
+			}
+		}
+	} else if _, shared := s.shareAccess(r, name, shareTarget); !shared {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	cfg, err := s.loadRBAC(r)
-	if err != nil {
-		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	allowed, err := s.workspaceAllowed(r, name, id, cfg)
-	if err != nil || !allowed {
-		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
 
@@ -145,11 +168,7 @@ func (s *Server) workspacePortProxy(w http.ResponseWriter, r *http.Request) {
 		query.Del("token")
 		req.URL.RawQuery = query.Encode()
 		stripPortalCookies(req.Header)
-		if s.Token != "" {
-			if token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "); token != "" && tokenEqual(token, s.Token) {
-				req.Header.Del("Authorization")
-			}
-		}
+		stripPortalAuth(req.Header, s.Token)
 		req.Host = r.Host
 		req.Header.Set("X-Forwarded-Host", r.Host)
 		req.Header.Set("X-Forwarded-Prefix", prefix)
@@ -227,6 +246,15 @@ func rewriteProxyLocation(resp *http.Response, prefix string) {
 	resp.Header.Set("Location", parsed.String())
 }
 
+func stripPortalAuth(header http.Header, token string) {
+	if token == "" {
+		return
+	}
+	if got := strings.TrimPrefix(header.Get("Authorization"), "Bearer "); got != "" && tokenEqual(got, token) {
+		header.Del("Authorization")
+	}
+}
+
 func stripPortalCookies(header http.Header) {
 	values := header.Values("Cookie")
 	if len(values) == 0 {
@@ -242,7 +270,7 @@ func stripPortalCookies(header http.Header) {
 			}
 			name, _, _ := strings.Cut(part, "=")
 			switch strings.TrimSpace(name) {
-			case cookieName, sessionCookie, oidcCookie:
+			case cookieName, sessionCookie, oidcCookie, shareCookie:
 				continue
 			}
 			kept = append(kept, part)

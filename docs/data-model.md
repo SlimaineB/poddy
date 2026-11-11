@@ -21,6 +21,7 @@ the source of truth and PostgreSQL is never read for access decisions. See
 | OIDC users | ConfigMap | `poddy-users` | `users.json` |
 | Self-service SSH keys | ConfigMap | `poddy-user-ssh-keys` | `keys.json` |
 | Workspace SSH keys | Secret | `poddy-<workspace>-ssh-keys` | `authorized_keys` |
+| Workspace share links | Secret | `poddy-shares` | `shares.json` |
 | Agent tunnel key | Secret | `<release>-agent` | `agent-key` |
 | SSH certificate authority | Secret | `<release>-ssh-ca` | `ssh-ca-key` |
 | External auth tokens | Secret | `poddy-external-auth` | encrypted token document |
