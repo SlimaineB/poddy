@@ -76,6 +76,9 @@ type Workspace struct {
 	Region        string    `json:"region,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	Schedule      *Schedule `json:"schedule,omitempty"`
+	// Access is filled by the portal for the requesting user. It carries
+	// presence and owner-approval state; it is never stored on the pod.
+	Access *WorkspaceAccess `json:"access,omitempty"`
 	// StoppedBySchedule is internal; it prevents the scheduler from restarting
 	// a workspace that a user stopped manually.
 	StoppedBySchedule bool `json:"-"`

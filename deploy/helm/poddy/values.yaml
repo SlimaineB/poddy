@@ -12,7 +12,8 @@ bastion:
     create: true
     name: ""
     annotations: {}
-  # Namespace-scoped Role with only pod read and port-forward access.
+  # Namespace-scoped Role with pod read, port-forward, and access approval
+  # state access.
   rbac:
     create: true
   resources: {}

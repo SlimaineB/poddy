@@ -44,10 +44,15 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	allowed, err := s.workspaceAllowed(r, name, id, cfg)
-	if err != nil || !allowed {
+	decision, err := s.interactiveAccess(r, name, id, cfg)
+	if err != nil {
 		s.auditTerminal(r, name, "denied", "workspace not found")
 		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if !decision.Allowed {
+		s.auditTerminal(r, name, "denied", "owner approval required")
+		s.denyInteractive(w, id, cfg)
 		return
 	}
 
@@ -70,6 +75,8 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	s.auditTerminal(r, name, "success", "")
+	stopPresence := s.trackPresence(name, ownerID(id.User), "terminal")
+	defer stopPresence()
 
 	exec, err := remotecommand.NewSPDYExecutor(
 		s.Workspaces.Rest,

@@ -67,12 +67,14 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 			http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		allowed, err := s.workspaceAllowed(r, name, id, rbac)
-		if err != nil || !allowed {
+		allowed, err := s.interactiveAccess(r, name, id, rbac)
+		if err != nil || !allowed.Allowed {
 			if _, shared := s.shareAccess(r, name, targetPath); !shared {
-				http.Error(w, "workspace not found", http.StatusNotFound)
+				s.denyInteractive(w, id, rbac)
 				return
 			}
+		} else {
+			s.markPresence(name, ownerID(id.User), "browser")
 		}
 	} else if _, shared := s.shareAccess(r, name, targetPath); !shared {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

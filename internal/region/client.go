@@ -44,15 +44,16 @@ type Client struct {
 }
 
 type WorkspaceInfo struct {
-	Name          string    `json:"name"`
-	Template      string    `json:"template"`
-	Phase         string    `json:"phase"`
-	Image         string    `json:"image"`
-	Owner         string    `json:"owner"`
-	Persistent    bool      `json:"persistent"`
-	BrowserVSCode bool      `json:"browserVSCode"`
-	JupyterLab    bool      `json:"jupyterLab"`
-	CreatedAt     time.Time `json:"createdAt"`
+	Name          string               `json:"name"`
+	Template      string               `json:"template"`
+	Phase         string               `json:"phase"`
+	Image         string               `json:"image"`
+	Owner         string               `json:"owner"`
+	Persistent    bool                 `json:"persistent"`
+	BrowserVSCode bool                 `json:"browserVSCode"`
+	JupyterLab    bool                 `json:"jupyterLab"`
+	CreatedAt     time.Time            `json:"createdAt"`
+	Access        *k8s.WorkspaceAccess `json:"access,omitempty"`
 }
 
 type TopologyResource struct {
@@ -67,16 +68,17 @@ type TopologyResource struct {
 }
 
 type TopologyWorkspace struct {
-	Name          string             `json:"name"`
-	Template      string             `json:"template,omitempty"`
-	Phase         string             `json:"phase,omitempty"`
-	Image         string             `json:"image,omitempty"`
-	Persistent    bool               `json:"persistent"`
-	BrowserVSCode bool               `json:"browserVSCode,omitempty"`
-	JupyterLab    bool               `json:"jupyterLab,omitempty"`
-	CreatedAt     string             `json:"createdAt,omitempty"`
-	Region        string             `json:"region,omitempty"`
-	Resources     []TopologyResource `json:"resources"`
+	Name          string                `json:"name"`
+	Template      string                `json:"template,omitempty"`
+	Phase         string                `json:"phase,omitempty"`
+	Image         string                `json:"image,omitempty"`
+	Persistent    bool                  `json:"persistent"`
+	BrowserVSCode bool                  `json:"browserVSCode,omitempty"`
+	JupyterLab    bool                  `json:"jupyterLab,omitempty"`
+	CreatedAt     string                `json:"createdAt,omitempty"`
+	Region        string                `json:"region,omitempty"`
+	Resources     []TopologyResource    `json:"resources"`
+	Presence      []k8s.PresenceSummary `json:"presence,omitempty"`
 }
 
 type TopologyUser struct {
@@ -376,6 +378,14 @@ func infoFromMap(value map[string]any) WorkspaceInfo {
 	out.JupyterLab, _ = value["jupyterLab"].(bool)
 	if raw, ok := value["createdAt"].(string); ok {
 		out.CreatedAt, _ = time.Parse(time.RFC3339, raw)
+	}
+	if raw, ok := value["access"]; ok && raw != nil {
+		if data, err := json.Marshal(raw); err == nil {
+			var access k8s.WorkspaceAccess
+			if json.Unmarshal(data, &access) == nil {
+				out.Access = &access
+			}
+		}
 	}
 	return out
 }

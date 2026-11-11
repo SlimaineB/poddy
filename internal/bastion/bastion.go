@@ -31,6 +31,7 @@ type Bastion struct {
 	Broker       *tunnel.Broker
 	RequireAgent bool
 	CA           *sshca.CA
+	Access       *k8s.AccessStore
 	keys         sshkeys.Keyring
 	config       *ssh.ServerConfig
 	listener     net.Listener
@@ -196,6 +197,13 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 		return
 	}
 
+	if !b.interactiveAuthorized(permissions, actor, name, k8s.Owner(pod)) {
+		log.Printf("ssh bastion: admin %s is waiting for owner approval on workspace %s", actor, name)
+		b.recordAudit(name, actor, actorType, remoteAddr, "denied", "owner approval required")
+		_ = newChannel.Reject(ssh.Prohibited, "owner approval required: request access from the portal")
+		return
+	}
+
 	port := int(request.Port)
 	if port == 0 {
 		port = 22
@@ -225,6 +233,8 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	}
 	b.recordAudit(name, actor, actorType, remoteAddr, "success", "transport="+transport)
 	go ssh.DiscardRequests(channelRequests)
+	stopPresence := b.trackPresence(name, actor)
+	defer stopPresence()
 
 	done := make(chan struct{}, 2)
 	go func() {
@@ -282,6 +292,74 @@ func (b *Bastion) authorize(permissions *ssh.Permissions, fingerprint, owner, wo
 		}
 	}
 	return b.keys.Authorize(fingerprint, owner)
+}
+
+func (b *Bastion) interactiveAuthorized(permissions *ssh.Permissions, actor, workspace, owner string) bool {
+	if permissions == nil || permissions.Extensions["admin"] != "true" {
+		return true
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" || owner == "" || strings.EqualFold(actor, owner) {
+		return true
+	}
+	if b.Access == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	state, err := b.Access.Load(ctx)
+	if err != nil {
+		log.Printf("ssh bastion: access check %s: %v", workspace, err)
+		return false
+	}
+	_, ok := state.Grant(workspace, actor, time.Now())
+	return ok
+}
+
+func (b *Bastion) trackPresence(workspace, actor string) func() {
+	actor = strings.TrimSpace(actor)
+	if b.Access == nil || actor == "" {
+		return func() {}
+	}
+	session, err := k8s.NewPresenceID()
+	if err != nil {
+		return func() {}
+	}
+	now := time.Now()
+	presence := k8s.Presence{Actor: actor, Kind: "ssh", Since: now, LastSeen: now}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := b.Access.SetPresence(ctx, workspace, session, presence); err != nil {
+		log.Printf("ssh bastion: presence %s/%s: %v", workspace, actor, err)
+	}
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				presence.LastSeen = time.Now()
+				hbCtx, hbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				err := b.Access.SetPresence(hbCtx, workspace, session, presence)
+				hbCancel()
+				if err != nil {
+					log.Printf("ssh bastion: presence heartbeat %s/%s: %v", workspace, actor, err)
+				}
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		clearCtx, clearCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer clearCancel()
+		if err := b.Access.ClearPresence(clearCtx, workspace, session); err != nil {
+			log.Printf("ssh bastion: presence clear %s/%s: %v", workspace, actor, err)
+		}
+	}
 }
 
 func (b *Bastion) auditActor(fingerprint string) (string, string) {

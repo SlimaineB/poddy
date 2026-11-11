@@ -708,6 +708,15 @@
         </header>
         <dl id="detail-list" class="detail-list"></dl>
       </section>
+      <section class="detail-panel">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Who is in this workspace</h3>
+            <p>Live interactive sessions and owner approvals.</p>
+          </div>
+        </header>
+        <div id="detail-access" class="detail-access"></div>
+      </section>
       <section class="detail-panel workspace-schedule">
         <header class="workspace-logs-header">
           <div>
@@ -838,6 +847,22 @@
     <footer class="dialog-footer">
       <button id="regions-show-all" class="button ghost" type="button">Show all regions</button>
       <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="access-dialog" class="dialog dialog-small">
+    <header class="dialog-header">
+      <div>
+        <h2>Owner approval required</h2>
+        <p id="access-text"></p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Cancel</button>
+      <button id="access-request" class="button primary" type="button">Request access</button>
     </footer>
   </dialog>
 

@@ -1,5 +1,203 @@
 "use strict";
 
+let pendingAccessWorkspace = null;
+
+function accessAllowed(workspace) {
+  return !workspace || !workspace.access || workspace.access.allowed;
+}
+
+function ensureWorkspaceAccess(workspace) {
+  if (accessAllowed(workspace)) return true;
+  if (workspace.access && workspace.access.pending) {
+    toast("Access request already sent. Waiting for the owner to approve.");
+    return false;
+  }
+  promptWorkspaceAccess(workspace);
+  return false;
+}
+
+function promptWorkspaceAccess(workspace) {
+  if (!workspace) return;
+  if (!els.accessDialog || !els.accessText) {
+    toast("Owner approval is required to enter this workspace.");
+    return;
+  }
+  pendingAccessWorkspace = workspace;
+  const owner = workspace.access && workspace.access.owner ? workspace.access.owner : workspace.owner;
+  els.accessText.textContent = owner
+    ? `${owner} owns "${workspace.name}". They must approve before you can open a terminal, an IDE, a port or an SSH session.`
+    : `The owner of "${workspace.name}" must approve before you can enter.`;
+  if (!els.accessDialog.open) els.accessDialog.showModal();
+}
+
+async function requestAccessFromDialog() {
+  const workspace = pendingAccessWorkspace;
+  if (!workspace) return;
+  els.accessRequest.disabled = true;
+  try {
+    const data = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/access/request`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    toast(data && data.status === "approved" ? "Access granted." : "Access requested. Waiting for the owner.", "success");
+    els.accessDialog.close();
+    await load({ silent: true });
+  } catch (err) {
+    toast(err.message || "Could not request access.");
+  } finally {
+    els.accessRequest.disabled = false;
+  }
+}
+
+async function updateWorkspaceAccess(workspace, action, actor) {
+  try {
+    const info = await api(`/api/workspaces/${encodeURIComponent(workspace.name)}/access/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ actor }),
+    });
+    const verb = action === "approve" ? "approved" : action === "deny" ? "denied" : "revoked";
+    toast(`Access ${verb} for ${actor}.`, "success");
+    if (state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
+      state.detailWorkspace.access = info;
+      renderAccessPanel(state.detailWorkspace);
+    }
+    await load({ silent: true });
+  } catch (err) {
+    toast(err.message || "Could not update access.");
+  }
+}
+
+function renderAccessPanel(workspace) {
+  if (!els.detailAccess) return;
+  els.detailAccess.replaceChildren();
+  const access = workspace && workspace.access;
+  if (!access) return;
+
+  const presence = Array.isArray(access.presence) ? access.presence : [];
+  const presenceBox = document.createElement("div");
+  presenceBox.className = "access-presence";
+  const presenceTitle = document.createElement("h4");
+  presenceTitle.textContent = "Connected";
+  presenceBox.append(presenceTitle);
+  if (!presence.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "Nobody is connected right now.";
+    presenceBox.append(empty);
+  } else {
+    for (const item of presence) {
+      const line = document.createElement("div");
+      line.className = "access-person";
+      const name = document.createElement("span");
+      name.textContent = item.actor;
+      const kinds = document.createElement("span");
+      kinds.className = "badge neutral";
+      kinds.textContent = item.kinds && item.kinds.length ? item.kinds.join(", ") : "session";
+      line.append(name, kinds);
+      presenceBox.append(line);
+    }
+  }
+  els.detailAccess.append(presenceBox);
+
+  if (access.isOwner) {
+    const requests = Array.isArray(access.pendingRequests) ? access.pendingRequests : [];
+    const box = document.createElement("div");
+    box.className = "access-requests";
+    const title = document.createElement("h4");
+    title.textContent = "Access requests";
+    box.append(title);
+    if (!requests.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No pending request.";
+      box.append(empty);
+    } else {
+      for (const actor of requests) {
+        const row = document.createElement("div");
+        row.className = "access-person";
+        const name = document.createElement("span");
+        name.textContent = actor;
+        const approve = document.createElement("button");
+        approve.type = "button";
+        approve.className = "button small start";
+        approve.textContent = "Approve";
+        approve.addEventListener("click", () => updateWorkspaceAccess(workspace, "approve", actor));
+        const deny = document.createElement("button");
+        deny.type = "button";
+        deny.className = "button small danger";
+        deny.textContent = "Deny";
+        deny.addEventListener("click", () => updateWorkspaceAccess(workspace, "deny", actor));
+        row.append(name, approve, deny);
+        box.append(row);
+      }
+    }
+    els.detailAccess.append(box);
+
+    const grants = Array.isArray(access.grants) ? access.grants : [];
+    const grantsBox = document.createElement("div");
+    grantsBox.className = "access-requests";
+    const grantsTitle = document.createElement("h4");
+    grantsTitle.textContent = "Active grants";
+    grantsBox.append(grantsTitle);
+    if (!grants.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No active grant.";
+      grantsBox.append(empty);
+    } else {
+      for (const grant of grants) {
+        const row = document.createElement("div");
+        row.className = "access-person";
+        const name = document.createElement("span");
+        name.textContent = grant.actor;
+        const expires = document.createElement("span");
+        expires.className = "hint";
+        expires.textContent = grant.expiresAt ? `until ${new Date(grant.expiresAt).toLocaleString()}` : "";
+        const revoke = document.createElement("button");
+        revoke.type = "button";
+        revoke.className = "button small danger";
+        revoke.textContent = "Revoke";
+        revoke.addEventListener("click", () => updateWorkspaceAccess(workspace, "revoke", grant.actor));
+        row.append(name, expires, revoke);
+        grantsBox.append(row);
+      }
+    }
+    els.detailAccess.append(grantsBox);
+  } else if (access.isAdmin) {
+    const box = document.createElement("div");
+    box.className = "access-requests";
+    const title = document.createElement("h4");
+    title.textContent = "Your access";
+    box.append(title);
+    const line = document.createElement("div");
+    line.className = "access-person";
+    if (access.allowed) {
+      const text = document.createElement("span");
+      text.textContent = access.grantExpiresAt
+        ? `Granted until ${new Date(access.grantExpiresAt).toLocaleString()}`
+        : "Allowed";
+      line.append(text);
+    } else {
+      const text = document.createElement("span");
+      text.textContent = access.pending ? "Waiting for owner approval" : "Owner approval required";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button small primary";
+      button.textContent = access.pending ? "Requested" : "Request access";
+      button.disabled = Boolean(access.pending);
+      button.addEventListener("click", () => promptWorkspaceAccess(workspace));
+      line.append(text, button);
+    }
+    box.append(line);
+    els.detailAccess.append(box);
+  }
+}
+
+if (els.accessRequest) els.accessRequest.addEventListener("click", requestAccessFromDialog);
+if (els.accessDialog) els.accessDialog.addEventListener("close", () => {
+  pendingAccessWorkspace = null;
+});
+
 function renderCard(workspace) {
   const card = document.createElement("article");
   card.className = `card card-${statusClass(workspace.phase) || "unknown"}`;
@@ -89,6 +287,26 @@ function renderCard(workspace) {
     metaRow.append(owner);
   }
 
+  const access = workspace.access;
+  if (access && Array.isArray(access.presence) && access.presence.length) {
+    const presence = document.createElement("span");
+    presence.className = "badge presence";
+    presence.innerHTML = `${icon("users")}<span></span>`;
+    presence.querySelector("span").textContent = access.presence
+      .map((item) => `${item.actor}${item.kinds && item.kinds.length ? ` (${item.kinds.join(", ")})` : ""}`)
+      .join(", ");
+    presence.title = "Connected now";
+    metaRow.append(presence);
+  }
+
+  if (access && access.isOwner && Array.isArray(access.pendingRequests) && access.pendingRequests.length) {
+    const pending = document.createElement("span");
+    pending.className = "badge access-requested";
+    pending.innerHTML = `${icon("alert")}<span>Access requested</span>`;
+    pending.title = access.pendingRequests.join(", ");
+    metaRow.append(pending);
+  }
+
   meta.append(metaRow);
   if (workspace.createdAt) {
     const created = document.createElement("span");
@@ -121,7 +339,9 @@ function renderWorkspaceActions(workspace) {
       button.type = "button";
       button.className = "button small ssh";
       button.innerHTML = `${icon("key")}SSH`;
-      button.addEventListener("click", () => showSSH(workspace));
+      button.addEventListener("click", () => {
+        if (ensureWorkspaceAccess(workspace)) showSSH(workspace);
+      });
       actions.append(button);
     }
 
@@ -130,7 +350,9 @@ function renderWorkspaceActions(workspace) {
     ports.className = "button small";
     ports.innerHTML = `${icon("server")}Ports`;
     ports.title = "Open an application running in this workspace";
-    ports.addEventListener("click", () => showPorts(workspace));
+    ports.addEventListener("click", () => {
+      if (ensureWorkspaceAccess(workspace)) showPorts(workspace);
+    });
     actions.append(ports);
 
     const terminal = document.createElement("a");
@@ -144,6 +366,10 @@ function renderWorkspaceActions(workspace) {
       terminal.style.opacity = "0.45";
       terminal.style.pointerEvents = "none";
       terminal.addEventListener("click", (event) => event.preventDefault());
+    } else {
+      terminal.addEventListener("click", (event) => {
+        if (!ensureWorkspaceAccess(workspace)) event.preventDefault();
+      });
     }
     actions.append(terminal);
 
@@ -369,6 +595,14 @@ async function load({ silent = false } = {}) {
     state.loaded = true;
     state.pollError = false;
     renderWorkspaces();
+    if (state.detailWorkspace && els.workspaceDetailView && !els.workspaceDetailView.hidden) {
+      const fresh = state.workspaces.find((item) => item.name === state.detailWorkspace.name);
+      if (fresh) {
+        state.detailWorkspace = { ...state.detailWorkspace, access: fresh.access, owner: fresh.owner };
+        renderAccessPanel(state.detailWorkspace);
+        renderDetailHeader(state.detailWorkspace);
+      }
+    }
     if ((state.regionFilter || state.mapActive) && typeof loadRegionSummaries === "function") {
       loadRegionSummaries({ silent: true });
     }
@@ -599,6 +833,7 @@ async function refreshDetailPorts() {
 }
 
 function showPorts(workspace) {
+  if (!ensureWorkspaceAccess(workspace)) return;
   state.portsWorkspace = workspace;
   els.portsTitle.textContent = "Ports";
   els.portsSubtitle.textContent = `Applications listening in ${workspace.name}.`;
@@ -759,6 +994,7 @@ async function copyShareURL(url) {
 
 function openPort(workspace, input) {
   if (!workspace) return;
+  if (!ensureWorkspaceAccess(workspace)) return;
   const port = Number(input.value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     toast("Enter a port between 1 and 65535.");
@@ -1010,6 +1246,7 @@ function renderDetails(ws) {
     }
     els.detailList.append(detailRow("Teams", teamsEl));
   }
+  renderAccessPanel(ws);
   renderScheduleForm(ws.schedule);
 }
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"poddy/internal/k8s"
 	"poddy/internal/region"
@@ -22,15 +23,16 @@ type topologyResource struct {
 }
 
 type topologyWorkspace struct {
-	Name          string             `json:"name"`
-	Template      string             `json:"template,omitempty"`
-	Phase         string             `json:"phase,omitempty"`
-	Image         string             `json:"image,omitempty"`
-	Persistent    bool               `json:"persistent"`
-	BrowserVSCode bool               `json:"browserVSCode,omitempty"`
-	JupyterLab    bool               `json:"jupyterLab,omitempty"`
-	CreatedAt     string             `json:"createdAt,omitempty"`
-	Resources     []topologyResource `json:"resources"`
+	Name          string                `json:"name"`
+	Template      string                `json:"template,omitempty"`
+	Phase         string                `json:"phase,omitempty"`
+	Image         string                `json:"image,omitempty"`
+	Persistent    bool                  `json:"persistent"`
+	BrowserVSCode bool                  `json:"browserVSCode,omitempty"`
+	JupyterLab    bool                  `json:"jupyterLab,omitempty"`
+	CreatedAt     string                `json:"createdAt,omitempty"`
+	Resources     []topologyResource    `json:"resources"`
+	Presence      []k8s.PresenceSummary `json:"presence,omitempty"`
 }
 
 type topologyUser struct {
@@ -151,6 +153,15 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		byWorkspace[volume.Workspace] = append(byWorkspace[volume.Workspace], volume)
 	}
 
+	var accessState k8s.AccessState
+	if store := s.accessStore(); store != nil {
+		accessState, err = store.Load(r.Context())
+		if err != nil {
+			log.Printf("topology: access: %v", err)
+		}
+	}
+	now := time.Now()
+
 	users := map[string]*topologyUser{}
 	ensureUser := func(identity string) *topologyUser {
 		identity = strings.TrimSpace(identity)
@@ -185,6 +196,7 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 			BrowserVSCode: workspace.BrowserVSCode,
 			JupyterLab:    workspace.JupyterLab,
 			Resources:     []topologyResource{},
+			Presence:      accessState.PresenceSummary(workspace.Name, now),
 		}
 		if !workspace.CreatedAt.IsZero() {
 			node.CreatedAt = workspace.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")

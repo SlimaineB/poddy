@@ -121,8 +121,22 @@ func TestDesktopIsOwnerOrAdminScoped(t *testing.T) {
 	}
 
 	rec = requestAs(t, s, admin, http.MethodPost, "/api/workspaces/alice-ws/desktop", nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin desktop without approval = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = requestAs(t, s, admin, http.MethodPost, "/api/workspaces/alice-ws/access/request", map[string]any{})
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("admin access request = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/access/approve", map[string]any{"actor": "admin@example.com"})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("admin desktop = %d, body = %s", rec.Code, rec.Body.String())
+		t.Fatalf("owner approve = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = requestAs(t, s, admin, http.MethodPost, "/api/workspaces/alice-ws/desktop", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin desktop after approval = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	payload = decodeDesktopPayload(t, rec)
 	claims, err = s.verifyDesktopTicket(payload.Ticket)

@@ -545,6 +545,7 @@ func RunBastion(ctx context.Context, args []string) error {
 	sshBastion.Broker = broker
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = sshCA
+	sshBastion.Access = k8s.NewAccessStore(manager.Client, manager.Namespace, "")
 	if metadataEnabled {
 		sshBastion.Audit = metaStore
 	}
@@ -660,6 +661,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	sshBastion.Broker = broker
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = ca
+	sshBastion.Access = k8s.NewAccessStore(manager.Client, manager.Namespace, "")
 	if err := sshBastion.Listen(); err != nil {
 		broker.Close()
 		return nil, fmt.Errorf("ssh bastion: %w", err)

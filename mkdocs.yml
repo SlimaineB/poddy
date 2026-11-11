@@ -58,6 +58,7 @@ nav:
       - Okta SSO: okta.md
       - RBAC and ownership: rbac.md
       - SSH access: ssh.md
+      - Workspace presence and approval: workspace-access.md
   - Reference:
       - Architecture: architecture.md
       - Data model: data-model.md

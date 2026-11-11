@@ -72,6 +72,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(list, func(i, j int) bool {
 		return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name)
 	})
+	if s.Regions == nil {
+		s.enrichWorkspaceAccess(r.Context(), list, id, cfg)
+	}
 	if !pagedRequest(r) {
 		writeJSON(w, http.StatusOK, list)
 		return
@@ -159,6 +162,11 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	accessInfo, accessErr := s.workspaceAccessInfo(r.Context(), name, id, cfg)
+	if accessErr != nil {
+		log.Printf("workspace access %s: %v", name, accessErr)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":          ws.Name,
 		"template":      ws.Template,
@@ -178,6 +186,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"users":         nonNil(users),
 		"teams":         nonNil(teams),
 		"teamMembers":   teamMembers,
+		"access":        accessInfo,
 	})
 }
 
@@ -427,6 +436,9 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	s.deleteWorkspaceMetadata(r.Context(), name)
 	if err := s.shareStore().DeleteWorkspace(r.Context(), name); err != nil {
 		log.Printf("workspace shares %s: delete: %v", name, err)
+	}
+	if err := s.accessStore().DeleteWorkspace(r.Context(), name); err != nil {
+		log.Printf("workspace access %s: delete: %v", name, err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

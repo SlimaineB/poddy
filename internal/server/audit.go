@@ -96,6 +96,14 @@ func auditRoute(r *http.Request) (string, string) {
 		return "ssh.certificate.issue", "user"
 	case "GET /api/workspaces/{name}/logs":
 		return "workspace.logs.view", "workspace"
+	case "POST /api/workspaces/{name}/access/request":
+		return "workspace.access.request", "workspace"
+	case "POST /api/workspaces/{name}/access/approve":
+		return "workspace.access.approve", "workspace"
+	case "POST /api/workspaces/{name}/access/deny":
+		return "workspace.access.deny", "workspace"
+	case "POST /api/workspaces/{name}/access/revoke":
+		return "workspace.access.revoke", "workspace"
 	case "GET /api/workspaces/{name}/manifests":
 		return "workspace.manifests.view", "workspace"
 	case "POST /api/workspaces/{name}/vscode":

@@ -101,9 +101,9 @@ func (s *Server) gateway(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	allowed, err := s.workspaceAllowed(r, name, id, cfg)
-	if err != nil || !allowed {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+	decision, err := s.interactiveAccess(r, name, id, cfg)
+	if err != nil || !decision.Allowed {
+		s.denyInteractive(w, id, cfg)
 		return
 	}
 	pod, err := s.Workspaces.Get(r.Context(), name)
@@ -161,9 +161,9 @@ func (s *Server) launchLocalEditor(w http.ResponseWriter, r *http.Request, edito
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	allowed, err := s.workspaceAllowed(r, name, id, cfg)
-	if err != nil || !allowed {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+	decision, err := s.interactiveAccess(r, name, id, cfg)
+	if err != nil || !decision.Allowed {
+		s.denyInteractive(w, id, cfg)
 		return
 	}
 

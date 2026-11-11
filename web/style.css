@@ -1044,6 +1044,40 @@ select {
   color: #1d4ed8;
 }
 
+.badge.presence {
+  max-width: 320px;
+  overflow: hidden;
+  border-color: rgba(37, 99, 235, 0.2);
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  text-overflow: ellipsis;
+}
+
+.badge.access-requested {
+  border-color: rgba(217, 119, 6, 0.3);
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+
+.detail-access {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.detail-access h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.access-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
 .card-meta {
   display: flex;
   flex-direction: column;

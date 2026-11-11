@@ -64,13 +64,24 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 	sshHost := s.SSHHost
 	sshPort := s.SSHPort
 	owner := ""
+	admin := s.isAdmin(id, cfg)
 	if s.Regions != nil {
-		regionCfg, info, findErr := s.Regions.FindWorkspace(r.Context(), name, s.hubIdentity(id, s.isAdmin(id, cfg)))
+		regionCfg, info, findErr := s.Regions.FindWorkspace(r.Context(), name, s.hubIdentity(id, admin))
 		if findErr != nil {
 			writeRegionError(w, findErr)
 			return
 		}
 		owner = info.Owner
+		if owner != "" && !strings.EqualFold(owner, ownerID(id.User)) {
+			if !admin {
+				http.Error(w, "workspace not found", http.StatusNotFound)
+				return
+			}
+			if info.Access != nil && !info.Access.Allowed {
+				s.denyInteractive(w, id, cfg)
+				return
+			}
+		}
 		if regionCfg.SSHHost != "" {
 			sshHost = regionCfg.SSHHost
 		}
@@ -82,16 +93,16 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "workspace not found", http.StatusNotFound)
 			return
 		}
-		pod, err := s.Workspaces.Get(r.Context(), name)
+		decision, err := s.interactiveAccess(r, name, id, cfg)
 		if err != nil {
 			http.Error(w, "workspace not found", http.StatusNotFound)
 			return
 		}
-		owner = k8s.Owner(pod)
-		if !s.isAdmin(id, cfg) && owner != ownerID(id.User) {
-			http.Error(w, "workspace not found", http.StatusNotFound)
+		if !decision.Allowed {
+			s.denyInteractive(w, id, cfg)
 			return
 		}
+		owner = decision.Owner
 	}
 	if sshHost == "" {
 		http.Error(w, "SSH is not configured", http.StatusNotImplemented)

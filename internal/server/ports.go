@@ -119,12 +119,14 @@ func (s *Server) workspacePortProxy(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		allowed, err := s.workspaceAllowed(r, name, id, cfg)
-		if err != nil || !allowed {
+		decision, err := s.interactiveAccess(r, name, id, cfg)
+		if err != nil || !decision.Allowed {
 			if _, shared := s.shareAccess(r, name, shareTarget); !shared {
-				http.Error(w, "workspace not found", http.StatusNotFound)
+				s.denyInteractive(w, id, cfg)
 				return
 			}
+		} else {
+			s.markPresence(name, ownerID(id.User), "port")
 		}
 	} else if _, shared := s.shareAccess(r, name, shareTarget); !shared {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

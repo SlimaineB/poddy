@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"poddy/internal/auth"
+	"poddy/internal/k8s"
 )
 
 func TestTopologySearchRecalculatesTotals(t *testing.T) {
@@ -89,5 +92,40 @@ func TestTopologyGroupsByUserAndIncludesVolumes(t *testing.T) {
 	}
 	if adminResp.Totals.Workspaces != 1 || adminResp.Totals.Volumes != 1 {
 		t.Fatalf("admin totals = %+v", adminResp.Totals)
+	}
+}
+
+func TestTopologyIncludesPresence(t *testing.T) {
+	s := newRBACServer(t, rbacTestConfig())
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})
+
+	if rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"}); rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	now := time.Now()
+	if err := s.accessStore().SetPresence(context.Background(), "alice-ws", "s1", k8s.Presence{
+		Actor: "alice@example.com", Kind: "terminal", Since: now, LastSeen: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := requestAs(t, s, admin, http.MethodGet, "/api/topology", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("topology = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp topologyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Users) != 1 || len(resp.Users[0].Workspaces) != 1 {
+		t.Fatalf("users = %+v", resp.Users)
+	}
+	presence := resp.Users[0].Workspaces[0].Presence
+	if len(presence) != 1 || presence[0].Actor != "alice@example.com" {
+		t.Fatalf("presence = %+v", presence)
+	}
+	if len(presence[0].Kinds) != 1 || presence[0].Kinds[0] != "terminal" {
+		t.Fatalf("presence kinds = %+v", presence[0].Kinds)
 	}
 }

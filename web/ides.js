@@ -166,6 +166,10 @@ function ideButton(ide, workspace, { dialog = false } = {}) {
   }
 
   element.addEventListener("click", (event) => {
+    if (typeof ensureWorkspaceAccess === "function" && !ensureWorkspaceAccess(workspace)) {
+      event.preventDefault();
+      return;
+    }
     if (dialog && els.sshDialog) els.sshDialog.close();
     if (isLink && ide.port) {
       event.preventDefault();

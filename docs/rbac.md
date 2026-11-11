@@ -9,6 +9,10 @@ poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. No 
 - **Regular users** see their own workspaces and the templates assigned to them.
 - **Quotas** cap each user's total workspaces, CPU, memory, and storage. Team quotas provide defaults; user overrides win field by field.
 
+Global admins can inspect and manage every workspace, but entering another
+user's workspace interactively requires the owner's approval. See
+[Workspace presence and owner approval](workspace-access.md).
+
 ## Where roles live
 
 The portal reads the `poddy-rbac` ConfigMap in the workspace namespace (same namespace as workspaces). The key is `rbac.yaml`:

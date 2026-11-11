@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"poddy/internal/auth"
@@ -67,6 +68,9 @@ type Server struct {
 	ExternalAuth             *externalauth.Manager
 	ExternalAuthURL          string
 	ExternalAuthRedirectBase string
+
+	presenceMu   sync.Mutex
+	presenceLast map[string]time.Time
 }
 
 func (s *Server) Handler() http.Handler {
@@ -122,6 +126,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}", s.workspacePortRedirect)
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}/", s.workspacePortProxy)
 	mux.HandleFunc("GET /api/workspaces/{name}/logs", s.workspaceLogs)
+	mux.HandleFunc("GET /api/workspaces/{name}/access", s.workspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/request", s.requestWorkspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/approve", s.approveWorkspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/deny", s.denyWorkspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/revoke", s.revokeWorkspaceAccess)
 	mux.HandleFunc("GET /api/workspaces/{name}/manifests", s.workspaceManifests)
 	mux.HandleFunc("POST /api/workspaces", s.create)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.remove)

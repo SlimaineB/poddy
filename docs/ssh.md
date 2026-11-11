@@ -222,4 +222,6 @@ creates the workspace. Each region's manager and bastion share their own
   enabled in production and keep the bastion's `pods/portforward` permission
   only for controlled rollback.
 - Administrator certificates (`poddy-admin=true`) can reach every workspace.
-  Keep their TTL short.
+  Keep their TTL short. Administrator certificates are also subject to the
+  workspace owner's approval; see
+  [Workspace presence and owner approval](workspace-access.md).

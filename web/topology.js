@@ -107,7 +107,7 @@ function buildTopologyModel(users) {
 
   for (const user of users) {
     const userId = `user:${user.identity}`;
-    nodes.push({
+    const userNode = {
       data: {
         id: userId,
         type: "user",
@@ -118,11 +118,15 @@ function buildTopologyModel(users) {
         volumeCount: user.volumeCount || 0,
         storageBytes: user.storageBytes || 0,
       },
-    });
+    };
+    nodes.push(userNode);
+    const userPresence = [];
 
     for (const workspace of user.workspaces || []) {
       const workspaceId = `workspace:${workspace.name}`;
       const resources = Array.isArray(workspace.resources) ? workspace.resources : [];
+      const presence = Array.isArray(workspace.presence) ? workspace.presence : [];
+      userPresence.push(...presence);
       workspaces.set(workspaceId, workspace);
       nodes.push({
         data: {
@@ -136,6 +140,7 @@ function buildTopologyModel(users) {
           browserVSCode: Boolean(workspace.browserVSCode),
           region: workspace.region || "",
           pvcCount: resources.filter((resource) => resource.kind !== "Ephemeral").length,
+          presence,
         },
       });
       edges.push({
@@ -172,9 +177,26 @@ function buildTopologyModel(users) {
         });
       }
     }
+    userNode.data.presence = topologyPresenceSummary(userPresence);
   }
 
   return { nodes, edges, workspaces };
+}
+
+function topologyPresenceSummary(list) {
+  const byActor = new Map();
+  for (const item of list || []) {
+    if (!item || !item.actor) continue;
+    const existing = byActor.get(item.actor);
+    if (existing) {
+      for (const kind of item.kinds || []) {
+        if (!existing.kinds.includes(kind)) existing.kinds.push(kind);
+      }
+    } else {
+      byActor.set(item.actor, { actor: item.actor, kinds: [...(item.kinds || [])] });
+    }
+  }
+  return [...byActor.values()];
 }
 
 function ensureTopologyCy() {
@@ -405,6 +427,11 @@ function topologyUserCard(data) {
   badges.push(`<span class="badge neutral">${Number(data.workspaceCount) || 0} ws</span>`);
   badges.push(`<span class="badge neutral">${Number(data.volumeCount) || 0} vol</span>`);
   if (data.storageBytes) badges.push(`<span class="badge neutral">${escapeTopologyHTML(formatStorage(data.storageBytes))}</span>`);
+  const presence = Array.isArray(data.presence) ? data.presence : [];
+  if (presence.length) {
+    const names = presence.map((item) => item.actor).join(", ");
+    badges.push(`<span class="badge presence" title="Connected: ${escapeTopologyHTML(names)}">${icon("users")}${presence.length}</span>`);
+  }
   return `<div class="topology-card topology-card-user${data.current ? " is-current" : ""}" data-id="${escapeTopologyHTML(data.id)}">
     <span class="topology-avatar">${initial}</span>
     <span class="topology-card-body">
@@ -424,6 +451,11 @@ function topologyWorkspaceCard(data) {
   if (data.pvcCount) meta.push(`<span class="badge neutral">${Number(data.pvcCount)} PVC</span>`);
   if (data.browserVSCode) meta.push('<span class="badge neutral">VS Code Web</span>');
   if (data.createdAt) meta.push(`<span class="topology-age">${escapeTopologyHTML(formatAge(data.createdAt))}</span>`);
+  const presence = Array.isArray(data.presence) ? data.presence : [];
+  if (presence.length) {
+    const names = presence.map((item) => item.actor).join(", ");
+    meta.push(`<span class="badge presence" title="Connected: ${escapeTopologyHTML(names)}">${icon("users")}${presence.length}</span>`);
+  }
   return `<div class="topology-card topology-card-workspace phase-${phaseClass}" data-id="${escapeTopologyHTML(data.id)}">
     <span class="topology-node-icon">${icon("box")}</span>
     <span class="topology-card-body">
