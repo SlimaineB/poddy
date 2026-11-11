@@ -28,6 +28,7 @@ type topologyWorkspace struct {
 	Image         string             `json:"image,omitempty"`
 	Persistent    bool               `json:"persistent"`
 	BrowserVSCode bool               `json:"browserVSCode,omitempty"`
+	JupyterLab    bool               `json:"jupyterLab,omitempty"`
 	CreatedAt     string             `json:"createdAt,omitempty"`
 	Resources     []topologyResource `json:"resources"`
 }
@@ -182,6 +183,7 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 			Image:         workspace.Image,
 			Persistent:    workspace.Persistent,
 			BrowserVSCode: workspace.BrowserVSCode,
+			JupyterLab:    workspace.JupyterLab,
 			Resources:     []topologyResource{},
 		}
 		if !workspace.CreatedAt.IsZero() {

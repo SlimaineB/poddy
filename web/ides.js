@@ -44,9 +44,9 @@ const IDE_INTEGRATIONS = [
     brand: true,
     kind: "browser",
     buttonClass: "jupyterlab",
-    port: 8888,
-    url: (workspace) => withToken(`/api/workspaces/${encodeURIComponent(workspace.name)}/ports/8888/lab`),
-    title: () => "Open JupyterLab in a new tab (port 8888)",
+    available: (workspace) => Boolean(workspace.jupyterLab),
+    url: (workspace) => withToken(browserJupyterURL(workspace.name)),
+    title: () => "Open JupyterLab in a new browser tab",
   },
   {
     id: "vscode-web",

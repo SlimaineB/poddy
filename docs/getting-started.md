@@ -126,6 +126,9 @@ Open <http://127.0.0.1:8080> and sign in with that token.
 5. Click **Create**.
 6. Wait for the workspace to reach **Running**.
 
+Python workspaces include a JupyterLab sidecar on port `8888`; open it with the
+**JupyterLab** button on the workspace card.
+
 ## 6. Connect
 
 Use the buttons on the workspace card:

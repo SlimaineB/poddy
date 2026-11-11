@@ -77,6 +77,34 @@ func TestCreateAndList(t *testing.T) {
 	}
 }
 
+func TestCreatePythonWorkspaceIncludesJupyterLab(t *testing.T) {
+	s := newTestServer("")
+
+	rec := request(t, s, http.MethodPost, "/api/workspaces", map[string]string{"name": "py", "template": "python"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var ws k8s.Workspace
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+	if !ws.JupyterLab {
+		t.Fatalf("python workspace did not include JupyterLab: %+v", ws)
+	}
+
+	rec = request(t, s, http.MethodGet, "/api/workspaces/py", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("details status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var details map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["jupyterLab"] != true {
+		t.Fatalf("details jupyterLab = %#v", details["jupyterLab"])
+	}
+}
+
 func TestCreatePrefixesWorkspaceName(t *testing.T) {
 	s := newRBACServer(t, rbacTestConfig())
 	alice := sessionFor(t, s, auth.User{Username: "Alice Smith", Email: "alice@example.com"})
@@ -367,6 +395,43 @@ func TestBrowserVSCodePath(t *testing.T) {
 		if got := isBrowserVSCodePath(test.path); got != test.want {
 			t.Errorf("isBrowserVSCodePath(%q) = %v, want %v", test.path, got, test.want)
 		}
+	}
+}
+
+func TestBrowserJupyterPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/workspaces/app/lab", true},
+		{"/api/workspaces/app/lab/", true},
+		{"/api/workspaces/app/lab/static/main.js", false},
+		{"/api/workspaces/app", false},
+		{"/api/workspaces/lab/other", false},
+		{"/api/workspaces/app/jupyter", false},
+	}
+	for _, test := range tests {
+		if got := isBrowserJupyterPath(test.path); got != test.want {
+			t.Errorf("isBrowserJupyterPath(%q) = %v, want %v", test.path, got, test.want)
+		}
+	}
+}
+
+func TestBrowserJupyterTokenSetsCookieAndRedirects(t *testing.T) {
+	s := newTestServer("secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/app/lab/?token=secret", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/api/workspaces/app/lab/" {
+		t.Fatalf("location = %q", loc)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != cookieName {
+		t.Fatalf("cookies = %+v", cookies)
 	}
 }
 

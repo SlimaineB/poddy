@@ -464,6 +464,9 @@ function gatewayURL(workspace, alias) {
 function browserVSCodeURL(name) {
   return `/api/workspaces/${encodeURIComponent(name)}/code/`;
 }
+function browserJupyterURL(name) {
+  return `/api/workspaces/${encodeURIComponent(name)}/lab/`;
+}
 function sshConfigFor() {
   const keyPath = state.config.windowsSSHKeyPath || state.config.sshKeyPath || "~/.ssh/id_ed25519";
   const nullFile = /Windows/i.test(navigator.userAgent) ? "NUL" : "/dev/null";

@@ -1,6 +1,6 @@
 name: python
 displayName: Python 3.11
-description: Python 3.11 workspace with pip, venv, uv, build tools, and a persistent home. Good for scripts, APIs, and automation.
+description: Python 3.11 workspace with pip, venv, uv, build tools, JupyterLab, and a persistent home. Good for scripts, APIs, notebooks, and automation.
 image: ghcr.io/slimaineb/poddy-workspace-python:latest
 parameters:
   - name: cpu
@@ -62,6 +62,11 @@ parameters:
     displayName: VS Code in the browser
     type: boolean
     description: Run an OpenVSCode Server sidecar and expose it from the workspace card.
+    default: "true"
+  - name: jupyterLab
+    displayName: JupyterLab
+    type: boolean
+    description: Run a JupyterLab sidecar on port 8888 and expose it from the workspace card.
     default: "true"
 
 links:

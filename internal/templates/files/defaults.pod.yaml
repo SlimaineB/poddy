@@ -46,6 +46,50 @@ spec:
         - name: workspace
           mountPath: {{ .WorkspacePath | quote }}
     {{- end }}
+    {{- if eq .Parameters.jupyterLab "true" }}
+    - name: jupyterlab
+      image: quay.io/jupyter/base-notebook:latest
+      imagePullPolicy: IfNotPresent
+      command: ["jupyter", "lab"]
+      args:
+        - "--ip=127.0.0.1"
+        - "--port=8888"
+        - "--no-browser"
+        - "--ServerApp.base_url=/api/workspaces/{{ .Name }}/lab/"
+        - "--ServerApp.root_dir={{ .WorkspacePath }}"
+        - "--ServerApp.token="
+        - "--ServerApp.password="
+        - "--ServerApp.allow_remote_access=True"
+        - "--ServerApp.allow_origin=*"
+        - "--ServerApp.trust_xheaders=True"
+      env:
+        - name: HOME
+          value: /tmp/jupyter
+        - name: JUPYTER_CONFIG_DIR
+          value: /tmp/jupyter/config
+        - name: JUPYTER_DATA_DIR
+          value: /tmp/jupyter/data
+        - name: JUPYTER_RUNTIME_DIR
+          value: /tmp/jupyter/runtime
+      workingDir: {{ .WorkspacePath | quote }}
+      ports:
+        - name: jupyter
+          containerPort: 8888
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      volumeMounts:
+        - name: workspace
+          mountPath: {{ .WorkspacePath | quote }}
+    {{- end }}
   volumes:
     - name: workspace
       {{- if .Storage }}

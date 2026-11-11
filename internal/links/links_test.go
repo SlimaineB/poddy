@@ -5,7 +5,7 @@ import "testing"
 func TestNormalizeAndValidate(t *testing.T) {
 	values := Normalize([]Link{
 		{Name: " PyCharm ", URL: "jetbrains-gateway://connect#host={sshHost}", Icon: "pycharm"},
-		{Name: " JupyterLab ", URL: "/api/workspaces/{name}/ports/8888/lab", Icon: "jupyterlab"},
+		{Name: " JupyterLab ", URL: "/api/workspaces/{name}/lab/", Icon: "jupyterlab"},
 		{Name: " Docs ", URL: " https://example.com/docs/{name} ", NewTab: true},
 		{Name: " ", URL: " "},
 	})

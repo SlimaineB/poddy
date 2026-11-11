@@ -25,6 +25,7 @@ const (
 	AppName                = "poddy"
 	ContainerName          = "workspace"
 	BrowserVSCodeContainer = "code-server"
+	JupyterLabContainer    = "jupyterlab"
 	WorkspacePath          = "/home/dev"
 
 	labelName      = "app.kubernetes.io/name"
@@ -66,6 +67,7 @@ type Workspace struct {
 	Owner         string    `json:"owner,omitempty"`
 	Persistent    bool      `json:"persistent"`
 	BrowserVSCode bool      `json:"browserVSCode,omitempty"`
+	JupyterLab    bool      `json:"jupyterLab,omitempty"`
 	CPU           string    `json:"cpu,omitempty"`
 	Memory        string    `json:"memory,omitempty"`
 	Storage       string    `json:"storage,omitempty"`
