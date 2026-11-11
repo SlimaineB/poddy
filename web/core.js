@@ -147,11 +147,14 @@ const els = {
   sshDialog: document.getElementById("ssh-dialog"),
   sshConfig: document.getElementById("ssh-config"),
   sshNote: document.getElementById("ssh-note"),
-  openVSCode: document.getElementById("open-vscode"),
-  openVSCodeWeb: document.getElementById("open-vscode-web"),
+  sshIDEActions: document.getElementById("ssh-ide-actions"),
   copySSH: document.getElementById("copy-ssh"),
-  detailDialog: document.getElementById("detail-dialog"),
+  workspaceDetailView: document.getElementById("workspace-detail-view"),
+  detailBack: document.getElementById("detail-back"),
   detailTitle: document.getElementById("detail-title"),
+  detailSubtitle: document.getElementById("detail-subtitle"),
+  detailStatus: document.getElementById("detail-status"),
+  detailActions: document.getElementById("detail-actions"),
   detailList: document.getElementById("detail-list"),
   detailLogsBody: document.getElementById("detail-logs-body"),
   detailLogsRefresh: document.getElementById("detail-logs-refresh"),
@@ -446,6 +449,18 @@ function vscodeURL(workspace) {
   const region = typeof workspace === "string" ? "" : workspace.region;
   return `vscode://vscode-remote/ssh-remote+${sshAlias(name, region)}/home/dev?windowId=_blank`;
 }
+function gatewayURL(workspace, alias) {
+  const name = typeof workspace === "string" ? workspace : workspace.name;
+  const region = typeof workspace === "string" ? "" : workspace.region;
+  const params = new URLSearchParams({
+    type: "ssh",
+    host: alias || sshAlias(name, region),
+    port: "22",
+    user: "dev",
+    projectPath: "/home/dev",
+  });
+  return `jetbrains-gateway://connect#${params.toString()}`;
+}
 function browserVSCodeURL(name) {
   return `/api/workspaces/${encodeURIComponent(name)}/code/`;
 }
@@ -461,7 +476,7 @@ function sshConfigFor() {
     const proxy = region.name ? `poddy-portal-${regionSlug(region.name)}` : "poddy-portal";
     config += `Host poddy-ssh-${slug}*\n`;
     config += "    User dev\n";
-    config += `    ProxyJump ${proxy}\n`;
+    config += `    ProxyCommand ssh -W %h:%p ${proxy}\n`;
     config += `    IdentityFile ${keyPath}\n`;
     config += "    IdentitiesOnly yes\n    StrictHostKeyChecking no\n";
     config += `    UserKnownHostsFile ${nullFile}\n    LogLevel ERROR\n\n`;
@@ -1156,6 +1171,7 @@ async function loadMe() {
 }
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
+  els.workspaceDetailView.hidden = name !== "workspace-detail";
   els.volumesView.hidden = name !== "volumes";
   els.topologyView.hidden = name !== "topology";
   els.mapView.hidden = name !== "map";
@@ -1166,7 +1182,7 @@ function showView(name) {
   els.templatesView.hidden = name !== "templates";
   els.templateDetailView.hidden = name !== "template";
   els.auditView.hidden = name !== "audit";
-  const active = name === "workspaces" || name === "topology" || name === "map" ? els.manageWorkspaces
+  const active = name === "workspaces" || name === "workspace-detail" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "volumes" ? els.manageVolumes
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers

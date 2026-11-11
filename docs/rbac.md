@@ -191,7 +191,7 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `DELETE /api/volumes/{name}/backups` | owner or admin | delete a backup object |
 | `POST /api/volumes/{name}/restore` | owner or admin | restore a backup into the source volume or, with `target`/`targetRegion`, another volume the caller can access |
 
-`GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local VS Code launch endpoint require ownership or admin.
+`GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local desktop IDE launch endpoints require ownership or admin.
 
 `GET /api/volumes` follows the same ownership model: admins see every volume,
 users see only volumes assigned to their own workspaces, and unassigned volumes
@@ -250,6 +250,6 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 ## Limits
 
 - One workspace namespace per portal; one RBAC document per portal.
-- Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/VS Code, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
+- Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/desktop IDE, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
 - No database is required: back up the ConfigMap if you rely on UI-managed access, or enable the optional PostgreSQL metadata mirror.
 - RBAC writes are serialized within a portal replica and retried on conflicts. With multiple replicas, avoid simultaneous edits.

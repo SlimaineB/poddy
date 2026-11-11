@@ -1,10 +1,11 @@
 # Poddy Remote
 
-VS Code extension for Poddy. It handles the `vscode://slimaineb.poddy-remote/...`
-link opened by the Poddy **VS Code** button: it creates a dedicated machine key,
-enrolls the public key, writes a `# >>> poddy:<workspace>` block to the real
-`~/.ssh/config`, waits for the workspace to accept SSH, and opens Remote-SSH on
-`/home/dev`.
+VS Code and Cursor extension for Poddy. It handles the
+`vscode://slimaineb.poddy-remote/...` or `cursor://slimaineb.poddy-remote/...`
+link opened by the Poddy **VS Code** or **Cursor** button: it creates a dedicated
+machine key, enrolls the public key, writes a `# >>> poddy:<workspace>` block to
+the real `~/.ssh/config`, waits for the workspace to accept SSH, and opens
+Remote-SSH on `/home/dev`.
 
 The extension runs on the local UI side (`extensionKind: ui`). It is not
 installed in the workspace and requires the local `ssh` and `ssh-keygen` binaries
@@ -17,10 +18,15 @@ Download the latest `poddy-remote-<version>.vsix` from the
 
 ```bash
 code --install-extension poddy-remote-<version>.vsix
+# or
+cursor --install-extension poddy-remote-<version>.vsix
 ```
 
-Or use **Extensions** in VS Code, open the `...` menu, and choose
+Or use **Extensions** in VS Code or Cursor, open the `...` menu, and choose
 **Install from VSIX...**.
+
+JetBrains IDEs do not use this extension. Use the **PyCharm** button and
+JetBrains Gateway with the SSH config from the **SSH** dialog.
 
 ## Build locally
 

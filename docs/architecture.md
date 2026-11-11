@@ -20,7 +20,7 @@ recovery, and an audit trail.
                        └────────────▲─────────────┘
                                     │ port-forward
 ┌───────────────┐   SSH   ┌─────────┴─────────────┐
-│ VS Code / ssh │────────►│     poddy-bastion     │
+│ Desktop IDEs  │────────►│     poddy-bastion     │
 └───────────────┘         │ SSH :2222 + broker    │
                           └───────────┬───────────┘
                                       │ outbound agent tunnel
@@ -156,7 +156,7 @@ locally, so direct region creates bypass quota checks.
 4. Terminal I/O is streamed through the WebSocket.
 5. If PostgreSQL is enabled, the portal records `workspace.terminal.open`.
 
-### SSH and VS Code
+### SSH and desktop IDEs
 
 1. The user adds a public key under **SSH keys**, or an administrator puts an
    admin-managed key in `ssh.authorizedKeys`.
@@ -169,7 +169,7 @@ locally, so direct region creates bypass quota checks.
    pods receive their owner's keys through a read-only Secret mounted at
    `/etc/poddy/ssh/authorized_keys`.
 5. If PostgreSQL is enabled, the bastion records `ssh.connect`.
-6. VS Code connects through `ProxyJump` using the same bastion.
+6. VS Code, Cursor, and PyCharm through JetBrains Gateway connect through `ProxyCommand` using the same bastion.
 
 ### Browser VS Code
 
@@ -199,7 +199,7 @@ poddy ships two Go binaries from one module:
 | Package | Role |
 |---------|------|
 | `internal/config` | Flags and environment configuration |
-| `internal/server` | HTTP API, auth, RBAC checks, terminal WebSocket, VS Code launch |
+| `internal/server` | HTTP API, auth, RBAC checks, terminal WebSocket, desktop IDE launch |
 | `internal/k8s` | Workspace lifecycle, pod rendering, PVCs, state ConfigMap, port-forward |
 | `internal/templates` | Template catalog, validation, rendering, hot reload |
 | `internal/rbac` | Admins, teams, and template access |
@@ -209,6 +209,7 @@ poddy ships two Go binaries from one module:
 | `internal/bastion` | SSH bastion and owner checks |
 | `internal/sshkeys` | `authorized_keys` parsing and key-to-owner mapping |
 | `internal/links` | Template link validation |
+| `internal/local` | Local SSH config, port-forward, VS Code/Cursor launch |
 | `internal/metadata` | Optional PostgreSQL mirror, migrations, and audit writer |
 | `cmd/poddy-bastion` | Standalone bastion entry point |
 

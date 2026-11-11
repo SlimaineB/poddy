@@ -192,7 +192,7 @@ async function writeSSHConfig(payload, priv) {
     `Host ${alias}`,
     `  HostName poddy-ssh-${workspace}`,
     `  User ${payload.user}`,
-    `  ProxyJump ${jump}`,
+    `  ProxyCommand ssh -W %h:%p ${jump}`,
     `  IdentityFile "${key}"`,
     "  IdentitiesOnly yes",
     "  StrictHostKeyChecking no",

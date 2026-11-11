@@ -2,8 +2,9 @@
 
 Links are buttons shown on workspace cards. They are declared in the workspace
 template, so each template controls its own shortcuts and they are versioned
-with it. Use them for JetBrains Gateway, internal dashboards, documentation, or
-any protocol the browser can open.
+with it. Use them for internal dashboards, documentation, or any protocol the
+browser can open. VS Code, Cursor, PyCharm, JupyterLab, and VS Code Web have
+built-in buttons; template links are for extra shortcuts.
 
 ## Add links to a template
 
@@ -14,9 +15,16 @@ name: go
 displayName: Go
 image: ghcr.io/slimaineb/poddy-workspace:latest
 links:
-  - name: JetBrains Gateway
-    url: "jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/home/dev"
-    icon: jetbrains
+  - name: Cursor
+    url: "cursor://vscode-remote/ssh-remote+{alias}/home/dev"
+    icon: cursor
+  - name: PyCharm
+    url: "jetbrains-gateway://connect#type=ssh&host={alias}&port=22&user=dev&projectPath=/home/dev"
+    icon: pycharm
+  - name: JupyterLab
+    url: "/api/workspaces/{name}/ports/8888/lab"
+    icon: jupyterlab
+    newTab: true
   - name: Internal docs
     url: "https://docs.example.com/workspaces/{name}"
     icon: external
@@ -34,20 +42,58 @@ URLs are expanded in the browser for each workspace:
 | Placeholder | Value |
 |-------------|-------|
 | `{name}` | Workspace name |
-| `{alias}` | SSH alias, `poddy-<name>` |
+| `{alias}` | SSH alias, `poddy-ssh-<name>` (or `poddy-ssh-<region>-<name>`) |
 | `{sshHost}` | Public SSH host |
 | `{sshPort}` | Public SSH port |
 | `{user}` | SSH user, `dev` |
 | `{template}` | Template name |
 | `{image}` | Workspace image |
 
-Example JetBrains Gateway link (adjust the query parameters to your Gateway version):
+Example Cursor link:
 
 ```text
-jetbrains-gateway://connect#type=ssh&host={sshHost}&port={sshPort}&user={user}&project=/home/dev
+cursor://vscode-remote/ssh-remote+{alias}/home/dev
 ```
 
-The built-in **VS Code** button is separate: in local editor mode it writes the SSH config and starts the local port-forward before launching VS Code in a new window; in cluster mode it opens a short-lived signed `vscode://slimaineb.poddy-remote/...` URL. The Poddy extension enrolls the machine key and writes the SSH config automatically, so no manual `~/.ssh/config` edit is required. The **SSH** dialog remains available as a manual fallback. When browser VS Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev` in a new browser tab through the portal proxy.
+Example PyCharm link (adjust the query parameters to your Gateway version):
+
+```text
+jetbrains-gateway://connect#type=ssh&host={alias}&port=22&user=dev&projectPath=/home/dev
+```
+
+JetBrains Gateway does not support `ProxyJump`. Copy the **SSH** config from the
+portal first and enable **Parse config file ~/.ssh/config** in Gateway; the
+generated `Host poddy-ssh-*` block uses `ProxyCommand`. Gateway opens its
+new-connection wizard so the user can choose the IDE version to install on the
+workspace.
+
+The built-in **VS Code** and **Cursor** buttons are separate: in local editor
+mode they write the SSH config and start the local port-forward before launching
+the editor in a new window; in cluster mode they open a short-lived signed
+`vscode://` or `cursor://slimaineb.poddy-remote/...` URL. The Poddy extension
+enrolls the machine key and writes the SSH config automatically, so no manual
+`~/.ssh/config` edit is required. The **PyCharm** button opens JetBrains Gateway
+with the generated SSH alias. The **JupyterLab** button opens port `8888` through
+the portal proxy in a new tab; the workspace image must run JupyterLab on that
+port. The **SSH** dialog remains available as a manual fallback. When browser VS
+Code is enabled (`browserVSCode`), the **VS Code Web** button opens `/home/dev`
+in a new browser tab through the portal proxy.
+
+## Built-in IDE registry
+
+Built-in IDE buttons are declared in `web/ides.js`. Each entry defines its
+label, icon, launch kind, availability, and URL builder:
+
+- `desktop`: VS Code-style editors. Local mode uses `localPath`; cluster mode
+  posts to `/api/workspaces/{name}/desktop?editor=...`.
+- `gateway`: JetBrains Gateway IDEs such as PyCharm. Local mode writes the SSH
+  config through `/api/workspaces/{name}/gateway`; cluster mode opens the
+  `jetbrains-gateway://` URL directly.
+- `browser`: web IDEs. The entry provides a URL and optionally a `port` to check
+  before opening a new tab.
+
+To add an IDE, add its SVG symbol to `web/index.html`, then add one entry to
+`IDE_INTEGRATIONS`. No card or SSH-dialog markup needs to change.
 
 ## Fields
 
@@ -55,7 +101,7 @@ The built-in **VS Code** button is separate: in local editor mode it writes the 
 |-------|----------|-------------|
 | `name` | yes | Button label, 1-64 printable characters, unique within the template. |
 | `url` | yes | Absolute URL, path starting with `/`, or an app protocol such as `jetbrains-gateway:`. |
-| `icon` | no | `external` (default), `vscode`, `jetbrains`, `terminal`, `code`, `link`. |
+| `icon` | no | `external` (default), `vscode`, `cursor`, `pycharm`, `jetbrains`, `jupyterlab`, `terminal`, `code`, `link`. |
 | `newTab` | no | Open in a new browser tab with `noopener noreferrer`. |
 
 ## Validation and security

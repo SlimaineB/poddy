@@ -62,8 +62,8 @@ never need a kubeconfig.
   delete workspaces, with optional timezone-aware auto-stop schedules.
 - **Scale what you need.** The portal and SSH bastion run as separate
   Deployments, so HTTP/API and SSH capacity scale independently.
-- **Four ways to work.** Browser terminal, browser VS Code, SSH through a
-  bastion, or VS Code Remote-SSH.
+- **Ways to work.** Browser terminal, browser VS Code, SSH through a bastion,
+  VS Code/Cursor Remote-SSH, PyCharm through JetBrains Gateway, or JupyterLab.
 - **Real dev containers.** Persistent volumes with optional S3 backup/restore,
   including live backups and copies between volumes, custom images, and
   templates that declare CPU, memory, storage, and links.
@@ -86,7 +86,7 @@ never need a kubeconfig.
 Browser ─────────► Portal (:8080) ─────────► Kubernetes API
                                              (workspace lifecycle)
 
-VS Code / ssh ───► Bastion (:2222) ────────► Kubernetes API
+Desktop IDEs / ssh ───► Bastion (:2222) ────────► Kubernetes API
                                              (pods/portforward fallback)
                            │
                            └── outbound agent tunnel ─────► Workspace pod :22

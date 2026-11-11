@@ -90,7 +90,7 @@ With token auth the owner identity is `token`, so an administrator-managed key c
 
 The bastion checks both the key and the target workspace owner on every `direct-tcpip` request. Workspace pods receive only their owner's keys plus admin keys through a per-workspace Secret mounted at `/etc/poddy/ssh/authorized_keys`. Registry changes are picked up without a workspace restart.
 
-For legacy local setups only, `ssh.allowUnmappedKeys: true` restores the old "any key can reach any workspace" behavior. Do not enable it in production. It is enabled automatically in trusted local mode with no token and no OIDC. In local editor mode, the portal also marks the SSH keys it manages as admin keys so local SSH/VS Code keeps working with token or OIDC auth.
+For legacy local setups only, `ssh.allowUnmappedKeys: true` restores the old "any key can reach any workspace" behavior. Do not enable it in production. It is enabled automatically in trusted local mode with no token and no OIDC. In local editor mode, the portal also marks the SSH keys it manages as admin keys so local SSH, VS Code, and Cursor keep working with token or OIDC auth.
 
 Or use an existing Secret:
 ```yaml
@@ -230,7 +230,8 @@ The templates release creates labeled ConfigMaps in its namespace, so install it
   ```bash
   kubectl -n poddy-system get secret poddy-auth -o jsonpath='{.data.token}' | base64 -d
   ```
-- **SSH**: Users connect to `ssh.dev.example.com:2222`. The UI's **SSH** button gives a ready-to-use config with `ProxyJump`.
+- **SSH**: Users connect to `ssh.dev.example.com:2222`. The UI's **SSH** button gives a ready-to-use config with `ProxyCommand`.
+- **Desktop IDEs**: The **VS Code** and **Cursor** buttons use the Poddy extension and Remote-SSH. The **PyCharm** button opens JetBrains Gateway with the same SSH config. The **JupyterLab** button opens port `8888` through the portal proxy.
 - **VS Code Web**: When browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates), the **VS Code Web** button opens the editor in a new tab through the portal. No SSH key or local port-forward is needed.
 
 With SSH enabled, the release creates two Deployments:
@@ -257,7 +258,7 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 
 ### Replicas and namespaces
 
-- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable VS Code desktop tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
+- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
 - **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
 - **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
 - **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads require PostgreSQL; the page returns `501` when the database is not configured.
@@ -268,7 +269,7 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 Multi-region uses one central hub and one manager per region. The hub owns
 authentication, RBAC, users, templates, the workspace list, the UI, and external
 auth tokens. Region managers own the Kubernetes API connection, workspace pods,
-PVCs, stopped-state ConfigMap, terminal/VS Code proxying, and the region SSH
+PVCs, stopped-state ConfigMap, terminal/desktop IDE proxying, and the region SSH
 bastion.
 
 See [Regions](regions.md) for the full step-by-step checklist to add, verify,
@@ -286,7 +287,7 @@ peering or hub-to-region inbound access is required. The hub sends
 `X-Poddy-Region-Identity`, an HMAC-signed short-lived identity (2 minutes)
 containing the user and admin flag. Region managers reject every untrusted
 request, including direct browser requests without the signature. Workspace
-operations, logs, terminal WebSocket, browser VS Code, SSH details, desktop
+operations, logs, terminal WebSocket, browser VS Code, SSH details, desktop IDE
 tickets, and external-auth workspace callbacks are routed by the hub through
 the tunnel. SSH public keys are replicated from the hub registry to every
 region.
@@ -403,7 +404,7 @@ The chart creates two least-privilege identities:
   - `pods` (get, list, watch, create, delete) — workspace lifecycle.
   - `pods/log` (get) — startup logs in the workspace details dialog.
   - `pods/exec` (get, create) — browser terminal.
-  - `pods/portforward` (get, create) — local editor and VS Code helpers.
+  - `pods/portforward` (get, create) — local editor and desktop IDE helpers.
   - `persistentvolumeclaims` (get, list, create, delete) — persistent volumes.
   - `configmaps` (get, list, watch, create, update, patch) — template ConfigMaps, the RBAC document, user directory, and stopped specs.
   - `secrets` (get, list, watch, create, update, patch) — external-auth token store.
@@ -435,8 +436,8 @@ Neither the portal nor the bastion can access other namespaces or cluster-scoped
 
 Each template declares its own buttons in `template.yaml` under `links:`. They are rendered on workspace cards and versioned with the template.
 
-- Placeholders: `{name}`, `{alias}` (`poddy-<name>`), `{sshHost}`, `{sshPort}`, `{user}` (`dev`), `{template}`, `{image}`.
-- `icon` is one of `external`, `vscode`, `jetbrains`, `terminal`, `code`, `link`.
+- Placeholders: `{name}`, `{alias}` (`poddy-ssh-<name>` or `poddy-ssh-<region>-<name>`), `{sshHost}`, `{sshPort}`, `{user}` (`dev`), `{template}`, `{image}`.
+- `icon` is one of `external`, `vscode`, `cursor`, `pycharm`, `jetbrains`, `jupyterlab`, `terminal`, `code`, `link`.
 - `newTab: true` opens the link in a new browser tab.
 - URLs are validated; `javascript:`, `data:`, and `vbscript:` are rejected.
 
@@ -499,7 +500,7 @@ A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@examp
 - For local clusters, a NodePort works (`ssh.service.type: NodePort`); users connect to `<node-ip>:<nodePort>`.
 - Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 
-**VS Code Desktop**: the **VS Code** button targets VS Code Desktop, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from the latest GitHub release once per machine) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The portal shows the current extension version and a VSIX download link in the top bar and in the **SSH** dialog; override `vscodeExtension.*` when you host releases elsewhere. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows VS Code.
+**Desktop IDEs**: the **VS Code** and **Cursor** buttons target desktop editors, not WSL. In cluster mode the portal returns a signed, two-minute ticket; the Poddy extension (`slimaineb.poddy-remote`, install the VSIX from the latest GitHub release once per machine in VS Code or Cursor) generates `~/.ssh/poddy_<workspace>_ed25519`, enrolls the public key under the signed-in identity, writes a `# >>> poddy:<workspace>` block in the user's real `~/.ssh/config`, waits for the workspace Secret to propagate, and opens `vscode-remote://ssh-remote+poddy-desktop-<workspace>/home/dev`. Users do not edit SSH config or copy keys. The portal shows the current extension version and a VSIX download link in the top bar and in the **SSH** dialog; override `vscodeExtension.*` when you host releases elsewhere. The **PyCharm** button opens JetBrains Gateway with the generated `poddy-ssh-*` alias; Gateway must parse `~/.ssh/config` and uses `ProxyCommand` (not `ProxyJump`). The **JupyterLab** button opens the workspace port `8888` through the portal proxy; the image must run JupyterLab there. The **SSH** dialog remains the manual fallback, and a config saved only in WSL is still invisible to Windows editors.
 
 **Short-lived certificates**: the portal exposes `POST /api/me/ssh-certificate` and signs certificates with the CA mounted from `ssh.ca`. Workspace `authorized_keys` includes the matching `cert-authority` line, so the same certificate authenticates to the bastion and to workspace `sshd`. The CA line is loopback-restricted only when `ssh.requireAgent=true`; with the port-forward fallback it is unrestricted. See [SSH access](ssh.md).
 
@@ -723,7 +724,7 @@ The chart applies:
 - **OIDC**: Prefer OIDC over the shared token for human access. Set `allowedGroups`/`allowedUsers` to restrict sign-in, and use a stable `oidc.sessionKey` for HA.
 - **Namespace isolation**: For hard tenant isolation, deploy one release per team/namespace. SSH isolation prevents cross-owner access inside one portal, but a shared namespace still shares network and storage classes.
 - **Local editor keys**: In local editor mode the portal marks keys it manages as admin keys, which is intended for a single operator workstation. Cluster deployments use `-editor=` and do not add local keys.
-- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/VS Code, SSH, team/template access, user quotas, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
+- **Audit**: With PostgreSQL enabled, the portal and bastion write control-plane audit events to `audit_events` (workspace lifecycle, terminal/desktop IDE, SSH, team/template access, user quotas, external auth). Audit writes are best effort and do not block operations; keep Kubernetes audit logs for stronger guarantees.
 
 ## Workspace images
 
@@ -772,7 +773,7 @@ kubectl apply -f deploy/poddy.yaml
 
 **When you might add PostgreSQL:**
 - You need metadata to survive loss of the cluster.
-- You need a queryable audit log of workspace, terminal, VS Code, SSH, team, template, quota, and external-auth actions.
+- You need a queryable audit log of workspace, terminal, desktop IDE, SSH, team, template, quota, and external-auth actions.
 - You need a durable copy of quota configuration for reporting.
 - You want a durable copy of the metadata mirror for restore tooling.
 
@@ -798,7 +799,8 @@ for migrations, tables, and restore guidance.
 | Workspace stuck `Pending` | `kubectl describe pod poddy-<name> -n <ws-ns>` — usually PVC not bound (no StorageClass) or image pull error. |
 | Browser terminal disconnects | Portal pod restarted? Check portal logs. WebSocket `/ws` requires the same token/cookie. |
 | No audit rows in PostgreSQL | Check `PODDY_DATABASE_URL`, portal/bastion logs for `audit:` or `metadata:` errors, and that migrations ran (`SELECT * FROM poddy.schema_migrations`). |
-| VS Code does nothing or cannot connect | Install/update the Poddy VS Code extension (VSIX from the latest GitHub release), then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
+| VS Code or Cursor does nothing or cannot connect | Install/update the Poddy extension (VSIX from the latest GitHub release) in that editor, then retry. The extension waits up to three minutes for the workspace key Secret to reach the pod. If the extension cannot be used, install the SSH config from the **SSH** dialog instead. |
+| PyCharm cannot connect | Enable **Parse config file ~/.ssh/config** in JetBrains Gateway, save the config from the **SSH** dialog, and confirm the `poddy-ssh-*` block uses `ProxyCommand`. Gateway does not support `ProxyJump`. |
 | **VS Code Web** button is missing | The workspace pod has no `code-server` container. Check that the template declares `browserVSCode` with default `"true"` (or explicitly `"true"`), and that the workspace was not created with `browserVSCode: "false"`. |
 | **VS Code Web** says the workspace is not running | Start the workspace and retry. The proxy only forwards to running pods. |
 | "unknown template" | Template not loaded. Check `poddy.io/template=true` on the ConfigMap, the `poddy.io/template-name` label / `template.yaml` name, and the portal logs. |

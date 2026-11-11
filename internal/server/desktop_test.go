@@ -133,3 +133,61 @@ func TestDesktopIsOwnerOrAdminScoped(t *testing.T) {
 		t.Fatalf("admin ticket owner = %q, want workspace owner", claims.Owner)
 	}
 }
+func TestDesktopEditorScheme(t *testing.T) {
+	s := desktopTestServer(t)
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	for _, test := range []struct {
+		path   string
+		scheme string
+	}{
+		{"/api/workspaces/alice-ws/desktop", "vscode"},
+		{"/api/workspaces/alice-ws/desktop?editor=cursor", "cursor"},
+	} {
+		rec := requestAs(t, s, alice, http.MethodPost, test.path, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s = %d, body = %s", test.path, rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(resp["url"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Scheme != test.scheme {
+			t.Fatalf("%s scheme = %q, want %q", test.path, u.Scheme, test.scheme)
+		}
+	}
+
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/desktop?editor=unknown", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown editor = %d, want 400", rec.Code)
+	}
+}
+
+func TestGatewayURL(t *testing.T) {
+	u, err := url.Parse(gatewayURL("poddy-ssh-eu-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "jetbrains-gateway" || u.Host != "connect" {
+		t.Fatalf("url = %q", u.String())
+	}
+	params, err := url.ParseQuery(u.Fragment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params.Get("host") != "poddy-ssh-eu-app" || params.Get("projectPath") != "/home/dev" || params.Get("type") != "ssh" {
+		t.Fatalf("params = %v", params)
+	}
+	if params.Get("deploy") != "" {
+		t.Fatalf("deploy must be unset for the new-connection flow, params = %v", params)
+	}
+}

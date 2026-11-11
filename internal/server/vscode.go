@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"poddy/internal/k8s"
+	"poddy/internal/local"
 )
 
 type Forwarder struct {
@@ -76,6 +78,74 @@ func (f *Forwarder) Close() {
 }
 
 func (s *Server) vscode(w http.ResponseWriter, r *http.Request) {
+	s.launchLocalEditor(w, r, "vscode")
+}
+
+func (s *Server) cursor(w http.ResponseWriter, r *http.Request) {
+	s.launchLocalEditor(w, r, "cursor")
+}
+
+func (s *Server) gateway(w http.ResponseWriter, r *http.Request) {
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
+		return
+	}
+	name := r.PathValue("name")
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	allowed, err := s.workspaceAllowed(r, name, id, cfg)
+	if err != nil || !allowed {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	pod, err := s.Workspaces.Get(r.Context(), name)
+	if err != nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if pod.Status.Phase != corev1.PodRunning {
+		http.Error(w, "workspace is not running", http.StatusConflict)
+		return
+	}
+	if s.Local == nil || s.Forwards == nil {
+		http.Error(w, "JetBrains Gateway launch is only available when the portal runs locally", http.StatusNotImplemented)
+		return
+	}
+	port, err := s.Forwards.Ensure(s.Workspaces, name)
+	if err != nil {
+		http.Error(w, "port-forward: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := s.Local.WriteSSHConfig(name, port); err != nil {
+		http.Error(w, "ssh config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := s.Local.WriteWindowsSSHConfig(name, port); err != nil {
+		http.Error(w, "windows ssh config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"url": gatewayURL(local.Alias(name))})
+}
+
+func gatewayURL(alias string) string {
+	params := url.Values{}
+	params.Set("type", "ssh")
+	params.Set("host", alias)
+	params.Set("port", "22")
+	params.Set("user", "dev")
+	params.Set("projectPath", "/home/dev")
+	return "jetbrains-gateway://connect#" + params.Encode()
+}
+
+func (s *Server) launchLocalEditor(w http.ResponseWriter, r *http.Request, editor string) {
 	name := r.PathValue("name")
 	if s.Regions != nil {
 		s.proxyWorkspace(w, r)
@@ -107,7 +177,15 @@ func (s *Server) vscode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Local == nil || s.Forwards == nil {
-		http.Error(w, "VS Code launch is only available when the portal runs locally", http.StatusNotImplemented)
+		http.Error(w, "desktop editor launch is only available when the portal runs locally", http.StatusNotImplemented)
+		return
+	}
+	if editor == "cursor" && !s.Local.HasCursor() {
+		http.Error(w, "Cursor is not installed on the portal machine", http.StatusNotImplemented)
+		return
+	}
+	if editor != "cursor" && !s.Local.HasVSCode() {
+		http.Error(w, "VS Code is not installed on the portal machine", http.StatusNotImplemented)
 		return
 	}
 
@@ -124,7 +202,12 @@ func (s *Server) vscode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "windows ssh config: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.Local.Launch(name); err != nil {
+	if editor == "cursor" {
+		err = s.Local.LaunchCursor(name)
+	} else {
+		err = s.Local.Launch(name)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

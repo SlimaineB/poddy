@@ -4,7 +4,7 @@ A multi-region deployment uses one central hub and one region manager per
 Kubernetes cluster. The hub owns authentication, RBAC, users, templates, the
 workspace list, the UI, and external auth tokens. Each region manager owns the
 Kubernetes API connection, workspace pods, PVCs, stopped-state ConfigMap,
-terminal and VS Code proxying, and the region SSH bastion.
+terminal and desktop IDE proxying, and the region SSH bastion.
 
 ```text
 Browser ──► central hub ── signed identity ──► region tunnel (eu) ──► region manager ──► pods

@@ -83,3 +83,20 @@ func TestWriteWindowsSSHConfig(t *testing.T) {
 		t.Fatalf("config = %s", content)
 	}
 }
+
+func TestCursorDetection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PODDY_NO_WINDOWS", "1")
+	t.Setenv("PODDY_CURSOR", "/opt/cursor")
+
+	l, err := New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !l.HasCursor() || l.CursorEditor != "/opt/cursor" {
+		t.Fatalf("cursor = %q, has = %v", l.CursorEditor, l.HasCursor())
+	}
+	if l.HasVSCode() {
+		t.Fatal("unexpected local VS Code")
+	}
+}

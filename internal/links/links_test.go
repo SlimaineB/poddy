@@ -4,14 +4,15 @@ import "testing"
 
 func TestNormalizeAndValidate(t *testing.T) {
 	values := Normalize([]Link{
-		{Name: " JetBrains Gateway ", URL: "jetbrains-gateway://connect#host={sshHost}", Icon: "jetbrains"},
+		{Name: " PyCharm ", URL: "jetbrains-gateway://connect#host={sshHost}", Icon: "pycharm"},
+		{Name: " JupyterLab ", URL: "/api/workspaces/{name}/ports/8888/lab", Icon: "jupyterlab"},
 		{Name: " Docs ", URL: " https://example.com/docs/{name} ", NewTab: true},
 		{Name: " ", URL: " "},
 	})
-	if len(values) != 2 {
+	if len(values) != 3 {
 		t.Fatalf("got %d links", len(values))
 	}
-	if values[0].Icon != "jetbrains" || !values[1].NewTab || values[1].Icon != "external" {
+	if values[0].Icon != "pycharm" || values[1].Icon != "jupyterlab" || !values[2].NewTab || values[2].Icon != "external" {
 		t.Fatalf("unexpected links: %+v", values)
 	}
 	if err := Validate(values); err != nil {

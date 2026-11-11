@@ -40,6 +40,16 @@ type desktopPayload struct {
 }
 
 func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
+	scheme := "vscode"
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("editor"))) {
+	case "", "vscode":
+	case "cursor":
+		scheme = "cursor"
+	default:
+		http.Error(w, "unsupported editor", http.StatusBadRequest)
+		return
+	}
+
 	name := r.PathValue("name")
 	id, ok := s.currentIdentity(r)
 	if !ok {
@@ -110,7 +120,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot create ticket", http.StatusInternalServerError)
 		return
 	}
-	url := fmt.Sprintf("vscode://%s/connect?payload=%s", desktopExtensionID, base64.RawURLEncoding.EncodeToString(payload))
+	url := fmt.Sprintf("%s://%s/connect?payload=%s", scheme, desktopExtensionID, base64.RawURLEncoding.EncodeToString(payload))
 	writeJSON(w, http.StatusOK, map[string]string{"url": url})
 }
 
