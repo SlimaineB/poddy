@@ -12,7 +12,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
-- **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyCommand) and port-forwards to workspace pods. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
+- **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyCommand) and forwards to a dedicated `poddy-agent` sidecar in each workspace. The sidecar has its own memory limit, and `sshd` gets a lowered OOM score so workspace memory spikes do not drop SSH sessions. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
 - **Desktop IDE launch**: Click **VS Code** or **Cursor** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy extension (installed once in VS Code or Cursor) enrolls the machine key, writes the SSH config, and opens the editor without manual setup. In local editor mode the portal launches Windows VS Code or Cursor directly. **PyCharm** opens a JetBrains Gateway link using the same SSH config. **JupyterLab** opens through the portal proxy when the workspace has the `jupyterlab` sidecar; the Python template enables it by default. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
@@ -198,7 +198,7 @@ See [docs/templates.md](docs/templates.md) for:
 │   └── local/                   # Windows/WSL SSH config, key copy, VS Code/Cursor launch
 ├── web/                         # Embedded UI (index.html, core.js, workspaces.js, ..., style.css)
 ├── scripts/
-│   ├── poddy-ssh-start         # Entrypoint in workspace pods (writes authorized_keys, starts sshd)
+│   ├── poddy-ssh-start         # Entrypoint in workspace pods (keys, OOM protection, starts sshd)
 │   ├── poddy-external-auth      # Print a refreshed external auth token in a workspace
 │   ├── poddy-git-askpass        # Git askpass helper using the portal
 │   └── dev-oidc.sh              # Local Dex + OIDC + RBAC demo
@@ -288,7 +288,7 @@ Each template declares its own buttons in `template.yaml` under `links:`. They a
 - In local editor mode, the portal marks the SSH keys it manages as admin keys so local SSH/VS Code/Cursor keeps working with token or OIDC auth. Cluster deployments run with `-editor=` and do not add local keys.
 - Template access limits who can create workspaces from a template, not who can SSH into an existing workspace. SSH owner checks cover that separately.
 - For hard tenant isolation, use separate namespaces/releases. The SSH check prevents cross-owner access inside one portal, but pods in a shared namespace still share network and storage classes.
-- Workspace containers run `sshd` as root (required to bind port 22 and switch to `dev`). The portal itself runs non-root (UID 65532), read-only rootfs, dropped capabilities.
+- Workspace containers run `sshd` as root (required to bind port 22 and switch to `dev`). They are granted `SYS_RESOURCE` so `poddy-ssh-start` can lower `sshd`'s OOM score; user shells reset their score to `0`. The portal itself runs non-root (UID 65532), read-only rootfs, dropped capabilities.
 - Kubernetes RBAC: the portal's Role is scoped to the workspace namespace; it cannot touch cluster-wide resources. The bastion has a separate ServiceAccount with only pod read access and port-forward.
 - Use HTTPS ingress in production; the cookie is `Secure` when TLS is detected.
 

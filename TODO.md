@@ -36,10 +36,10 @@ Idées notées pour plus tard.
 
 ## Fiabilité SSH
 
-- [ ] Rendre le process sshd plus fiable pendant les pics mémoire.
-- [ ] L'isoler dans un cgroup dédié ou un sidecar.
-- [ ] Le protéger de l'OOM killer (limites/réservations, priorité).
-- [ ] Éviter les déconnexions des sessions actives.
+- [x] Rendre le process sshd plus fiable pendant les pics mémoire.
+- [x] L'isoler dans un cgroup dédié ou un sidecar.
+- [x] Le protéger de l'OOM killer (limites/réservations, priorité).
+- [x] Éviter les déconnexions des sessions actives.
 
 ## Port forwarding
 

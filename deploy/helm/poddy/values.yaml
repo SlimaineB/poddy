@@ -329,6 +329,13 @@ ssh:
     key: ""
   agent:
     enabled: true
+    # Run poddy-agent in a dedicated sidecar with its own memory limit. Set
+    # false to keep the legacy in-workspace agent process.
+    sidecar: true
+    # Image for the agent sidecar. Empty uses the portal image, which includes
+    # /poddy-agent. If the image is private, add its pull Secret to
+    # workspace.imagePullSecrets.
+    image: ""
     # URL injected into workspace pods. Empty derives the in-cluster Service URL
     # http://<release>-agent.<namespace>.svc:<port>.
     url: ""

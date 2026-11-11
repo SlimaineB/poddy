@@ -189,6 +189,17 @@ URL injected into workspace pods for the outbound agent tunnel.
 {{- end -}}
 
 {{/*
+Image for the poddy-agent sidecar. Defaults to the portal image.
+*/}}
+{{- define "poddy.agentImage" -}}
+{{- if .Values.ssh.agent.image -}}
+{{- .Values.ssh.agent.image -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Secret holding the SSH certificate authority private key.
 */}}
 {{- define "poddy.sshCASecretName" -}}

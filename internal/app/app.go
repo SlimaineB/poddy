@@ -161,6 +161,7 @@ func Run(ctx context.Context, args []string) error {
 		InstanceID:          cfg.InstanceID,
 		Region:              cfg.RegionName,
 		HelperImage:         templates.RewriteImageRegistryWithMap(cfg.BackupHelperImage, cfg.ImageRegistry, cfg.ImageRegistryMap),
+		AgentImage:          cfg.AgentImage,
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {

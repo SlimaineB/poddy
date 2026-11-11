@@ -7,26 +7,137 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 
 	"poddy/internal/templates"
 )
 
 func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error {
-	if m.AgentURL == "" || m.AgentToken == nil {
-		return nil
-	}
+	applyOOMProtection(pod)
+
 	container := containerByName(pod, ContainerName)
 	if container == nil {
+		return nil
+	}
+	if m.AgentURL == "" || m.AgentToken == nil {
+		removeEnv(container, envAgentSidecar)
+		removeAgentEnv(pod)
+		removeContainer(pod, AgentContainerName)
 		return nil
 	}
 	token, err := m.AgentToken(workspace, owner)
 	if err != nil {
 		return err
 	}
-	setEnv(container, envAgentURL, m.AgentURL)
-	setEnv(container, envAgentToken, token)
-	setEnv(container, envWorkspaceName, workspace)
+	if m.AgentImage == "" {
+		setEnv(container, envAgentURL, m.AgentURL)
+		setEnv(container, envAgentToken, token)
+		setEnv(container, envWorkspaceName, workspace)
+		removeEnv(container, envAgentSidecar)
+		removeContainer(pod, AgentContainerName)
+		return nil
+	}
+
+	removeEnv(container, envAgentURL)
+	removeEnv(container, envAgentToken)
+	setEnv(container, envAgentSidecar, "true")
+	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, token)
 	return nil
+}
+
+func (m *Manager) agentSidecarImage() string {
+	return templates.RewriteImageRegistryWithMap(m.AgentImage, m.ImageRegistry, m.ImageRegistryMap)
+}
+
+func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, token string) {
+	container := agentSidecar(image, agentURL, workspace, token)
+	for i := range pod.Spec.Containers {
+		if pod.Spec.Containers[i].Name == AgentContainerName {
+			pod.Spec.Containers[i] = container
+			return
+		}
+	}
+	pod.Spec.Containers = append(pod.Spec.Containers, container)
+}
+
+func agentSidecar(image, agentURL, workspace, token string) corev1.Container {
+	return corev1.Container{
+		Name:            AgentContainerName,
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"/usr/local/bin/poddy-agent"},
+		Env: []corev1.EnvVar{
+			{Name: envAgentURL, Value: agentURL},
+			{Name: envAgentToken, Value: token},
+			{Name: envWorkspaceName, Value: workspace},
+		},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             ptr.To(true),
+			RunAsUser:                ptr.To[int64](65532),
+			RunAsGroup:               ptr.To[int64](65532),
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(true),
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("16Mi"),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+	}
+}
+
+// applyOOMProtection lets poddy-ssh-start lower sshd's OOM score. User shells
+// are reset to the default score by the poddy-shell wrapper, so workspace
+// workloads stay killable during memory spikes.
+func applyOOMProtection(pod *corev1.Pod) {
+	container := containerByName(pod, ContainerName)
+	if container == nil {
+		return
+	}
+	if container.SecurityContext == nil {
+		container.SecurityContext = &corev1.SecurityContext{}
+	}
+	if container.SecurityContext.Capabilities == nil {
+		container.SecurityContext.Capabilities = &corev1.Capabilities{}
+	}
+	caps := container.SecurityContext.Capabilities
+	kept := caps.Drop[:0]
+	for _, capability := range caps.Drop {
+		if capability != "SYS_RESOURCE" {
+			kept = append(kept, capability)
+		}
+	}
+	caps.Drop = kept
+	for _, capability := range caps.Add {
+		if capability == "SYS_RESOURCE" {
+			return
+		}
+	}
+	caps.Add = append(caps.Add, "SYS_RESOURCE")
+}
+
+func removeAgentEnv(pod *corev1.Pod) {
+	for i := range pod.Spec.Containers {
+		removeEnv(&pod.Spec.Containers[i], envAgentURL)
+		removeEnv(&pod.Spec.Containers[i], envAgentToken)
+	}
+}
+
+func removeContainer(pod *corev1.Pod, name string) {
+	kept := pod.Spec.Containers[:0]
+	for _, container := range pod.Spec.Containers {
+		if container.Name != name {
+			kept = append(kept, container)
+		}
+	}
+	pod.Spec.Containers = kept
 }
 
 func (m *Manager) applyExternalAuth(ctx context.Context, pod *corev1.Pod, owner, workspace, portalURL string, requirements []templates.ExternalAuth) error {
@@ -126,14 +237,12 @@ func stripExternalAuthEnv(spec *corev1.PodSpec, names []string) {
 		envGitPrompt:       true,
 		envAgentURL:        true,
 		envAgentToken:      true,
+		envAgentSidecar:    true,
 	}
 	for _, name := range names {
 		remove[name] = true
 	}
 	for i := range spec.Containers {
-		if spec.Containers[i].Name != ContainerName {
-			continue
-		}
 		kept := spec.Containers[i].Env[:0]
 		for _, item := range spec.Containers[i].Env {
 			if !remove[item.Name] {
@@ -175,4 +284,14 @@ func setEnv(container *corev1.Container, name, value string) {
 		}
 	}
 	container.Env = append(container.Env, corev1.EnvVar{Name: name, Value: value})
+}
+
+func removeEnv(container *corev1.Container, name string) {
+	kept := container.Env[:0]
+	for _, item := range container.Env {
+		if item.Name != name {
+			kept = append(kept, item)
+		}
+	}
+	container.Env = kept
 }

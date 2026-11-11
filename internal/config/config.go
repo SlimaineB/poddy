@@ -71,6 +71,7 @@ type Config struct {
 	SSHCAKeyFile         string
 	AgentAddr            string
 	AgentURL             string
+	AgentImage           string
 	AgentKey             string
 	AgentTokenTTL        time.Duration
 
@@ -154,6 +155,7 @@ func Load(args []string) (Config, error) {
 		SSHCAKeyFile:         os.Getenv("PODDY_SSH_CA_KEY_FILE"),
 		AgentAddr:            os.Getenv("PODDY_AGENT_ADDR"),
 		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
+		AgentImage:           os.Getenv("PODDY_AGENT_IMAGE"),
 		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
 		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", 7*24*time.Hour),
 
@@ -231,6 +233,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.SSHCAKeyFile, "ssh-ca-key-file", cfg.SSHCAKeyFile, "path to the SSH certificate authority private key")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", cfg.AgentAddr, "listen address for the workspace agent tunnel (empty disables it)")
 	fs.StringVar(&cfg.AgentURL, "agent-url", cfg.AgentURL, "URL injected into workspaces for the agent tunnel")
+	fs.StringVar(&cfg.AgentImage, "agent-image", cfg.AgentImage, "image running the poddy-agent sidecar (empty uses the in-workspace agent)")
 	fs.StringVar(&cfg.AgentKey, "agent-key", cfg.AgentKey, "shared key used to sign and verify workspace agent tokens")
 	fs.DurationVar(&cfg.AgentTokenTTL, "agent-token-ttl", cfg.AgentTokenTTL, "lifetime of workspace agent tokens")
 	fs.StringVar(&cfg.VSCodeExtensionID, "vscode-extension-id", cfg.VSCodeExtensionID, "VS Code extension identifier shown in the portal")

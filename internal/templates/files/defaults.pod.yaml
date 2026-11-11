@@ -16,6 +16,10 @@ spec:
       ports:
         - name: ssh
           containerPort: 22
+      securityContext:
+        capabilities:
+          add:
+            - SYS_RESOURCE
       resources:
         requests:
           {{- if .Parameters.cpu }}

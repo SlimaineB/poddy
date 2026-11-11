@@ -358,10 +358,17 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 - OpenSSH server on port 22
 - `dev` user (UID 1000), passwordless sudo
 - `/home/dev` home directory owned by `dev:dev`
-- `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys` and starts `sshd`
+- `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys`, lowers `sshd`'s OOM score, installs the `/usr/local/bin/poddy-shell` wrapper, and starts `sshd`
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
 
 The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can override it.
+If you override the command, `sshd` no longer gets the OOM protection from
+`poddy-ssh-start`.
+
+The default Helm configuration runs `poddy-agent` as a sidecar, so custom
+workspace images do not need to include it. With `ssh.agent.sidecar=false`,
+include `/usr/local/bin/poddy-agent` in the image; `poddy-ssh-start` starts it
+before `sshd`.
 
 The persistent home volume is mounted at `/home/dev`. It shadows the image's
 home directory, so put shell defaults in `/etc/skel` (seeded on first start) or

@@ -27,16 +27,18 @@ recovery, and an audit trail.
                                       ▼
                           ┌───────────────────────┐
                           │ workspace pod         │
-                          │ poddy-agent :22       │
+                          │ agent sidecar → sshd  │
                           └───────────────────────┘
 ```
 
 The portal and bastion are separate Deployments built from the same container
 image. The portal never listens for SSH in cluster mode; the bastion exposes
-SSH plus a private agent listener. Workspace pods run `poddy-agent`, which
-connects outbound to the bastion and forwards only to the workspace's loopback
-SSH port. The bastion falls back to Kubernetes port-forward only when
-`ssh.requireAgent=false`.
+SSH plus a private agent listener. Workspace pods run `poddy-agent` in a
+dedicated sidecar, which connects outbound to the bastion and forwards only to
+the workspace's loopback SSH port. The sidecar has its own memory limit, and
+`sshd` runs with a lowered OOM score so workspace memory spikes do not drop
+active SSH sessions. The bastion falls back to Kubernetes port-forward only
+when `ssh.requireAgent=false`.
 
 ## Multi-region
 
@@ -67,7 +69,7 @@ internal region-authenticated endpoint.
 |-----------|----------------|---------------|
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
 | SSH bastion | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
-| Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Workspace pod, started by `poddy-ssh-start` |
+| Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
 | Workspace pods | `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, template access, and quotas | ConfigMap |
@@ -278,7 +280,9 @@ render a ServiceMonitor. See [deployment metrics](deploy.md#prometheus-metrics).
   read ConfigMaps or Secrets through the API and cannot manage workspace
   lifecycle.
 - Workspace containers run `sshd` as root only to bind port 22 and switch to the
-  `dev` user.
+  `dev` user. The workspace container is granted `SYS_RESOURCE` so
+  `poddy-ssh-start` can lower `sshd`'s OOM score; user shells reset their own
+  score to `0`.
 - SSH keys are scoped to workspace owners. Template access controls who can
   create a workspace, not who can SSH into an existing one.
 - For hard tenant isolation, use separate namespaces or separate releases.

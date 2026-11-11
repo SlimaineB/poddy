@@ -468,8 +468,10 @@ See [rbac.md](rbac.md) for the document format, matching rules, and API. The cha
 | `auth.tokenAdmin` | Treat the shared token as a global admin (default `false`). Keep false with OIDC or multiple users. |
 | `ssh.authorizedKeys` | Optional administrator-managed public keys. The comment binds a key to an owner (`user:alice@example.com`) or marks it admin (`admin`, `*`). Teams normally use the portal's **SSH keys** page instead. |
 | `ssh.allowUnmappedKeys` | Allow keys without an owner comment to access every workspace (legacy, insecure; default `false`). |
-| `ssh.requireAgent` | Require the outbound workspace agent tunnel and disable the Kubernetes port-forward fallback (default `true`). Custom workspace images must include `poddy-agent`; set `false` to keep the fallback. |
+| `ssh.requireAgent` | Require the outbound workspace agent tunnel and disable the Kubernetes port-forward fallback (default `true`). Set `false` to keep the fallback. |
 | `ssh.agent.enabled` | Inject the agent URL/token and run the bastion agent listener (default `true`). |
+| `ssh.agent.sidecar` | Run `poddy-agent` in a dedicated sidecar with its own memory limit (default `true`). Set `false` to use the legacy in-workspace agent; custom images must then include `poddy-agent`. |
+| `ssh.agent.image` | Agent sidecar image. Empty uses the portal image, which contains `/usr/local/bin/poddy-agent`. If private, add its pull Secret to `workspace.imagePullSecrets`. |
 | `ssh.agent.port` | Private ClusterIP port for the agent listener (default `8091`). |
 | `ssh.agent.url` | Agent URL injected into workspaces. Empty derives `http://<fullname>-agent.<namespace>.svc:<port>`. |
 | `ssh.agent.tokenTtl` | Workspace agent token lifetime (default `168h`). |
@@ -493,6 +495,12 @@ that owner, then opens a multiplexed stream to the workspace agent or, as a
 fallback, a Kubernetes port-forward to pod port 22.
 
 A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@example.com`; the channel is rejected with `not authorized for this workspace`. Admin keys (`admin` or `*`) can reach every workspace for break-glass access.
+
+The default agent sidecar has a 16Mi memory request and 128Mi limit, so a
+workspace memory spike cannot OOM-kill it. The workspace container is granted
+`SYS_RESOURCE` so `poddy-ssh-start` can lower `sshd`'s OOM score; the
+`poddy-shell` wrapper resets user sessions to the default score. See
+[SSH access](ssh.md#memory-pressure-and-oom-protection).
 
 **Exposing SSH**:
 - Use `LoadBalancer` service type (default). The LB IP/DNS becomes `ssh.publicHost`. This is an L4 TCP load balancer, not an HTTP Ingress.

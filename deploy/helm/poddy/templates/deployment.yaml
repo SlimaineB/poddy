@@ -370,6 +370,10 @@ spec:
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
             {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            {{- if .Values.ssh.agent.sidecar }}
+            - name: PODDY_AGENT_IMAGE
+              value: {{ include "poddy.agentImage" . | quote }}
+            {{- end }}
             - name: PODDY_AGENT_KEY
               valueFrom:
                 secretKeyRef:

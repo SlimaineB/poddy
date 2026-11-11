@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,6 +75,157 @@ func TestCreateWorkspace(t *testing.T) {
 	if got := pvc.Spec.Resources.Requests.Storage().String(); got != "5Gi" {
 		t.Fatalf("storage = %q", got)
 	}
+}
+
+func TestCreateUsesAgentSidecar(t *testing.T) {
+	m := newTestManager()
+	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
+	m.AgentImage = "ghcr.io/slimaineb/poddy:test"
+	m.AgentToken = func(workspace, owner string) (string, error) {
+		if workspace != "app" {
+			t.Fatalf("workspace = %q", workspace)
+		}
+		return "agent-token", nil
+	}
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workspace := containerByName(pod, ContainerName)
+	if workspace == nil {
+		t.Fatal("workspace container missing")
+	}
+	if got := envValue(pod, ContainerName, envAgentToken); got != "" {
+		t.Fatalf("workspace agent token = %q, want empty", got)
+	}
+	if got := envValue(pod, ContainerName, envAgentSidecar); got != "true" {
+		t.Fatalf("workspace agent sidecar marker = %q, want true", got)
+	}
+	if !hasCapability(workspace, "SYS_RESOURCE") {
+		t.Fatalf("workspace capabilities = %+v, want SYS_RESOURCE", workspace.SecurityContext.Capabilities)
+	}
+
+	agent := containerByName(pod, AgentContainerName)
+	if agent == nil {
+		t.Fatal("agent sidecar missing")
+	}
+	if agent.Image != m.AgentImage {
+		t.Fatalf("agent image = %q, want %q", agent.Image, m.AgentImage)
+	}
+	if len(agent.Command) != 1 || agent.Command[0] != "/usr/local/bin/poddy-agent" {
+		t.Fatalf("agent command = %v", agent.Command)
+	}
+	if got := envValue(pod, AgentContainerName, envAgentToken); got != "agent-token" {
+		t.Fatalf("agent token = %q", got)
+	}
+	if got := envValue(pod, AgentContainerName, envWorkspaceName); got != "app" {
+		t.Fatalf("agent workspace = %q", got)
+	}
+	if agent.SecurityContext == nil || agent.SecurityContext.RunAsNonRoot == nil || !*agent.SecurityContext.RunAsNonRoot {
+		t.Fatalf("agent security context = %+v", agent.SecurityContext)
+	}
+	if got := agent.Resources.Limits.Memory().String(); got != "128Mi" {
+		t.Fatalf("agent memory limit = %q", got)
+	}
+
+	if _, err := m.Stop(ctx, "app"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := m.State(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasContainerSpec(state.Spec, AgentContainerName) {
+		t.Fatal("agent sidecar missing from stopped state")
+	}
+	for _, container := range state.Spec.Containers {
+		for _, env := range container.Env {
+			if env.Name == envAgentToken && env.Value != "" {
+				t.Fatalf("agent token leaked into stopped state: %+v", container)
+			}
+		}
+	}
+
+	if _, err := m.Start(ctx, "app"); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := envValue(restarted, AgentContainerName, envAgentToken); got != "agent-token" {
+		t.Fatalf("restarted agent token = %q", got)
+	}
+}
+
+func TestCreateFallsBackToInWorkspaceAgent(t *testing.T) {
+	m := newTestManager()
+	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
+	m.AgentToken = func(workspace, owner string) (string, error) {
+		return "agent-token", nil
+	}
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := envValue(pod, ContainerName, envAgentToken); got != "agent-token" {
+		t.Fatalf("workspace agent token = %q", got)
+	}
+	if hasContainer(pod, AgentContainerName) {
+		t.Fatal("unexpected agent sidecar")
+	}
+	if got := envValue(pod, ContainerName, envAgentSidecar); got != "" {
+		t.Fatalf("workspace agent sidecar marker = %q, want empty", got)
+	}
+}
+
+func TestAgentSidecarUsesImageRegistryMirror(t *testing.T) {
+	m := newTestManager()
+	m.ImageRegistry = "mirror.example.com"
+	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
+	m.AgentImage = "ghcr.io/slimaineb/poddy:test"
+	m.AgentToken = func(workspace, owner string) (string, error) {
+		return "agent-token", nil
+	}
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := containerByName(pod, AgentContainerName)
+	if agent == nil {
+		t.Fatal("agent sidecar missing")
+	}
+	if want := "mirror.example.com/slimaineb/poddy:test"; agent.Image != want {
+		t.Fatalf("agent image = %q, want %q", agent.Image, want)
+	}
+}
+
+func hasCapability(container *corev1.Container, want corev1.Capability) bool {
+	if container == nil || container.SecurityContext == nil || container.SecurityContext.Capabilities == nil {
+		return false
+	}
+	for _, capability := range container.SecurityContext.Capabilities.Add {
+		if capability == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCreateAppliesDefaultStorageClass(t *testing.T) {
@@ -155,6 +307,14 @@ spec:
 	}
 	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "gp3" {
 		t.Fatalf("storage class = %v", pvc.Spec.StorageClassName)
+	}
+
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCapability(containerByName(pod, ContainerName), "SYS_RESOURCE") {
+		t.Fatal("custom template workspace container did not get SYS_RESOURCE")
 	}
 }
 
@@ -732,6 +892,28 @@ func TestPreviewUsage(t *testing.T) {
 	}
 	if usage.Storage.Cmp(resource.MustParse("10Gi")) != 0 {
 		t.Fatalf("storage = %s", usage.Storage.String())
+	}
+}
+
+func TestPreviewUsageIncludesAgentSidecar(t *testing.T) {
+	m := newTestManager()
+	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
+	m.AgentImage = "ghcr.io/slimaineb/poddy:test"
+	m.AgentToken = func(workspace, owner string) (string, error) {
+		return "agent-token", nil
+	}
+	usage, err := m.PreviewUsage(CreateRequest{
+		Name:       "preview",
+		Parameters: map[string]string{"browserVSCode": "false"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.CPU.Cmp(resource.MustParse("510m")) != 0 {
+		t.Fatalf("cpu = %s", usage.CPU.String())
+	}
+	if usage.Memory.Cmp(resource.MustParse("1040Mi")) != 0 {
+		t.Fatalf("memory = %s", usage.Memory.String())
 	}
 }
 

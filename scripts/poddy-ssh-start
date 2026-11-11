@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# Keep sshd alive during workspace memory spikes. The container is granted
+# SYS_RESOURCE so this root process can lower its OOM score. User shells are
+# reset to the default score below so the OOM killer can still reclaim memory
+# from workspace workloads.
+if ! printf '%s\n' -1000 > /proc/self/oom_score_adj 2>/dev/null; then
+  echo "poddy-ssh-start: cannot set sshd oom_score_adj (missing SYS_RESOURCE?)" >&2
+fi
+
 # Keep the legacy /workspace path usable for images that still use it, while
 # /home/dev is the primary persistent workspace home.
 chown dev:dev /home/dev /workspace 2>/dev/null || true
@@ -46,7 +54,43 @@ fi
 chown -R dev:dev /home/dev/.ssh
 chmod 700 /home/dev/.ssh
 
-if [ -x /usr/local/bin/poddy-agent ] && [ -n "${PODDY_AGENT_URL:-}" ] && [ -n "${PODDY_AGENT_TOKEN:-}" ]; then
+# sshd inherits oom_score_adj=-1000. Reset it for the user session so a memory
+# spike can still kill workspace processes without killing SSH. Preserve the
+# image's configured shell in /etc/poddy/user-shell.
+SHELL_WRAPPER=/usr/local/bin/poddy-shell
+if cat > "$SHELL_WRAPPER" 2>/dev/null <<'EOF'
+#!/bin/sh
+if [ -w /proc/self/oom_score_adj ]; then
+  printf '0\n' > /proc/self/oom_score_adj 2>/dev/null || true
+fi
+
+shell=/bin/bash
+if [ -r /etc/poddy/user-shell ]; then
+  read -r configured < /etc/poddy/user-shell || true
+  case "$configured" in
+    ""|/usr/local/bin/poddy-shell) ;;
+    *) if [ -x "$configured" ]; then shell=$configured; fi ;;
+  esac
+fi
+[ -x "$shell" ] || shell=/bin/sh
+SHELL=$shell
+export SHELL
+exec "$shell" "$@"
+EOF
+then
+  chmod 0755 "$SHELL_WRAPPER" 2>/dev/null || true
+fi
+
+current_shell=$(getent passwd dev 2>/dev/null | cut -d: -f7 || true)
+if [ -n "$current_shell" ] && [ "$current_shell" != "$SHELL_WRAPPER" ]; then
+  mkdir -p /etc/poddy 2>/dev/null || true
+  printf '%s\n' "$current_shell" > /etc/poddy/user-shell 2>/dev/null || true
+fi
+if [ -x "$SHELL_WRAPPER" ] && command -v usermod >/dev/null 2>&1; then
+  usermod -s "$SHELL_WRAPPER" dev 2>/dev/null || true
+fi
+
+if [ "${PODDY_AGENT_SIDECAR:-}" != "true" ] && [ -x /usr/local/bin/poddy-agent ] && [ -n "${PODDY_AGENT_URL:-}" ] && [ -n "${PODDY_AGENT_TOKEN:-}" ]; then
   (
     while :; do
       /usr/local/bin/poddy-agent -url "$PODDY_AGENT_URL" -token "$PODDY_AGENT_TOKEN" -workspace "${PODDY_WORKSPACE_NAME:-}" || true

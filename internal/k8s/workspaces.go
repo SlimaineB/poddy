@@ -24,6 +24,7 @@ import (
 const (
 	AppName                = "poddy"
 	ContainerName          = "workspace"
+	AgentContainerName     = "poddy-agent"
 	BrowserVSCodeContainer = "code-server"
 	JupyterLabContainer    = "jupyterlab"
 	WorkspacePath          = "/home/dev"
@@ -50,6 +51,7 @@ const (
 	envGitPrompt       = "GIT_TERMINAL_PROMPT"
 	envAgentURL        = "PODDY_AGENT_URL"
 	envAgentToken      = "PODDY_AGENT_TOKEN"
+	envAgentSidecar    = "PODDY_AGENT_SIDECAR"
 )
 
 var (
@@ -133,6 +135,7 @@ type Manager struct {
 	ExternalAuth        ExternalAuthFunc
 	ExternalAuthToken   WorkspaceTokenFunc
 	AgentURL            string
+	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
 }
 
@@ -356,6 +359,9 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	applyImagePullSecrets(pod, m.ImagePullSecrets)
 	if !hasContainer(pod, ContainerName) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
+	}
+	if m.AgentURL != "" && m.AgentToken != nil && m.AgentImage != "" {
+		upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, "")
 	}
 	return resolvedCreate{
 		templateName: templateName,
