@@ -666,6 +666,7 @@ async function openCreate() {
   renderParams();
   els.createDialog.showModal();
   requestAnimationFrame(() => els.nameInput.focus());
+  loadCreateQuota();
 }
 const detailIcons = {
   Status: "activity",

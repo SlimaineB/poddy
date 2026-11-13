@@ -115,8 +115,23 @@ function usageSummary(usage) {
   return parts.join(" · ");
 }
 
-async function loadUserQuotaDetails(identity) {
-  if (!els.quotaStatus) return;
+async function loadCreateQuota() {
+  if (!els.createQuota) return;
+  els.createQuota.hidden = true;
+  try {
+    const data = await api("/api/me/quota");
+    const usage = usageSummary(data.usage) || "No workspaces";
+    const limit = quotaSummary(data.effective);
+    els.createQuota.textContent = limit
+      ? `Current usage: ${usage}. Your quota: ${limit}.`
+      : `Current usage: ${usage}. No quota limit.`;
+    els.createQuota.hidden = false;
+  } catch {
+    if (els.createQuota) els.createQuota.hidden = true;
+  }
+}
+
+async function loadUserQuotaDetails(identity) {  if (!els.quotaStatus) return;
   try {
     const data = await api(`/api/user-quotas/${encodeURIComponent(identity)}`);
     if (state.quotaUser !== identity) return;

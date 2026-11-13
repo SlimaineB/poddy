@@ -130,6 +130,7 @@ const els = {
   createDialog: document.getElementById("create-dialog"),
   createForm: document.getElementById("create-form"),
   createSubmit: document.getElementById("create-submit"),
+  createQuota: document.getElementById("create-quota"),
   nameInput: document.getElementById("workspace-name"),
   nameHint: document.getElementById("workspace-name-hint"),
   regionField: document.getElementById("region-field"),

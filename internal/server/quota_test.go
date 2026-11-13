@@ -147,6 +147,32 @@ func TestUserQuotaDetails(t *testing.T) {
 	}
 }
 
+func TestMyQuota(t *testing.T) {
+	s := newRBACServer(t, rbac.Config{Admins: []string{"admin@example.com"}})
+	if err := s.Quota.SetUserQuota(t.Context(), "alice@example.com", rbac.Quota{MaxWorkspaces: serverQuotaIntPtr(3)}); err != nil {
+		t.Fatal(err)
+	}
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	if rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "one", "template": "base"}); rec.Code != http.StatusCreated {
+		t.Fatalf("create workspace = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec := requestAs(t, s, alice, http.MethodGet, "/api/me/quota", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("my quota = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var info myQuotaInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Effective.MaxWorkspaces == nil || *info.Effective.MaxWorkspaces != 3 {
+		t.Fatalf("effective quota = %+v", info.Effective)
+	}
+	if info.Usage.Workspaces != 1 {
+		t.Fatalf("usage = %+v", info.Usage)
+	}
+}
+
 func TestTeamQuotaUpdate(t *testing.T) {
 	s := newRBACServer(t, rbac.Config{Admins: []string{"admin@example.com"}})
 	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})

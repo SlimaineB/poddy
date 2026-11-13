@@ -178,6 +178,39 @@ func (s *Server) usageForOwner(ctx context.Context, id *identity, owner string) 
 	return usageFromWorkspaces(owned)
 }
 
+type myQuotaInfo struct {
+	Effective rbac.Quota     `json:"effective"`
+	Usage     quotaUsageInfo `json:"usage"`
+}
+
+func (s *Server) myQuota(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Quota == nil {
+		http.Error(w, "quota store is not configured", http.StatusNotImplemented)
+		return
+	}
+	effective, err := quota.Effective(r.Context(), s.Quota, cfg, rbacIdentity(id.User))
+	if err != nil {
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	usage, err := s.workspaceUsage(r.Context(), id, cfg)
+	if err != nil {
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, myQuotaInfo{Effective: effective, Usage: usageInfo(usage)})
+}
+
 func (s *Server) userQuotaDetails(w http.ResponseWriter, r *http.Request) {
 	if s.RBAC == nil {
 		http.Error(w, "RBAC is not configured", http.StatusNotImplemented)
