@@ -134,8 +134,9 @@ When the configuration is valid, the portal logs:
 volume backups enabled (S3 bucket poddy-backups)
 ```
 
-If backup settings are missing or incomplete, the Volumes page still works but
-backup actions return `501 volume backups are not configured`.
+If backup settings are missing or incomplete, the Volumes page still works.
+The **Backups** action stays visible and explains that backups are not
+configured; the API returns `501 volume backups are not configured`.
 
 ## Multi-region
 

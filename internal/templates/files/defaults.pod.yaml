@@ -37,8 +37,15 @@ spec:
       imagePullPolicy: IfNotPresent
       command: ["/bin/sh", "-c"]
       args:
-        - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --default-folder {{ .WorkspacePath }} --telemetry-level off
+        - exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 127.0.0.1 --port 3000 --without-connection-token --server-base-path "/api/workspaces/{{ .Name }}/code" --server-data-dir {{ printf "%s/.openvscode-server" .WorkspacePath | quote }} --default-folder {{ .WorkspacePath }} --telemetry-level off
       workingDir: {{ .WorkspacePath | quote }}
+      env:
+        - name: HOME
+          value: {{ .WorkspacePath | quote }}
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
       resources:
         requests:
           cpu: 100m

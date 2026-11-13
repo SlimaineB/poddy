@@ -34,6 +34,8 @@ type Config struct {
 	TokenAdmin               bool
 	Kubeconfig               string
 	Context                  string
+	K8sQPS                   float64
+	K8sBurst                 int
 	Editor                   string
 	DesktopSecret            string
 
@@ -118,6 +120,8 @@ func Load(args []string) (Config, error) {
 		Token:                    os.Getenv("PODDY_TOKEN"),
 		TokenAdmin:               envBool("PODDY_TOKEN_ADMIN", false),
 		Kubeconfig:               os.Getenv("KUBECONFIG"),
+		K8sQPS:                   envFloat("PODDY_K8S_QPS", 50),
+		K8sBurst:                 envInt("PODDY_K8S_BURST", 100),
 		Editor:                   env("PODDY_EDITOR", "code"),
 		DesktopSecret:            os.Getenv("PODDY_DESKTOP_SECRET"),
 
@@ -200,6 +204,8 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.TokenAdmin, "token-admin", cfg.TokenAdmin, "treat the shared token as a global admin (unsafe for shared tokens)")
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "path to kubeconfig")
 	fs.StringVar(&cfg.Context, "context", cfg.Context, "kubeconfig context")
+	fs.Float64Var(&cfg.K8sQPS, "k8s-qps", cfg.K8sQPS, "client-side Kubernetes API QPS limit (0 uses the client default)")
+	fs.IntVar(&cfg.K8sBurst, "k8s-burst", cfg.K8sBurst, "client-side Kubernetes API burst limit")
 	fs.StringVar(&cfg.Editor, "editor", cfg.Editor, "editor command used to open VS Code (empty disables local launch)")
 	fs.StringVar(&cfg.DesktopSecret, "desktop-secret", cfg.DesktopSecret, "secret used to sign VS Code desktop tickets (set in HA)")
 	fs.BoolVar(&cfg.RegionMode, "region-mode", cfg.RegionMode, "run as a region manager trusted by a central hub")
@@ -337,6 +343,24 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func envFloat(key string, fallback float64) float64 {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			return parsed
 		}
 	}
 	return fallback

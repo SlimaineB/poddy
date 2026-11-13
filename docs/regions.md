@@ -33,6 +33,7 @@ SSH public keys are replicated from the hub registry to every region.
 | Workspace pods, PVCs, stopped state | No | Yes |
 | SSH bastion and SSH endpoint | No | Yes |
 | PostgreSQL metadata mirror and audit | Yes | No |
+| Access grants, presence, and quotas | Yes (PostgreSQL) | Proxied to hub |
 | Region key and signed identity | Verifies region keys | Trusts hub signature |
 
 Region managers do not need OIDC. They only accept requests signed by the hub.

@@ -73,7 +73,7 @@ spec:
             {{- with .Values.bastion.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if or .Values.database.url .Values.database.existingSecret .Values.bastion.extraEnv .Values.ssh.enabled }}
+          {{- if or .Values.database.url .Values.database.existingSecret .Values.bastion.extraEnv .Values.ssh.enabled .Values.regionManager.enabled }}
           env:
             {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
             - name: PODDY_AGENT_KEY
@@ -86,6 +86,19 @@ spec:
             - name: PODDY_SSH_CA_KEY_FILE
               value: /etc/poddy/ssh-ca/{{ .Values.ssh.ca.keyKey }}
             {{- end }}
+            {{- if .Values.regionManager.enabled }}
+            - name: PODDY_REGION_MODE
+              value: "true"
+            - name: PODDY_REGION_NAME
+              value: {{ .Values.regionManager.name | quote }}
+            - name: PODDY_REGION_HUB_URL
+              value: {{ .Values.regionManager.hubUrl | quote }}
+            - name: PODDY_REGION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.regionKeySecretName" . }}
+                  key: {{ .Values.regionManager.keyKey }}
+            {{- end }}
             {{- if or .Values.database.url .Values.database.existingSecret }}
             - name: PODDY_DATABASE_URL
               valueFrom:
@@ -96,6 +109,12 @@ spec:
               value: {{ .Values.database.autoMigrate | quote }}
             - name: PODDY_DATABASE_CONNECT_TIMEOUT
               value: {{ .Values.database.connectTimeout | quote }}
+            {{- end }}
+            {{- with .Values.kubernetes }}
+            - name: PODDY_K8S_QPS
+              value: {{ .qps | quote }}
+            - name: PODDY_K8S_BURST
+              value: {{ .burst | quote }}
             {{- end }}
             {{- with .Values.bastion.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -269,6 +269,13 @@ func (c *Client) ReplaceSSHKeys(ctx context.Context, owner string, keys []string
 	return c.doJSON(ctx, http.MethodPut, "/api/internal/ssh-keys/"+url.PathEscape(owner), identity, body, nil)
 }
 
+// DoJSON calls an internal hub endpoint with the region identity. It is used by
+// region components that must read shared state from the control plane instead
+// of connecting to its database.
+func (c *Client) DoJSON(ctx context.Context, method, path string, identity Identity, body, out any) error {
+	return c.doJSON(ctx, method, path, identity, body, out)
+}
+
 func (c *Client) doJSON(ctx context.Context, method, path string, identity Identity, body, out any) error {
 	if !c.available() {
 		return fmt.Errorf("region %s is not connected", c.cfg.Name)

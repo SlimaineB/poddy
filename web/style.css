@@ -1870,6 +1870,10 @@ select {
   font-size: 12px;
 }
 
+.hint.warning {
+  color: #b45309;
+}
+
 .params {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

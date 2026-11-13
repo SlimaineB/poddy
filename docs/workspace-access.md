@@ -66,9 +66,10 @@ used as an audit record.
 
 Requests, grants, and presence are stored in PostgreSQL (tables
 `poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`)
-when `PODDY_DATABASE_URL` is configured. The portal and the bastion share the
+when `PODDY_DATABASE_URL` is configured. The hub portal and bastion share the
 same database and namespace key, so an approval made in the browser also
-unlocks SSH.
+unlocks SSH. Region portals and bastions do not connect to PostgreSQL; they
+proxy these operations to the hub.
 
 This state is mutable and written frequently (presence heartbeats), so it is not
 stored in a Kubernetes Secret. Without a database, the portal falls back to an
@@ -98,11 +99,16 @@ The actions are recorded in the audit trail as `workspace.access.request`,
 
 ## Multi-region
 
-Access state belongs to the region that hosts the workspace. The central portal
-proxies access requests to that region, and the region bastion reads the same
-PostgreSQL database. Every region must point at the same database; the
-`namespace` column isolates tenants. Region listings include the access summary
-so the hub can show presence and pending requests without extra calls.
+Only the hub connects to PostgreSQL. Regions are stateless with respect to
+access and quotas: their portal and bastion call the hub's internal endpoints
+(`/api/internal/region/access` and `/api/internal/region/quotas`) using the
+region key, and the hub reads and writes the shared tables. Regions therefore
+need neither database credentials nor network access to PostgreSQL.
+
+The central portal still proxies user-facing access requests to the region that
+hosts the workspace, while the region itself forwards the state change to the
+hub. Region listings include the access summary so the hub can show presence
+and pending requests without extra calls.
 
 ## SSH notes
 

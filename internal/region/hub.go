@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -15,10 +16,24 @@ import (
 type Hub struct {
 	registry *Registry
 	clients  map[string]*Client
+
+	// lastList keeps the most recent successful workspace list per region and
+	// identity. It is used as a fallback when a region is temporarily
+	// unreachable so a transient failure does not make workspaces disappear.
+	lastList map[string]map[string][]k8s.Workspace
+	// regionOf remembers where a workspace lives so detail and proxy requests
+	// do not have to scan every region on each call.
+	regionOf map[string]string
+	mu       sync.RWMutex
 }
 
 func NewHub(registry *Registry) *Hub {
-	hub := &Hub{registry: registry, clients: map[string]*Client{}}
+	hub := &Hub{
+		registry: registry,
+		clients:  map[string]*Client{},
+		lastList: map[string]map[string][]k8s.Workspace{},
+		regionOf: map[string]string{},
+	}
 	if registry == nil {
 		return hub
 	}
@@ -26,6 +41,76 @@ func NewHub(registry *Registry) *Hub {
 		hub.clients[cfg.Name] = NewClient(cfg)
 	}
 	return hub
+}
+
+func identityCacheKey(identity Identity) string {
+	return fmt.Sprintf("%t|%s|%s", identity.Admin, identity.User.Username, identity.User.Subject)
+}
+
+func (h *Hub) rememberList(region, identityKey string, workspaces []k8s.Workspace) {
+	if h == nil {
+		return
+	}
+	snapshot := append([]k8s.Workspace(nil), workspaces...)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.lastList == nil {
+		h.lastList = map[string]map[string][]k8s.Workspace{}
+	}
+	byIdentity := h.lastList[region]
+	if byIdentity == nil {
+		byIdentity = map[string][]k8s.Workspace{}
+		h.lastList[region] = byIdentity
+	}
+	byIdentity[identityKey] = snapshot
+	if h.regionOf == nil {
+		h.regionOf = map[string]string{}
+	}
+	for _, workspace := range workspaces {
+		if workspace.Name != "" {
+			h.regionOf[workspace.Name] = region
+		}
+	}
+}
+
+func (h *Hub) cachedList(region, identityKey string) []k8s.Workspace {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.lastList[region][identityKey]
+}
+
+func (h *Hub) rememberWorkspace(name, region string) {
+	if h == nil || name == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.regionOf == nil {
+		h.regionOf = map[string]string{}
+	}
+	h.regionOf[name] = region
+}
+
+func (h *Hub) cachedRegion(name string) (string, bool) {
+	if h == nil {
+		return "", false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	region, ok := h.regionOf[name]
+	return region, ok
+}
+
+func (h *Hub) forgetWorkspace(name string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.regionOf, name)
 }
 
 func (h *Hub) Configs() []Config {
@@ -75,6 +160,7 @@ func (h *Hub) List(ctx context.Context, identity Identity) ([]k8s.Workspace, []e
 		workspaces []k8s.Workspace
 		problems   []error
 	)
+	identityKey := identityCacheKey(identity)
 	for _, cfg := range h.Configs() {
 		client := h.clients[cfg.Name]
 		if client == nil {
@@ -88,8 +174,12 @@ func (h *Hub) List(ctx context.Context, identity Identity) ([]k8s.Workspace, []e
 			defer mu.Unlock()
 			if err != nil {
 				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+				// Keep the last known workspaces for this region instead of
+				// dropping them from the list during a transient outage.
+				workspaces = append(workspaces, h.cachedList(cfg.Name, identityKey)...)
 				return
 			}
+			h.rememberList(cfg.Name, identityKey, list)
 			workspaces = append(workspaces, list...)
 		}(cfg, client)
 	}
@@ -229,6 +319,27 @@ func (h *Hub) FindWorkspace(ctx context.Context, name string, identity Identity)
 	if h == nil {
 		return Config{}, WorkspaceInfo{}, errors.New("no regions configured")
 	}
+	if regionName, ok := h.cachedRegion(name); ok {
+		if cfg, ok := h.Get(regionName); ok {
+			if client := h.Client(cfg.Name); client != nil {
+				info, err := client.GetWorkspace(ctx, name, identity)
+				if err == nil {
+					return cfg, info, nil
+				}
+				if IsNotFound(err) {
+					// Only a real 404 invalidates the hint. A 403 means the
+					// caller cannot see this workspace; keep the hint for the
+					// owner and fall through to the normal scan.
+					var httpErr *HTTPError
+					if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
+						h.forgetWorkspace(name)
+					}
+				} else {
+					return Config{}, WorkspaceInfo{}, fmt.Errorf("%s: %w", cfg.Name, err)
+				}
+			}
+		}
+	}
 	var problems []error
 	for _, cfg := range h.Configs() {
 		client := h.clients[cfg.Name]
@@ -237,6 +348,7 @@ func (h *Hub) FindWorkspace(ctx context.Context, name string, identity Identity)
 		}
 		info, err := client.GetWorkspace(ctx, name, identity)
 		if err == nil {
+			h.rememberWorkspace(name, cfg.Name)
 			return cfg, info, nil
 		}
 		if IsNotFound(err) {
@@ -251,6 +363,19 @@ func (h *Hub) FindWorkspace(ctx context.Context, name string, identity Identity)
 }
 
 func (h *Hub) Details(ctx context.Context, name string, identity Identity) (map[string]any, error) {
+	if regionName, ok := h.cachedRegion(name); ok {
+		if cfg, ok := h.Get(regionName); ok {
+			if client := h.Client(cfg.Name); client != nil {
+				details, err := client.Details(ctx, name, identity)
+				if err == nil {
+					return details, nil
+				}
+				if !IsNotFound(err) {
+					return nil, fmt.Errorf("%s: %w", cfg.Name, err)
+				}
+			}
+		}
+	}
 	cfg, _, err := h.FindWorkspace(ctx, name, identity)
 	if err != nil {
 		return nil, err
@@ -279,7 +404,11 @@ func (h *Hub) Create(ctx context.Context, regionName string, req k8s.CreateReque
 	if !errors.As(err, &httpErr) || httpErr.Status != 404 {
 		return k8s.Workspace{}, err
 	}
-	return client.Create(ctx, req, identity)
+	created, err := client.Create(ctx, req, identity)
+	if err == nil {
+		h.rememberWorkspace(req.Name, cfg.Name)
+	}
+	return created, err
 }
 
 func (h *Hub) Topology(ctx context.Context, identity Identity) (Topology, []error) {

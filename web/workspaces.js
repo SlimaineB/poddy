@@ -625,8 +625,8 @@ async function load({ silent = false } = {}) {
 }
 function workspaceNamePrefix() {
   if (!state.me || state.me.method === "none") return "";
-  let raw = state.me.username || "";
-  if (!raw && state.me.email) raw = state.me.email.split("@")[0];
+  let raw = state.me.username || state.me.email || "";
+  if (raw.includes("@")) raw = raw.split("@")[0];
   raw = String(raw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/g, "");
   return raw || "user";
 }

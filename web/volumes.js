@@ -82,6 +82,10 @@ function renderVolumes() {
   });
 
   renderVolumeSummary();
+  els.volumesBackupHint.hidden = state.volumeBackupEnabled;
+  els.volumesBackupHint.textContent = state.volumeBackupEnabled
+    ? ""
+    : "Volume backups are not configured for this deployment. Set backup.enabled and S3 credentials on each region release to enable them.";
   els.volumesCount.textContent = `${volumes.length} volume${volumes.length === 1 ? "" : "s"}`;
   els.volumesList.replaceChildren();
   els.volumesEmpty.hidden = volumes.length > 0;
@@ -194,15 +198,15 @@ function renderVolumeRow(volume) {
   const actions = document.createElement("div");
   actions.className = "workspace-actions volume-actions";
 
-  if (state.volumeBackupEnabled) {
-    const backups = document.createElement("button");
-    backups.type = "button";
-    backups.className = "button small";
-    backups.innerHTML = `${icon("database")}Backups`;
-    backups.title = "Create, restore, or delete volume backups";
-    backups.addEventListener("click", () => openVolumeBackups(volume));
-    actions.append(backups);
-  }
+  const backups = document.createElement("button");
+  backups.type = "button";
+  backups.className = state.volumeBackupEnabled ? "button small" : "button ghost small";
+  backups.innerHTML = `${icon("database")}Backups`;
+  backups.title = state.volumeBackupEnabled
+    ? "Create, restore, or delete volume backups"
+    : "Volume backups are not configured";
+  backups.addEventListener("click", () => openVolumeBackups(volume));
+  actions.append(backups);
 
   if (state.me && state.me.isAdmin && !volume.assigned) {
     const remove = document.createElement("button");
@@ -233,6 +237,11 @@ function openVolumeBackups(volume) {
   els.restoreError.hidden = true;
   renderVolumeBackupStatus();
   if (!els.volumeBackupsDialog.open) els.volumeBackupsDialog.showModal();
+  if (!state.volumeBackupEnabled) {
+    els.volumeBackupsRefresh.disabled = true;
+    setVolumeBackupsMessage("Volume backups are not configured for this deployment. Set backup.enabled and S3 credentials on each region release to enable them.");
+    return;
+  }
   loadVolumeBackups();
   loadVolumeRestoreTargets();
 }
@@ -319,6 +328,14 @@ function renderVolumeBackupStatus() {
   const volume = state.volumeBackupVolume;
   els.volumeBackupStatus.replaceChildren();
   if (!volume) return;
+  if (!state.volumeBackupEnabled) {
+    const note = document.createElement("p");
+    note.className = "volume-backup-note blocked";
+    note.textContent = "Volume backups are not configured for this deployment. Set backup.enabled and S3 credentials on each region release.";
+    els.volumeBackupStatus.append(note);
+    els.volumeBackupCreate.disabled = true;
+    return;
+  }
   const note = document.createElement("p");
   if (!volume.assigned) {
     note.className = "volume-backup-note ready";
@@ -345,6 +362,7 @@ function renderVolumeBackupStatus() {
 async function loadVolumeBackups() {
   const volume = state.volumeBackupVolume;
   if (!volume) return;
+  if (!state.volumeBackupEnabled) return;
   const request = ++state.volumeBackupRequest;
   els.volumeBackupsRefresh.disabled = true;
   setVolumeBackupsMessage("Loading backups...");

@@ -102,10 +102,25 @@ func (m *Manager) ListVolumes(ctx context.Context) ([]Volume, error) {
 	for _, workspace := range workspaces {
 		owners[workspace.Name] = workspace
 	}
+	return m.volumesFromClaims(claims.Items, owners), nil
+}
 
-	out := make([]Volume, 0, len(claims.Items))
-	for i := range claims.Items {
-		pvc := &claims.Items[i]
+// ListWorkspaceVolumes returns the PVCs attached to a single workspace without
+// listing every workspace pod and claim.
+func (m *Manager) ListWorkspaceVolumes(ctx context.Context, workspace string) ([]Volume, error) {
+	claims, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelName + "=" + AppName + "," + labelWorkspace + "=" + workspace,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return m.volumesFromClaims(claims.Items, nil), nil
+}
+
+func (m *Manager) volumesFromClaims(items []corev1.PersistentVolumeClaim, owners map[string]Workspace) []Volume {
+	out := make([]Volume, 0, len(items))
+	for i := range items {
+		pvc := &items[i]
 		workspace := pvc.Labels[labelWorkspace]
 		if workspace == "" {
 			workspace = strings.TrimPrefix(pvc.Name, "poddy-")
@@ -152,7 +167,7 @@ func (m *Manager) ListVolumes(ctx context.Context) ([]Volume, error) {
 		}
 		return out[i].Workspace < out[j].Workspace
 	})
-	return out, nil
+	return out
 }
 
 // DeleteVolume deletes an unassigned volume claim. Volumes that still belong to

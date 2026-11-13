@@ -24,7 +24,7 @@ REGIONS     := poddy-eu poddy-us
 export KUBECONFIG
 
 .PHONY: all build test vet fmt lint docs image values-hub values-eu values-us \
-        deploy deploy-hub deploy-eu deploy-us deploy-regions region-db-secret kubeconfig status clean help
+        deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help
 
 all: build test vet
 
@@ -71,32 +71,23 @@ deploy-hub: image values-hub
 		--set image.tag=$(IMAGE_TAG) --set image.pullPolicy=$(PULL_POLICY) \
 		--wait --timeout 10m
 
+# Regions must not reach PostgreSQL: they read access and quota state from the
+# hub control plane. Clear any database settings inherited from older releases.
 deploy-eu: image values-eu
 	$(HELM) --kubeconfig $(KUBECONFIG) upgrade --install poddy-eu $(CHART) \
 		-n poddy-eu -f $(VALUES_DIR)/poddy-eu-values.yaml \
 		--set image.tag=$(IMAGE_TAG) --set image.pullPolicy=$(PULL_POLICY) \
-		--set database.existingSecret=poddy-database \
+		--set database.url= --set database.existingSecret= \
 		--wait --timeout 10m
 
 deploy-us: image values-us
 	$(HELM) --kubeconfig $(KUBECONFIG) upgrade --install poddy-us $(CHART) \
 		-n poddy-us -f $(VALUES_DIR)/poddy-us-values.yaml \
 		--set image.tag=$(IMAGE_TAG) --set image.pullPolicy=$(PULL_POLICY) \
-		--set database.existingSecret=poddy-database \
+		--set database.url= --set database.existingSecret= \
 		--wait --timeout 10m
 
-# Copy the hub database Secret into each region so portal and bastion share the
-# same access state. The URL uses the cluster FQDN and is reachable cross-namespace.
-region-db-secret: kubeconfig
-	@for ns in poddy-eu poddy-us; do \
-		echo "syncing poddy-database into $$ns"; \
-		url=$$(kubectl --kubeconfig $(KUBECONFIG) -n $(HUB_NS) get secret poddy-database -o jsonpath='{.data.database-url}' | base64 -d); \
-		kubectl --kubeconfig $(KUBECONFIG) -n $$ns create secret generic poddy-database \
-			--from-literal=database-url="$$url" --dry-run=client -o yaml \
-		| kubectl --kubeconfig $(KUBECONFIG) apply -f -; \
-	done
-
-deploy-regions: region-db-secret deploy-hub deploy-eu deploy-us
+deploy-regions: deploy-hub deploy-eu deploy-us
 
 deploy: deploy-regions
 
@@ -120,7 +111,6 @@ help:
 	@echo "  make deploy-eu    - helm upgrade eu region"
 	@echo "  make deploy-us    - helm upgrade us region"
 	@echo "  make deploy       - build image + deploy hub then regions"
-	@echo "  make region-db-secret - copy poddy-database Secret into regions"
 	@echo "  make status       - list helm releases and poddy deployments"
 	@echo ""
 	@echo "Variables: IMAGE_TAG (default: access-<git>), KUBECONFIG, REGISTRY, IMAGE"

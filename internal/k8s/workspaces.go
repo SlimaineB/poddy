@@ -279,19 +279,27 @@ func (m *Manager) Get(ctx context.Context, name string) (*corev1.Pod, error) {
 
 // GetWorkspace returns the workspace details (running or stopped).
 func (m *Manager) GetWorkspace(ctx context.Context, name string) (Workspace, error) {
+	workspace, _, err := m.GetWorkspacePod(ctx, name)
+	return workspace, err
+}
+
+// GetWorkspacePod returns the workspace details and the running pod, if any.
+// It fetches the pod once so callers that also need pod metadata do not issue
+// a second API call.
+func (m *Manager) GetWorkspacePod(ctx context.Context, name string) (Workspace, *corev1.Pod, error) {
 	pod, err := m.Get(ctx, name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return Workspace{}, err
+			return Workspace{}, nil, err
 		}
 		// Not running, check stopped state
 		state, err := m.State(ctx, name)
 		if err != nil {
-			return Workspace{}, err
+			return Workspace{}, nil, err
 		}
-		return workspaceFromState(state, "Stopped"), nil
+		return workspaceFromState(state, "Stopped"), nil, nil
 	}
-	return toWorkspace(pod), nil
+	return toWorkspace(pod), pod, nil
 }
 
 type resolvedCreate struct {

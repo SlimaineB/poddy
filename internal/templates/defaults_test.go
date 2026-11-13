@@ -80,6 +80,15 @@ func TestApplyDefaultsInjectsWorkspace(t *testing.T) {
 	if !strings.Contains(code.Args[0], "--default-folder /home/dev") {
 		t.Fatalf("code-server default folder args = %+v", code.Args)
 	}
+	if !strings.Contains(code.Args[0], `--server-data-dir "/home/dev/.openvscode-server"`) {
+		t.Fatalf("code-server server data dir args = %+v", code.Args)
+	}
+	if !hasEnv(code.Env, "HOME") {
+		t.Fatalf("code-server env = %+v", code.Env)
+	}
+	if code.SecurityContext == nil || code.SecurityContext.RunAsUser == nil || *code.SecurityContext.RunAsUser != 1000 {
+		t.Fatalf("code-server securityContext = %+v", code.SecurityContext)
+	}
 }
 
 func TestApplyDefaultsInjectsJupyterLab(t *testing.T) {

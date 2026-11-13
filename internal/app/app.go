@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"poddy/internal/access"
+	accessremote "poddy/internal/access/remote"
 	"poddy/internal/auth"
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
@@ -31,6 +32,7 @@ import (
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
 	"poddy/internal/quota"
+	quotaremote "poddy/internal/quota/remote"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
 	"poddy/internal/server"
@@ -80,10 +82,21 @@ func Run(ctx context.Context, args []string) error {
 	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL mirror and audit enabled")
 	}
-	accessStore := openAccessStore(metaStore, cfg.Namespace)
-	quotaStore := openQuotaStore(metaStore, cfg.Namespace)
+	regionIdentity := region.Identity{User: auth.User{Username: "region", Subject: cfg.RegionName}, Admin: true}
+	var hubClient *region.Client
+	var accessStore access.Store
+	var quotaStore quota.Store
+	if cfg.RegionMode && cfg.RegionHubURL != "" {
+		hubClient = region.NewClient(region.Config{Name: cfg.RegionName, URL: cfg.RegionHubURL, Key: cfg.RegionKey})
+		accessStore = accessremote.New(hubClient, regionIdentity)
+		quotaStore = quotaremote.New(hubClient, regionIdentity)
+		log.Printf("workspace access and quotas: using hub control plane at %s", cfg.RegionHubURL)
+	} else {
+		accessStore = openAccessStore(metaStore, cfg.Namespace)
+		quotaStore = openQuotaStore(metaStore, cfg.Namespace)
+	}
 
-	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
+	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context, cfg.K8sQPS, cfg.K8sBurst)
 	if err != nil {
 		return fmt.Errorf("kubernetes: %w", err)
 	}
@@ -173,8 +186,7 @@ func Run(ctx context.Context, args []string) error {
 		}
 		manager.ExternalAuthToken = externalAuth.SignWorkspace
 	}
-	if cfg.RegionMode && cfg.RegionHubURL != "" {
-		hubClient := region.NewClient(region.Config{Name: cfg.RegionName, URL: cfg.RegionHubURL, Key: cfg.RegionKey})
+	if hubClient != nil {
 		var tokens sync.Map
 		manager.ExternalAuth = func(ctx context.Context, owner, workspace, portalURL string, requirements []templates.ExternalAuth) (map[string]string, error) {
 			response, err := hubClient.FetchExternalAuth(ctx, region.ExternalAuthRequest{
@@ -182,7 +194,7 @@ func Run(ctx context.Context, args []string) error {
 				Workspace:    workspace,
 				PortalURL:    portalURL,
 				Requirements: requirements,
-			}, region.Identity{User: auth.User{Username: "region", Subject: cfg.RegionName}, Admin: true})
+			}, regionIdentity)
 			if err != nil {
 				return nil, err
 			}
@@ -510,9 +522,19 @@ func RunBastion(ctx context.Context, args []string) error {
 	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL audit enabled")
 	}
-	accessStore := openAccessStore(metaStore, cfg.Namespace)
+	var accessStore access.Store
+	if cfg.RegionMode && cfg.RegionHubURL != "" {
+		hubClient := region.NewClient(region.Config{Name: cfg.RegionName, URL: cfg.RegionHubURL, Key: cfg.RegionKey})
+		accessStore = accessremote.New(hubClient, region.Identity{
+			User:  auth.User{Username: "region", Subject: cfg.RegionName},
+			Admin: true,
+		})
+		log.Printf("workspace access: using hub control plane at %s", cfg.RegionHubURL)
+	} else {
+		accessStore = openAccessStore(metaStore, cfg.Namespace)
+	}
 
-	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
+	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context, cfg.K8sQPS, cfg.K8sBurst)
 	if err != nil {
 		return fmt.Errorf("kubernetes: %w", err)
 	}

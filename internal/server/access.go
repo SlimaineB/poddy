@@ -124,6 +124,10 @@ func (s *Server) workspaceAccessInfo(ctx context.Context, name string, id *ident
 	if err != nil {
 		return nil, err
 	}
+	return s.workspaceAccessInfoFor(ctx, name, owner, id, cfg)
+}
+
+func (s *Server) workspaceAccessInfoFor(ctx context.Context, name, owner string, id *identity, cfg rbac.Config) (*k8s.WorkspaceAccess, error) {
 	store := s.accessStore()
 	if store == nil {
 		return nil, apierrors.NewServiceUnavailable("access store is unavailable")

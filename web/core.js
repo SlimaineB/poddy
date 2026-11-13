@@ -222,6 +222,7 @@ const els = {
   volumesRefresh: document.getElementById("volumes-refresh"),
   volumesSearch: document.getElementById("volumes-search"),
   volumesSummary: document.getElementById("volumes-summary"),
+  volumesBackupHint: document.getElementById("volumes-backup-hint"),
   volumesCount: document.getElementById("volumes-count"),
   volumesLoading: document.getElementById("volumes-loading"),
   volumesEmpty: document.getElementById("volumes-empty"),
@@ -940,6 +941,18 @@ function renderParams() {
       hint.className = "hint";
       hint.textContent = parameter.description;
       field.append(hint);
+    }
+    if (parameter.name === "storage") {
+      const warning = document.createElement("p");
+      warning.className = "hint warning";
+      warning.textContent = "Ephemeral home: files are lost when the workspace restarts, and desktop VS Code will reinstall its server each time.";
+      const syncWarning = () => {
+        warning.hidden = String(control.value).trim() !== "";
+      };
+      control.addEventListener("change", syncWarning);
+      control.addEventListener("input", syncWarning);
+      syncWarning();
+      field.append(warning);
     }
     els.params.append(field);
   }

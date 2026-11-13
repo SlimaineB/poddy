@@ -50,6 +50,13 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+# Client-side rate limits for the Kubernetes API. client-go defaults to 5 QPS
+# with a burst of 10, which throttles busy portals and makes terminals and
+# VS Code port forwards feel slow. Set qps to 0 to keep the client default.
+kubernetes:
+  qps: 50
+  burst: 100
+
 # Optional PostgreSQL metadata mirror and audit log. When a connection string
 # is configured, the portal mirrors RBAC, users, templates, workspaces, and
 # quotas into PostgreSQL and records audit events. Kubernetes remains the

@@ -236,6 +236,16 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and quota reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace, quota, or RBAC decisions; it does not remove the ConfigMap size limit by itself.
 
+### Kubernetes client rate limits
+
+The Kubernetes client defaults to 5 QPS with a burst of 10, which throttles a
+busy portal and makes terminals and browser VS Code feel slow. poddy raises the
+default to 50 QPS / 100 burst. Tune it with `kubernetes.qps` and
+`kubernetes.burst` in the Helm values, or `PODDY_K8S_QPS` / `PODDY_K8S_BURST`
+(or `-k8s-qps` / `-k8s-burst`). Set `kubernetes.qps: 0` to keep the client-go
+default. Raise the burst as well when many users open terminals or IDE proxies
+at the same time; a high QPS with a low burst still throttles short spikes.
+
 ### Replicas and namespaces
 
 - **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.

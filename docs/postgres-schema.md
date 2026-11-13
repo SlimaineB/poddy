@@ -14,6 +14,11 @@
     Without a database they fall back to an in-process store, which only works
     for a single replica.
 
+    In a multi-region deployment only the hub connects to PostgreSQL. Region
+    portals and bastions call the hub's internal control-plane endpoints
+    (`/api/internal/region/access` and `/api/internal/region/quotas`) with their
+    region key, so they never need database credentials or network access.
+
     The portal requires the database at startup when it is configured. If the
     database becomes unavailable later, sync and audit writes are logged and
     workspace operations continue. Fix the database and restart the portal to
@@ -166,9 +171,9 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 
 Workspace access state (`access_requests`, `access_grants`, `access_presence`)
 and quotas (`user_quotas`, `team_quotas`) are owned by PostgreSQL rather than
-mirrored from Kubernetes. The portal and the bastion read and write them
-directly; there is no Kubernetes Secret for access and no quota entry in the
-RBAC ConfigMap.
+mirrored from Kubernetes. The hub portal and bastion read and write them
+directly; regions go through the hub control plane. There is no Kubernetes
+Secret for access and no quota entry in the RBAC ConfigMap.
 
 The mirror is refreshed at startup and after writes:
 

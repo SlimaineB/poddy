@@ -32,6 +32,15 @@ extension, and PyCharm through JetBrains Gateway and the generated SSH config.
 Gateway must parse `~/.ssh/config`; the generated block uses `ProxyCommand`
 because Gateway does not support `ProxyJump`.
 
+Desktop VS Code installs its server in `~/.vscode-server` inside the workspace
+home. Poddy does not manage that directory. With a persistent home volume the
+server and remote extensions survive stop/start and restarts. With
+`storage: ""` (ephemeral home) the pod uses an `emptyDir`, so VS Code downloads
+and installs the server again after each restart. Choose a persistent home size
+in the create dialog when you use desktop VS Code. The browser IDE sidecar
+stores its state in `/home/dev/.openvscode-server` and runs as UID 1000, so it
+follows the same persistence rule.
+
 The portal signs a workspace-bound agent token and injects it into the agent
 sidecar as `PODDY_AGENT_TOKEN`, together with `PODDY_AGENT_URL` and
 `PODDY_WORKSPACE_NAME`. The bastion verifies the token with the shared

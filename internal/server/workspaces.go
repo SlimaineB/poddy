@@ -105,19 +105,14 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := s.Workspaces.GetWorkspace(r.Context(), name)
+	ws, pod, err := s.Workspaces.GetWorkspacePod(r.Context(), name)
 	if err != nil {
 		writeK8sError(w, err, http.StatusNotFound)
 		return
 	}
 
-	// Check access
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !allowed {
+	// Check access using the workspace already fetched above.
+	if !s.isAdmin(id, cfg) && !strings.EqualFold(ws.Owner, ownerID(id.User)) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -142,27 +137,26 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get pod info for running workspaces
+	// Pod info comes from the same fetch as the workspace.
 	var podIP, nodeName, podPhase string
-	if ws.Phase != "Stopped" {
-		if pod, err := s.Workspaces.Get(r.Context(), name); err == nil {
-			podIP = pod.Status.PodIP
-			nodeName = pod.Spec.NodeName
-			podPhase = string(pod.Status.Phase)
-		}
+	if pod != nil {
+		podIP = pod.Status.PodIP
+		nodeName = pod.Spec.NodeName
+		podPhase = string(pod.Status.Phase)
 	}
 
 	// Volumes attached to this workspace (owner/admin only, already authorized above)
 	var volumes []k8s.Volume
-	if allVolumes, lerr := s.Workspaces.ListVolumes(r.Context()); lerr == nil {
-		for _, v := range allVolumes {
-			if v.Workspace == ws.Name {
-				volumes = append(volumes, v)
-			}
+	if attached, lerr := s.Workspaces.ListWorkspaceVolumes(r.Context(), name); lerr == nil {
+		for i := range attached {
+			attached[i].Assigned = true
+			attached[i].Owner = ws.Owner
+			attached[i].WorkspacePhase = ws.Phase
 		}
+		volumes = attached
 	}
 
-	accessInfo, accessErr := s.workspaceAccessInfo(r.Context(), name, id, cfg)
+	accessInfo, accessErr := s.workspaceAccessInfoFor(r.Context(), name, ws.Owner, id, cfg)
 	if accessErr != nil {
 		log.Printf("workspace access %s: %v", name, accessErr)
 	}
@@ -233,8 +227,11 @@ func workspaceNamePrefix(id *identity) string {
 		return ""
 	}
 	raw := id.User.Username
-	if raw == "" && id.User.Email != "" {
-		raw = strings.SplitN(id.User.Email, "@", 2)[0]
+	if raw == "" {
+		raw = id.User.Email
+	}
+	if at := strings.Index(raw, "@"); at > 0 {
+		raw = raw[:at]
 	}
 	if raw == "" {
 		raw = id.User.Subject
