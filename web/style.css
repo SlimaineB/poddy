@@ -974,6 +974,7 @@ select {
 
 .card-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -981,6 +982,7 @@ select {
 
 .card-title {
   display: flex;
+  flex: 1 0 100%;
   align-items: center;
   gap: 9px;
   min-width: 0;
@@ -991,19 +993,30 @@ select {
   flex: none;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
 }
 
 .card-title h2 {
-  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .card-title .workspace-name-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 
 .badge {
