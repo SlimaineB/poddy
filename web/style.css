@@ -1718,6 +1718,36 @@ select {
   font-size: 11.5px;
 }
 
+.quota-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 12.5px;
+}
+
+.quota-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quota-status-row > span:first-child {
+  color: var(--text-muted);
+}
+
+.quota-status-row > span:last-child {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.quota-footer-clear {
+  margin-right: auto;
+}
+
 .field input,
 .field select {
   width: 100%;

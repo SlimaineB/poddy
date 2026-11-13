@@ -3,9 +3,16 @@
 !!! note "Optional mirror, Kubernetes-first"
     poddy runs without PostgreSQL. When `PODDY_DATABASE_URL` is set (Helm:
     `database.url` or `database.existingSecret`), the portal mirrors RBAC,
-    OIDC users, templates, workspaces, and quota configuration into PostgreSQL
-    and writes an append-only audit trail. Kubernetes remains the runtime source
-    of truth; PostgreSQL is never read for workspace, quota, or RBAC decisions.
+    OIDC users, templates, and workspaces into PostgreSQL and writes an
+    append-only audit trail. Kubernetes remains the runtime source of truth for
+    workspaces and RBAC.
+
+    Mutable portal state that does not belong in a Kubernetes object is stored
+    directly in PostgreSQL: workspace access (`access_requests`,
+    `access_grants`, `access_presence`) and quotas (`user_quotas`,
+    `team_quotas`). The portal and bastion read and write these tables directly.
+    Without a database they fall back to an in-process store, which only works
+    for a single replica.
 
     The portal requires the database at startup when it is configured. If the
     database becomes unavailable later, sync and audit writes are logged and
@@ -27,8 +34,8 @@ A PostgreSQL metadata store gives you:
 
 - A backup target that survives cluster loss.
 - An audit trail for workspace lifecycle, terminal, VS Code, and SSH activity.
-- A durable mirror of team and user quota configuration for reporting. Quota
-  enforcement still happens in the portal from the RBAC ConfigMap.
+- A durable store for team and user quota configuration. The portal reads these
+  tables when it enforces quotas; the RBAC ConfigMap no longer holds quotas.
 - A shared catalog for multiple clusters or portals.
 - A migration path toward a control plane that can recreate a cluster from
   metadata.
@@ -129,9 +136,10 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 | `tenants` | One workspace namespace per tenant. |
 | `users` | OIDC identities seen by the portal, including groups and first/last seen. |
 | `global_admins` | Global admin identities. |
-| `teams` | Named teams and their optional quota defaults. |
+| `teams` | Named teams (membership lives in `team_members`). |
 | `team_members` | Team membership entries. |
 | `user_quotas` | Per-user quota overrides resolved against team defaults. |
+| `team_quotas` | Per-team quota defaults inherited by members. |
 | `templates` | Template catalog metadata and public/restricted state. |
 | `template_versions` | Versioned template YAML, Pod template, parameters, links, and external auth requirements. |
 | `template_owners` | Template owners. |
@@ -149,7 +157,7 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 
 | Kubernetes object | PostgreSQL tables |
 |-------------------|-------------------|
-| `poddy-rbac` ConfigMap | `tenants`, `global_admins`, `teams` (including quota columns), `team_members`, `user_quotas`, `templates`, `template_owners`, `template_users`, `template_teams` |
+| `poddy-rbac` ConfigMap | `tenants`, `global_admins`, `teams`, `team_members`, `templates`, `template_owners`, `template_users`, `template_teams` |
 | `poddy-users` ConfigMap | `users` |
 | Template ConfigMaps | `templates`, `template_versions`, access tables |
 | Workspace pods and stopped state | `workspaces` |
@@ -157,15 +165,18 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 | Audit stream | `audit_events` (written by portal and bastion) |
 
 Workspace access state (`access_requests`, `access_grants`, `access_presence`)
-is owned by PostgreSQL rather than mirrored from Kubernetes. The portal and the
-bastion read and write it directly; there is no Kubernetes Secret for it.
+and quotas (`user_quotas`, `team_quotas`) are owned by PostgreSQL rather than
+mirrored from Kubernetes. The portal and the bastion read and write them
+directly; there is no Kubernetes Secret for access and no quota entry in the
+RBAC ConfigMap.
 
 The mirror is refreshed at startup and after writes:
 
 - Startup removes workspaces that no longer exist in Kubernetes; startup and
   catalog reloads remove stale templates, so rows deleted while the portal was
   down do not linger.
-- RBAC and template access: after team, user-quota, or template-access changes.
+- RBAC and template access: after team or template-access changes. Quotas are
+  written directly to `user_quotas` and `team_quotas`, not through the mirror.
 - Templates: after template ConfigMaps or the local template directory reload.
 - Users: when an OIDC user signs in.
 - Workspaces: after create, stop, start, restart, and delete.
@@ -205,10 +216,10 @@ owner as appropriate.
   partial unique index so only one version per template can be active.
 - **`templates.is_public` is derived.** A template with no access rows is
   public. When owners, users, or teams are assigned, set it to `false`.
-- **Quotas are configuration, not accounting.** `teams.quota_*` and
-  `user_quotas` mirror the RBAC document. The portal computes live usage from
-  Kubernetes workspaces and PVCs, so these tables are not the enforcement
-  source.
+- **Quotas are configuration, not accounting.** `team_quotas` and `user_quotas`
+  are the enforcement source. The portal computes live usage from Kubernetes
+  workspaces and PVCs, then checks it against the effective quota (user
+  overrides fill team defaults field by field).
 - **Workspace template names are historical.** `workspaces.template_name` is
   kept even if the template is later deleted, so the workspace can still be
   recreated from its rendered spec.
@@ -276,8 +287,8 @@ For production, also enable:
 ## Current behavior and next steps
 
 1. **Mirror and audit (available now).** The portal writes Kubernetes metadata
-   snapshots, quota configuration, and audit events to PostgreSQL. Kubernetes
-   remains authoritative.
+   snapshots and audit events to PostgreSQL, and stores access state and quotas
+   there directly. Kubernetes remains authoritative for workspaces and RBAC.
 2. **Reconcile (roadmap).** Add a restore command that recreates ConfigMaps and
    template objects from PostgreSQL in a new cluster.
 3. **Source of truth (not planned by default).** poddy intentionally keeps

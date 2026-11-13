@@ -986,9 +986,20 @@
           </label>
         </div>
         <p class="hint">Empty fields inherit the most permissive quota from the user's teams. Clearing every field removes the override.</p>
+        <div id="user-quota-status" class="quota-status" hidden>
+          <div class="quota-status-row">
+            <span>Effective limit</span>
+            <span id="user-quota-effective"></span>
+          </div>
+          <div class="quota-status-row">
+            <span>Current usage</span>
+            <span id="user-quota-usage"></span>
+          </div>
+        </div>
         <p id="user-quota-error" class="form-error" hidden></p>
       </div>
       <footer class="dialog-footer">
+        <button id="user-quota-clear" class="button ghost quota-footer-clear" type="button" hidden>Remove override</button>
         <button class="button ghost" type="button" data-close>Cancel</button>
         <button id="user-quota-save" class="button primary" type="submit">Save quota</button>
       </footer>

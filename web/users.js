@@ -129,6 +129,7 @@ function renderDirectoryList(container, values, memberships, kind, query) {
         : "Team memberships are visible to admins.";
       meta.append(none);
     }
+    const inherited = kind === "user" && !quotaEntry ? inheritedQuotaTeams(teams) : [];
     if (quotaEntry) {
       const summary = quotaSummary(quotaEntry.quota);
       if (summary) {
@@ -137,6 +138,11 @@ function renderDirectoryList(container, values, memberships, kind, query) {
         quota.textContent = `Quota: ${summary}`;
         meta.append(quota);
       }
+    } else if (inherited.length) {
+      const quota = document.createElement("span");
+      quota.className = "directory-quota";
+      quota.textContent = `Quota: inherits ${inherited.join(", ")}`;
+      meta.append(quota);
     }
     main.append(name, meta);
     item.append(avatar, main);
@@ -144,7 +150,7 @@ function renderDirectoryList(container, values, memberships, kind, query) {
       const quota = document.createElement("button");
       quota.type = "button";
       quota.className = "button ghost small quota-button";
-      quota.textContent = quotaEntry ? "Edit quota" : "Set quota";
+      quota.textContent = quotaEntry ? "Edit quota" : inherited.length ? "Override quota" : "Set quota";
       quota.addEventListener("click", () => openUserQuota(value, quotaEntry));
       item.append(quota);
     }

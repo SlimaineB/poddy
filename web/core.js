@@ -323,6 +323,10 @@ const els = {
   quotaMemory: document.getElementById("user-quota-memory"),
   quotaStorage: document.getElementById("user-quota-storage"),
   quotaSave: document.getElementById("user-quota-save"),
+  quotaClear: document.getElementById("user-quota-clear"),
+  quotaStatus: document.getElementById("user-quota-status"),
+  quotaEffective: document.getElementById("user-quota-effective"),
+  quotaUsage: document.getElementById("user-quota-usage"),
   quotaError: document.getElementById("user-quota-error"),
 };
 

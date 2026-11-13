@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)
 	mux.HandleFunc("GET /api/users", s.users)
 	mux.HandleFunc("GET /api/user-quotas", s.userQuotas)
+	mux.HandleFunc("GET /api/user-quotas/{identity}", s.userQuotaDetails)
 	mux.HandleFunc("PUT /api/user-quotas/{identity}", s.updateUserQuota)
 	mux.HandleFunc("DELETE /api/user-quotas/{identity}", s.deleteUserQuota)
 	mux.HandleFunc("GET /api/teams", s.teams)

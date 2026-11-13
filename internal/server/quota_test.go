@@ -107,6 +107,46 @@ func TestTeamQuotaInheritedOnCreate(t *testing.T) {
 	}
 }
 
+func TestUserQuotaDetails(t *testing.T) {
+	s := newRBACServer(t, rbac.Config{
+		Admins: []string{"admin@example.com"},
+		Teams: map[string]rbac.Team{
+			"backend": {Members: []string{"alice@example.com"}},
+		},
+	})
+	if err := s.Quota.SetTeamQuota(t.Context(), "backend", rbac.Quota{CPU: "4", Memory: "8Gi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Quota.SetUserQuota(t.Context(), "alice@example.com", rbac.Quota{CPU: "8"}); err != nil {
+		t.Fatal(err)
+	}
+
+	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	if rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "one", "template": "base"}); rec.Code != http.StatusCreated {
+		t.Fatalf("create workspace = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec := requestAs(t, s, admin, http.MethodGet, "/api/user-quotas/alice%40example.com", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("quota details = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var details userQuotaDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details.Effective.CPU != "8" || details.Effective.Memory != "8Gi" {
+		t.Fatalf("effective quota = %+v", details.Effective)
+	}
+	if details.Usage.Workspaces != 1 {
+		t.Fatalf("usage = %+v", details.Usage)
+	}
+
+	if rec := requestAs(t, s, alice, http.MethodGet, "/api/user-quotas/alice%40example.com", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin details = %d", rec.Code)
+	}
+}
+
 func TestTeamQuotaUpdate(t *testing.T) {
 	s := newRBACServer(t, rbac.Config{Admins: []string{"admin@example.com"}})
 	admin := sessionFor(t, s, auth.User{Username: "admin", Email: "admin@example.com"})

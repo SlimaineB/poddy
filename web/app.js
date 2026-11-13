@@ -173,6 +173,7 @@ els.auditBack.addEventListener("click", () => showView("workspaces"));
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
 els.quotaForm.addEventListener("submit", saveUserQuota);
+if (els.quotaClear) els.quotaClear.addEventListener("click", clearUserQuota);
 els.usersBack.addEventListener("click", () => showView("workspaces"));
 els.teamsBack.addEventListener("click", () => showView("workspaces"));
 let userSearchTimer = 0;
