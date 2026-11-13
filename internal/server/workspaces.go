@@ -170,6 +170,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"persistent":    ws.Persistent,
 		"browserVSCode": ws.BrowserVSCode,
 		"jupyterLab":    ws.JupyterLab,
+		"apps":          ws.Apps,
 		"createdAt":     ws.CreatedAt,
 		"schedule":      ws.Schedule,
 		"podIP":         podIP,

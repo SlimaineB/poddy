@@ -52,6 +52,7 @@ type WorkspaceInfo struct {
 	Persistent    bool                 `json:"persistent"`
 	BrowserVSCode bool                 `json:"browserVSCode"`
 	JupyterLab    bool                 `json:"jupyterLab"`
+	Apps          []string             `json:"apps"`
 	CreatedAt     time.Time            `json:"createdAt"`
 	Access        *k8s.WorkspaceAccess `json:"access,omitempty"`
 }
@@ -383,6 +384,14 @@ func infoFromMap(value map[string]any) WorkspaceInfo {
 	out.Persistent, _ = value["persistent"].(bool)
 	out.BrowserVSCode, _ = value["browserVSCode"].(bool)
 	out.JupyterLab, _ = value["jupyterLab"].(bool)
+	if raw, ok := value["apps"].([]any); ok {
+		out.Apps = make([]string, 0, len(raw))
+		for _, item := range raw {
+			if app, ok := item.(string); ok {
+				out.Apps = append(out.Apps, app)
+			}
+		}
+	}
 	if raw, ok := value["createdAt"].(string); ok {
 		out.CreatedAt, _ = time.Parse(time.RFC3339, raw)
 	}

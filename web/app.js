@@ -85,10 +85,12 @@ els.createForm.addEventListener("submit", async (event) => {
   const form = event.target;
   const data = new FormData(form);
   const template = templateByName(els.templateSelect.value);
+  const apps = data.getAll("app").map(String);
   const parameters = {};
 
   if (template) {
     for (const parameter of template.parameters || []) {
+      if (parameter.name === "browserVSCode" || parameter.name === "jupyterLab") continue;
       parameters[parameter.name] = String(data.get(parameter.name) || "").trim();
     }
   }
@@ -97,6 +99,7 @@ els.createForm.addEventListener("submit", async (event) => {
     name: String(data.get("name") || "").trim(),
     template: els.templateSelect.value,
     parameters,
+    apps,
   };
   const region = String(data.get("region") || "").trim();
   if (region) body.region = region;

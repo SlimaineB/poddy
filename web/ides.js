@@ -68,6 +68,7 @@ function ideUsesLocalLaunch(ide) {
 }
 
 function ideAvailable(ide, workspace) {
+  if (Array.isArray(workspace.apps) && !workspace.apps.includes(ide.id)) return false;
   if (ide.available && !ide.available(workspace)) return false;
   if (ide.kind === "browser") return true;
   if (ide.kind === "desktop") {

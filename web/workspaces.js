@@ -242,17 +242,14 @@ function renderCard(workspace) {
   details.innerHTML = icon("info");
   details.addEventListener("click", () => showDetails(workspace));
 
-  const topRight = document.createElement("div");
-  topRight.className = "card-top-right";
-  topRight.append(status, details, remove);
-
-  top.append(title, topRight);
+  top.append(title);
 
   const meta = document.createElement("div");
   meta.className = "card-meta";
 
   const metaRow = document.createElement("div");
   metaRow.className = "card-meta-row";
+  metaRow.append(status);
 
   const template = document.createElement("span");
   template.className = "badge neutral";
@@ -316,7 +313,12 @@ function renderCard(workspace) {
     meta.append(created);
   }
 
-  card.append(top, meta, renderWorkspaceActions(workspace));
+  const actions = renderWorkspaceActions(workspace);
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  actions.append(spacer, details, remove);
+
+  card.append(top, meta, actions);
   card.classList.add("card-clickable");
   card.addEventListener("click", (event) => {
     if (event.target.closest("button, a, input, select, textarea")) return;

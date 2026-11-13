@@ -38,6 +38,7 @@ type WorkspaceState struct {
 	Storage           string            `json:"storage,omitempty" yaml:"storage,omitempty"`
 	StorageClass      string            `json:"storageClass,omitempty" yaml:"storageClass,omitempty"`
 	Parameters        map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Apps              []string          `json:"apps,omitempty" yaml:"apps,omitempty"`
 	Schedule          *Schedule         `json:"schedule,omitempty" yaml:"schedule,omitempty"`
 	StoppedBySchedule bool              `json:"stoppedBySchedule,omitempty" yaml:"stoppedBySchedule,omitempty"`
 	PortalURL         string            `json:"portalUrl,omitempty" yaml:"portalUrl,omitempty"`

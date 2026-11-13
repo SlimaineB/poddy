@@ -35,6 +35,7 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 		Persistent:    hasPVC(pod),
 		BrowserVSCode: hasContainer(pod, BrowserVSCodeContainer),
 		JupyterLab:    hasContainer(pod, JupyterLabContainer),
+		Apps:          appsFromAnnotations(pod.Annotations),
 		CPU:           quantityString(cpu),
 		Memory:        quantityString(memory),
 		Storage:       storageFromPod(pod),
@@ -53,6 +54,10 @@ func scheduleFromPod(pod *corev1.Pod) *Schedule {
 
 func workspaceFromState(state WorkspaceState, phase string) Workspace {
 	cpu, memory := resourceRequests(state.Spec)
+	apps := state.Apps
+	if apps == nil {
+		apps = appsFromAnnotations(state.Annotations)
+	}
 	return Workspace{
 		Name:              state.Name,
 		Template:          state.Template,
@@ -62,6 +67,7 @@ func workspaceFromState(state WorkspaceState, phase string) Workspace {
 		Persistent:        state.Persistent,
 		BrowserVSCode:     hasContainerSpec(state.Spec, BrowserVSCodeContainer),
 		JupyterLab:        hasContainerSpec(state.Spec, JupyterLabContainer),
+		Apps:              apps,
 		CPU:               quantityString(cpu),
 		Memory:            quantityString(memory),
 		Storage:           state.Storage,

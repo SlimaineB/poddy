@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +43,7 @@ const (
 	// annotationExternalAuthEnv records the environment variable names injected
 	// from external auth so tokens are never written to the stopped-state ConfigMap.
 	annotationExternalAuthEnv = "poddy.io/external-auth-env"
+	annotationApps            = "poddy.io/apps"
 
 	envPortalURL       = "PODDY_PORTAL_URL"
 	envWorkspaceName   = "PODDY_WORKSPACE_NAME"
@@ -70,6 +72,7 @@ type Workspace struct {
 	Persistent    bool      `json:"persistent"`
 	BrowserVSCode bool      `json:"browserVSCode,omitempty"`
 	JupyterLab    bool      `json:"jupyterLab,omitempty"`
+	Apps          []string  `json:"apps"`
 	CPU           string    `json:"cpu,omitempty"`
 	Memory        string    `json:"memory,omitempty"`
 	Storage       string    `json:"storage,omitempty"`
@@ -88,6 +91,7 @@ type CreateRequest struct {
 	Name       string            `json:"name"`
 	Template   string            `json:"template"`
 	Parameters map[string]string `json:"parameters"`
+	Apps       []string          `json:"apps"`
 
 	Image   string `json:"image,omitempty"`
 	CPU     string `json:"cpu,omitempty"`
@@ -307,6 +311,7 @@ type resolvedCreate struct {
 	template     *templates.Template
 	params       map[string]string
 	storage      string
+	apps         []string
 	pod          *corev1.Pod
 }
 
@@ -330,6 +335,15 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	params, err := tmpl.Resolve(req.Parameters)
 	if err != nil {
 		return resolvedCreate{}, err
+	}
+	apps := NormalizeApps(req.Apps)
+	if req.Apps != nil {
+		if templateHasParameter(tmpl, "browserVSCode") {
+			params["browserVSCode"] = strconv.FormatBool(hasApp(apps, AppVSCodeWeb))
+		}
+		if templateHasParameter(tmpl, "jupyterLab") {
+			params["jupyterLab"] = strconv.FormatBool(hasApp(apps, AppJupyterLab))
+		}
 	}
 	if req.CPU != "" {
 		params["cpu"] = req.CPU
@@ -379,8 +393,18 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 		template:     tmpl,
 		params:       params,
 		storage:      storage,
+		apps:         apps,
 		pod:          pod,
 	}, nil
+}
+
+func templateHasParameter(tmpl *templates.Template, name string) bool {
+	for _, parameter := range tmpl.Parameters {
+		if parameter.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // PreviewUsage renders a create request without touching Kubernetes and
@@ -496,6 +520,12 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
+	if resolved.apps != nil {
+		if pod.Annotations == nil {
+			pod.Annotations = map[string]string{}
+		}
+		pod.Annotations[annotationApps] = strings.Join(resolved.apps, ",")
+	}
 	stateSpec := *pod.Spec.DeepCopy()
 	stripExternalAuthEnv(&stateSpec, externalAuthEnvNames(pod))
 	state := WorkspaceState{
@@ -509,6 +539,7 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		Storage:         storage,
 		StorageClass:    params["storageClass"],
 		Parameters:      params,
+		Apps:            resolved.apps,
 		Schedule:        cloneSchedule(req.Schedule),
 		PortalURL:       req.PortalURL,
 		Labels:          copyStringMap(pod.Labels),

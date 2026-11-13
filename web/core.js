@@ -145,6 +145,7 @@ const els = {
   templateDescription: document.getElementById("template-description"),
   createError: document.getElementById("create-error"),
   params: document.getElementById("params"),
+  workspaceApps: document.getElementById("workspace-apps"),
   sshDialog: document.getElementById("ssh-dialog"),
   sshConfig: document.getElementById("ssh-config"),
   sshNote: document.getElementById("ssh-note"),
@@ -885,11 +886,13 @@ function renderParams() {
   const template = templateByName(els.templateSelect.value);
   els.templateDescription.textContent = template ? template.description || "" : "";
   els.params.replaceChildren();
+  renderAppSelection(template);
   if (!template) return;
 
   renderExternalAuthNotice();
 
   for (const parameter of template.parameters || []) {
+    if (parameter.name === "browserVSCode" || parameter.name === "jupyterLab") continue;
     const field = document.createElement("div");
     field.className = "field param-field";
 
@@ -955,6 +958,49 @@ function renderParams() {
       field.append(warning);
     }
     els.params.append(field);
+  }
+}
+
+function templateParameter(template, name) {
+  return (template?.parameters || []).find((parameter) => parameter.name === name) || null;
+}
+
+function appChoices(template) {
+  if (!template || typeof IDE_INTEGRATIONS === "undefined") return [];
+  const choices = [];
+  for (const ide of IDE_INTEGRATIONS) {
+    if (ide.id === "vscode-web" && !templateParameter(template, "browserVSCode")) continue;
+    if (ide.id === "jupyterlab" && !templateParameter(template, "jupyterLab")) continue;
+    choices.push(ide);
+  }
+  return choices;
+}
+
+function defaultApps() {
+  return new Set(["vscode"]);
+}
+
+function renderAppSelection(template) {
+  if (!els.workspaceApps) return;
+  els.workspaceApps.replaceChildren();
+  const defaults = defaultApps();
+  for (const ide of appChoices(template)) {
+    const label = document.createElement("label");
+    label.className = "app-choice";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "app";
+    input.value = ide.id;
+    input.checked = defaults.has(ide.id);
+    const sync = () => label.classList.toggle("selected", input.checked);
+    input.addEventListener("change", sync);
+    label.append(input);
+    label.insertAdjacentHTML("beforeend", icon(ide.icon, ide.brand ? "icon brand-icon" : "icon"));
+    const text = document.createElement("span");
+    text.textContent = ide.label;
+    label.append(text);
+    sync();
+    els.workspaceApps.append(label);
   }
 }
 
