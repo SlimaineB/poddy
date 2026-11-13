@@ -4,10 +4,12 @@ Idées notées pour plus tard.
 
 ## ⚠️ Haute priorité — corrigé d'urgence
 
-- [ ] **Supprimer l'usage du Secret `poddy-access` pour l'état d'accès/présence mutable.**
+- [x] **Supprimer l'usage du Secret `poddy-access` pour l'état d'accès/présence mutable.**
       Un Secret Kubernetes n'est pas fait pour être réécrit en continu (heartbeat présence toutes les 30 s, requêtes d'accès, approbations, révocations). Cela génère une pression inutile sur l'API server et etcd, et expose des données sensibles de manière inappropriée.
       Problème identifié dans `internal/k8s/access.go` : le document `AccessState` (requests, grants, presence) est persisté dans la clé `access.json` du Secret `poddy-access` du namespace workspace, partagé portail/bastion.
-      À remplacer par un store dédié (ex. PostgreSQL avec TTL, ou un CRD/état léger) avant toute montée en charge.
+      Corrigé : nouvel état PostgreSQL (`access_requests`, `access_grants`, `access_presence`) via `internal/access`, partagé portail/bastion ; repli mémoire pour un seul replica sans base de données.
+- [x] **Sortir les quotas du ConfigMap RBAC.**
+      Les quotas utilisateur/équipe étaient stockés dans le document RBAC puis recopiés dans PostgreSQL. Ils sont désormais portés par `internal/quota` (`user_quotas`, `team_quotas`) ; le ConfigMap ne garde que les rôles et l'appartenance aux équipes. Migration one-time depuis l'ancien ConfigMap au démarrage.
 
 ## Multi-cluster / multi-region
 
@@ -43,23 +45,20 @@ Constat : l'UI et le stockage d'état ne passent pas à l'échelle au-delà de q
 dizaines de workspaces / sessions simultanées. À retravailler avant montée en charge.
 
 - [ ] **Polling UI toutes les 5 s** : `load()` appelle `GET /api/workspaces`, qui liste
-      tous les Pods du namespace workspace (`List` / `ListByOwner`) **et** relit le Secret
-      `poddy-access` à chaque appel. Coût constant même sans changement, multiplié par le
-      nombre d'onglets ouverts. Envisager un polling adaptatif, des événements/watch, ou un
-      cache côté serveur.
-- [ ] **Présence = écritures répétées dans etcd** : heartbeat toutes les 30 s par session
-      active (`trackPresence` / `markPresence`) qui réécrit le Secret `poddy-access` via
-      `Update` + `RetryOnConflict`. Beaucoup de sessions longues = pression continue sur
-      etcd. Ne persister que si l'état a réellement changé, ou déplacer la présence vers un
-      store plus adapté (mémoire partagée type Redis, ou PostgreSQL avec TTL).
+      tous les Pods du namespace workspace (`List` / `ListByOwner`). Coût constant même sans
+      changement, multiplié par le nombre d'onglets ouverts. Envisager un polling adaptatif,
+      des événements/watch, ou un cache côté serveur.
+- [x] **Présence hors etcd** : heartbeat toutes les 30 s par session active
+      (`trackPresence` / `markPresence`). L'état vit désormais dans PostgreSQL
+      (`poddy.access_presence`) et non plus dans le Secret `poddy-access` : un heartbeat
+      met à jour une seule ligne au lieu de réécrire tout le document.
 - [ ] **Cache `presenceLast` par instance** : le throttle de présence est en mémoire dans
       chaque replica du portail. Derrière un load balancer, le heartbeat devient irrégulier
       selon l'instance qui répond. À partager si plusieurs replicas.
-- [ ] **Suppression de workspace** : 2 écritures (Secret accès + Secret shares) par
-      suppression ; regrouper/limiter.
-- [ ] **Choix PostgreSQL vs Kubernetes** : PostgreSQL est aujourd'hui un miroir
-      d'audit/sauvegarde, jamais consulté pour les décisions temps réel. Réévaluer s'il doit
-      porter l'accès/présence (avec TTL et cache) plutôt que le Secret Kubernetes.
+- [ ] **Suppression de workspace** : plusieurs écritures (accès + shares) par suppression ;
+      regrouper/limiter.
+- [x] **Choix PostgreSQL vs Kubernetes** : l'accès/présence est désormais porté par
+      PostgreSQL (avec TTL), plus par un Secret Kubernetes.
 - [ ] **Objectif** : décharger l'API server et etcd pour que le portail reste fluide avec
       plusieurs centaines de workspaces et de sessions.
 

@@ -37,6 +37,14 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	names := cfg.TeamNames()
+	teamQuotas := map[string]rbac.Quota{}
+	if s.Quota != nil {
+		teamQuotas, err = s.Quota.TeamQuotas(r.Context())
+		if err != nil {
+			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	query := searchQuery(r)
 	out := make([]teamInfo, 0, len(names))
 	for _, name := range names {
@@ -44,7 +52,7 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 		if query != "" && !matchesSearch(query, append([]string{name}, team.Members...)...) {
 			continue
 		}
-		info := teamInfo{Name: name, MemberCount: len(team.Members), Quota: team.Quota}
+		info := teamInfo{Name: name, MemberCount: len(team.Members), Quota: quotaPtr(teamQuotas[name])}
 		if admin {
 			info.Members = nonNil(team.Members)
 		}
@@ -75,6 +83,10 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.isAdmin(id, cfg) {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if s.Quota == nil {
+		http.Error(w, "quota store is not configured", http.StatusNotImplemented)
 		return
 	}
 
@@ -111,11 +123,7 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 		if cfg.Teams == nil {
 			cfg.Teams = map[string]rbac.Team{}
 		}
-		existing := cfg.Teams[name]
-		if req.Quota == nil {
-			quota = existing.Quota
-		}
-		cfg.Teams[name] = rbac.Team{Members: members, Quota: quota}
+		cfg.Teams[name] = rbac.Team{Members: members}
 		return nil
 	})
 	if err != nil {
@@ -124,6 +132,20 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	s.syncRBAC(r.Context(), updated)
 	s.syncTemplates(r.Context(), updated)
+
+	if req.Quota != nil {
+		if quota == nil {
+			err = s.Quota.DeleteTeamQuota(r.Context(), name)
+		} else {
+			err = s.Quota.SetTeamQuota(r.Context(), name, *quota)
+		}
+		if err != nil {
+			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if stored, loadErr := s.Quota.TeamQuotas(r.Context()); loadErr == nil {
+		quota = quotaPtr(stored[name])
+	}
 
 	writeJSON(w, http.StatusOK, teamInfo{
 		Name:        name,
@@ -172,7 +194,20 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	s.syncRBAC(r.Context(), updated)
 	s.syncTemplates(r.Context(), updated)
+	if s.Quota != nil {
+		if err := s.Quota.DeleteTeamQuota(r.Context(), name); err != nil {
+			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func quotaPtr(quota rbac.Quota) *rbac.Quota {
+	if quota.IsZero() {
+		return nil
+	}
+	return &quota
 }
 
 func removeString(values []string, drop string) []string {

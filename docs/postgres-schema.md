@@ -138,6 +138,9 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 | `template_users` | Direct template users. |
 | `template_teams` | Teams allowed to use a template. |
 | `workspaces` | Workspace metadata and the rendered PodSpec. |
+| `access_requests` | Pending admin access requests awaiting owner approval. |
+| `access_grants` | Time-limited owner approvals for interactive access. |
+| `access_presence` | Active interactive sessions with a heartbeat and TTL. |
 | `external_auth_tokens` | Reserved for an encrypted OAuth2 token mirror; not written by the portal yet. |
 | `audit_events` | Append-only control-plane audit trail. |
 | `schema_migrations` | Applied migration versions. |
@@ -152,6 +155,10 @@ Use `PODDY_DATABASE_AUTO_MIGRATE=false` only after the schema and
 | Workspace pods and stopped state | `workspaces` |
 | `poddy-external-auth` Secret | `external_auth_tokens` (reserved; the portal currently leaves tokens in the Secret) |
 | Audit stream | `audit_events` (written by portal and bastion) |
+
+Workspace access state (`access_requests`, `access_grants`, `access_presence`)
+is owned by PostgreSQL rather than mirrored from Kubernetes. The portal and the
+bastion read and write it directly; there is no Kubernetes Secret for it.
 
 The mirror is refreshed at startup and after writes:
 

@@ -58,22 +58,20 @@ func TestUserQuotaEndpoints(t *testing.T) {
 	if rec := requestAs(t, s, admin, http.MethodDelete, "/api/user-quotas/alice%40example.com", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete quota = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	cfg, err := s.RBAC.Load(t.Context())
+	stored, err := s.Quota.UserQuotas(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.UserQuotas) != 0 {
-		t.Fatalf("user quotas after delete = %+v", cfg.UserQuotas)
+	if len(stored) != 0 {
+		t.Fatalf("user quotas after delete = %+v", stored)
 	}
 }
 
 func TestQuotaEnforcedOnCreate(t *testing.T) {
-	s := newRBACServer(t, rbac.Config{
-		Admins: []string{"admin@example.com"},
-		UserQuotas: map[string]rbac.Quota{
-			"alice@example.com": {MaxWorkspaces: serverQuotaIntPtr(1)},
-		},
-	})
+	s := newRBACServer(t, rbac.Config{Admins: []string{"admin@example.com"}})
+	if err := s.Quota.SetUserQuota(t.Context(), "alice@example.com", rbac.Quota{MaxWorkspaces: serverQuotaIntPtr(1)}); err != nil {
+		t.Fatal(err)
+	}
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
 
 	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "one", "template": "base"})
@@ -93,12 +91,12 @@ func TestTeamQuotaInheritedOnCreate(t *testing.T) {
 	s := newRBACServer(t, rbac.Config{
 		Admins: []string{"admin@example.com"},
 		Teams: map[string]rbac.Team{
-			"backend": {
-				Members: []string{"alice@example.com"},
-				Quota:   &rbac.Quota{MaxWorkspaces: serverQuotaIntPtr(1)},
-			},
+			"backend": {Members: []string{"alice@example.com"}},
 		},
 	})
+	if err := s.Quota.SetTeamQuota(t.Context(), "backend", rbac.Quota{MaxWorkspaces: serverQuotaIntPtr(1)}); err != nil {
+		t.Fatal(err)
+	}
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
 
 	if rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "one", "template": "base"}); rec.Code != http.StatusCreated {

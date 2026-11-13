@@ -28,11 +28,8 @@ type accessActorRequest struct {
 	Actor string `json:"actor"`
 }
 
-func (s *Server) accessStore() *k8s.AccessStore {
-	if s.Workspaces == nil {
-		return nil
-	}
-	return k8s.NewAccessStore(s.Workspaces.Client, s.Workspaces.Namespace, "")
+func (s *Server) accessStore() k8s.AccessStore {
+	return s.Access
 }
 
 func accessActor(actor string) string {

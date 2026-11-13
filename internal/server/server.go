@@ -16,6 +16,7 @@ import (
 	"poddy/internal/local"
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
+	"poddy/internal/quota"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
 	"poddy/internal/sshca"
@@ -62,6 +63,8 @@ type Server struct {
 	RBAC     *rbac.Store
 	Users    *userstore.Store
 	Metadata metadata.Store
+	Access   k8s.AccessStore
+	Quota    quota.Store
 	Metrics  *metrics.Metrics
 	Backups  *backup.Store
 

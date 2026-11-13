@@ -16,7 +16,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"sigs.k8s.io/yaml"
 
+	"poddy/internal/access"
 	"poddy/internal/k8s"
+	"poddy/internal/quota"
 	"poddy/internal/rbac"
 	"poddy/internal/templates"
 	"poddy/internal/userstore"
@@ -25,6 +27,18 @@ import (
 // Postgres stores metadata in the optional poddy PostgreSQL schema.
 type Postgres struct {
 	pool *pgxpool.Pool
+}
+
+// Access returns a PostgreSQL-backed workspace access store that shares this
+// connection pool.
+func (p *Postgres) Access(namespace string) access.Store {
+	return access.NewPostgres(p.pool, namespace)
+}
+
+// Quota returns a PostgreSQL-backed quota store that shares this connection
+// pool.
+func (p *Postgres) Quota(namespace string) quota.Store {
+	return quota.NewPostgres(p.pool, namespace)
 }
 
 // Open connects to PostgreSQL. An empty URL returns the disabled Nop backend.
@@ -293,12 +307,9 @@ func (p *Postgres) SyncRBAC(ctx context.Context, namespace string, cfg rbac.Conf
 	sort.Strings(names)
 	for _, name := range names {
 		team := cfg.Teams[name]
-		quotaMax, quotaCPU, quotaMemory, quotaStorage := quotaColumns(team.Quota)
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO poddy.teams (
-				namespace, name, quota_max_workspaces, quota_cpu, quota_memory, quota_storage
-			) VALUES ($1, $2, $3, $4, $5, $6)`,
-			namespace, name, quotaMax, quotaCPU, quotaMemory, quotaStorage,
+			INSERT INTO poddy.teams (namespace, name) VALUES ($1, $2)`,
+			namespace, name,
 		); err != nil {
 			return fmt.Errorf("insert team %q: %w", name, err)
 		}
@@ -309,27 +320,6 @@ func (p *Postgres) SyncRBAC(ctx context.Context, namespace string, cfg rbac.Conf
 			); err != nil {
 				return fmt.Errorf("insert team member %q/%q: %w", name, member, err)
 			}
-		}
-	}
-
-	if _, err := tx.Exec(ctx, "DELETE FROM poddy.user_quotas WHERE namespace = $1", namespace); err != nil {
-		return fmt.Errorf("clear user quotas: %w", err)
-	}
-	identities := make([]string, 0, len(cfg.UserQuotas))
-	for identity := range cfg.UserQuotas {
-		identities = append(identities, identity)
-	}
-	sort.Strings(identities)
-	for _, identity := range identities {
-		quota := cfg.UserQuotas[identity]
-		quotaMax, quotaCPU, quotaMemory, quotaStorage := quotaColumns(&quota)
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO poddy.user_quotas (
-				namespace, identity, max_workspaces, cpu, memory, storage
-			) VALUES ($1, $2, $3, $4, $5, $6)`,
-			namespace, identity, quotaMax, quotaCPU, quotaMemory, quotaStorage,
-		); err != nil {
-			return fmt.Errorf("insert user quota %q: %w", identity, err)
 		}
 	}
 	return tx.Commit(ctx)
@@ -702,23 +692,6 @@ func jsonArray(value any) (string, error) {
 		return "[]", nil
 	}
 	return string(raw), nil
-}
-
-func quotaColumns(quota *rbac.Quota) (any, string, string, string) {
-	if quota == nil {
-		return nil, "", "", ""
-	}
-	return nullableInt(quota.MaxWorkspaces),
-		strings.TrimSpace(quota.CPU),
-		strings.TrimSpace(quota.Memory),
-		strings.TrimSpace(quota.Storage)
-}
-
-func nullableInt(value *int) any {
-	if value == nil {
-		return nil
-	}
-	return *value
 }
 
 func nullableString(value string) any {

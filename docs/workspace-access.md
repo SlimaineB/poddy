@@ -64,14 +64,19 @@ used as an audit record.
 
 ## State storage
 
-Requests, grants, and presence are stored in the `poddy-access` Secret in the
-workspace namespace, under the `access.json` key. The portal and the bastion
-share this Secret so that an approval made in the browser also unlocks SSH.
+Requests, grants, and presence are stored in PostgreSQL (tables
+`poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`)
+when `PODDY_DATABASE_URL` is configured. The portal and the bastion share the
+same database and namespace key, so an approval made in the browser also
+unlocks SSH.
 
-Both the portal and the bastion ServiceAccounts need `get`, `list`, `watch`,
-`create`, `update`, and `patch` on `secrets` in the workspace namespace. The
-Helm chart grants this by default. If you manage RBAC yourself, add the rule to
-the bastion Role as well as the portal Role.
+This state is mutable and written frequently (presence heartbeats), so it is not
+stored in a Kubernetes Secret. Without a database, the portal falls back to an
+in-memory store, which only works for a single replica and cannot be shared with
+a separate bastion process. Set `PODDY_DATABASE_URL` in production.
+
+Expired grants and stale presence rows are filtered on read and pruned
+opportunistically. No Secret permissions are required for access state.
 
 ## API
 
@@ -95,8 +100,9 @@ The actions are recorded in the audit trail as `workspace.access.request`,
 
 Access state belongs to the region that hosts the workspace. The central portal
 proxies access requests to that region, and the region bastion reads the same
-`poddy-access` Secret. Region listings include the access summary so the hub can
-show presence and pending requests without extra calls.
+PostgreSQL database. Every region must point at the same database; the
+`namespace` column isolates tenants. Region listings include the access summary
+so the hub can show presence and pending requests without extra calls.
 
 ## SSH notes
 

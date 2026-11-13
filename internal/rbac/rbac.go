@@ -195,6 +195,10 @@ func (c Config) Validate() error {
 // UserQuota returns the explicit user override, if any. Keys may be a plain
 // username/email, user:<username>, or email:<email>.
 func (c Config) UserQuota(id Identity) (Quota, bool) {
+	return userQuotaFrom(id, c.UserQuotas)
+}
+
+func userQuotaFrom(id Identity, quotas map[string]Quota) (Quota, bool) {
 	candidates := []string{id.Username, id.Email}
 	if id.Username != "" {
 		candidates = append(candidates, "user:"+id.Username)
@@ -202,15 +206,15 @@ func (c Config) UserQuota(id Identity) (Quota, bool) {
 	if id.Email != "" {
 		candidates = append(candidates, "email:"+id.Email)
 	}
-	keys := make([]string, 0, len(c.UserQuotas))
-	for key := range c.UserQuotas {
+	keys := make([]string, 0, len(quotas))
+	for key := range quotas {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
 		for _, candidate := range candidates {
 			if candidate != "" && strings.EqualFold(strings.TrimSpace(key), candidate) {
-				return c.UserQuotas[key], true
+				return quotas[key], true
 			}
 		}
 	}
@@ -220,16 +224,27 @@ func (c Config) UserQuota(id Identity) (Quota, bool) {
 // EffectiveQuota resolves a user override field by field, then fills missing
 // fields from the most permissive team quota. No quota means unlimited.
 func (c Config) EffectiveQuota(id Identity) (Quota, error) {
-	user, hasUser := c.UserQuota(id)
+	teamQuotas := make(map[string]Quota, len(c.Teams))
+	for name, team := range c.Teams {
+		if team.Quota != nil {
+			teamQuotas[name] = *team.Quota
+		}
+	}
+	return c.EffectiveQuotaWith(id, c.UserQuotas, teamQuotas)
+}
+
+// EffectiveQuotaWith resolves the quota using explicit quota maps, typically
+// loaded from a dedicated store instead of the RBAC document. Team membership
+// still comes from the RBAC configuration.
+func (c Config) EffectiveQuotaWith(id Identity, userQuotas, teamQuotas map[string]Quota) (Quota, error) {
+	user, hasUser := userQuotaFrom(id, userQuotas)
 	user.Normalize()
 	out := user
-	names := c.TeamNames()
-	for _, name := range names {
-		team := c.Teams[name]
-		if team.Quota == nil || !c.InTeam(name, id) {
+	for _, name := range c.TeamNames() {
+		quota, ok := teamQuotas[name]
+		if !ok || !c.InTeam(name, id) {
 			continue
 		}
-		quota := *team.Quota
 		quota.Normalize()
 		if err := out.fillMostPermissive(quota, user, hasUser); err != nil {
 			return Quota{}, fmt.Errorf("team %q quota: %w", name, err)

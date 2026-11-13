@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"poddy/internal/k8s"
+	"poddy/internal/quota"
 	"poddy/internal/rbac"
 )
 
@@ -33,14 +34,14 @@ func writeQuotaError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) quotaGuard(ctx context.Context, id *identity, cfg rbac.Config) (func(k8s.ResourceUsage) error, error) {
-	if s.RegionMode || s.RBAC == nil || s.isAdmin(id, cfg) {
+	if s.RegionMode || s.RBAC == nil || s.isAdmin(id, cfg) || s.Quota == nil {
 		return nil, nil
 	}
-	quota, err := cfg.EffectiveQuota(rbacIdentity(id.User))
+	limit, err := quota.Effective(ctx, s.Quota, cfg, rbacIdentity(id.User))
 	if err != nil {
 		return nil, err
 	}
-	if quota.IsZero() {
+	if limit.IsZero() {
 		return nil, nil
 	}
 	current, err := s.workspaceUsage(ctx, id, cfg)
@@ -53,7 +54,7 @@ func (s *Server) quotaGuard(ctx context.Context, id *identity, cfg rbac.Config) 
 		projected.CPU.Add(usage.CPU)
 		projected.Memory.Add(usage.Memory)
 		projected.Storage.Add(usage.Storage)
-		if err := quota.Check(projected); err != nil {
+		if err := limit.Check(projected); err != nil {
 			return &quotaExceededError{err: err}
 		}
 		return nil
@@ -133,8 +134,17 @@ func (s *Server) userQuotas(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	out := make([]userQuotaInfo, 0, len(cfg.UserQuotas))
-	for identity, quota := range cfg.UserQuotas {
+	if s.Quota == nil {
+		http.Error(w, "quota store is not configured", http.StatusNotImplemented)
+		return
+	}
+	quotas, err := s.Quota.UserQuotas(r.Context())
+	if err != nil {
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := make([]userQuotaInfo, 0, len(quotas))
+	for identity, quota := range quotas {
 		out = append(out, userQuotaInfo{Identity: identity, Quota: quota})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -162,6 +172,10 @@ func (s *Server) updateUserQuota(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if s.Quota == nil {
+		http.Error(w, "quota store is not configured", http.StatusNotImplemented)
+		return
+	}
 
 	identity := strings.TrimSpace(r.PathValue("identity"))
 	if identity == "" || identity == rbac.Wildcard {
@@ -170,35 +184,28 @@ func (s *Server) updateUserQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	setAuditTarget(r, identity)
 
-	var quota rbac.Quota
+	var value rbac.Quota
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	if err := json.NewDecoder(r.Body).Decode(&quota); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&value); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	quota.Normalize()
-	if err := quota.Validate(); err != nil {
+	value.Normalize()
+	if err := value.Validate(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
-		if cfg.UserQuotas == nil {
-			cfg.UserQuotas = map[string]rbac.Quota{}
-		}
-		if quota.IsZero() {
-			delete(cfg.UserQuotas, identity)
-			return nil
-		}
-		cfg.UserQuotas[identity] = quota
-		return nil
-	})
+	if value.IsZero() {
+		err = s.Quota.DeleteUserQuota(r.Context(), identity)
+	} else {
+		err = s.Quota.SetUserQuota(r.Context(), identity, value)
+	}
 	if err != nil {
-		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.syncRBAC(r.Context(), updated)
-	writeJSON(w, http.StatusOK, userQuotaInfo{Identity: identity, Quota: quota})
+	writeJSON(w, http.StatusOK, userQuotaInfo{Identity: identity, Quota: value})
 }
 
 func (s *Server) deleteUserQuota(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +227,10 @@ func (s *Server) deleteUserQuota(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if s.Quota == nil {
+		http.Error(w, "quota store is not configured", http.StatusNotImplemented)
+		return
+	}
 
 	identity := strings.TrimSpace(r.PathValue("identity"))
 	if identity == "" {
@@ -227,14 +238,9 @@ func (s *Server) deleteUserQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setAuditTarget(r, identity)
-	updated, err := s.RBAC.Update(r.Context(), func(cfg *rbac.Config) error {
-		delete(cfg.UserQuotas, identity)
-		return nil
-	})
-	if err != nil {
-		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+	if err := s.Quota.DeleteUserQuota(r.Context(), identity); err != nil {
+		http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.syncRBAC(r.Context(), updated)
 	w.WriteHeader(http.StatusNoContent)
 }

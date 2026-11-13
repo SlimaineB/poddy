@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
-	"k8s.io/client-go/kubernetes/fake"
 
 	"poddy/internal/k8s"
 )
 
 func TestInteractiveAuthorized(t *testing.T) {
-	b := &Bastion{Access: k8s.NewAccessStore(fake.NewClientset(), "poddy", "")}
+	b := &Bastion{Access: k8s.NewMemoryAccessStore()}
 	admin := &ssh.Permissions{Extensions: map[string]string{"admin": "true"}}
 
 	if !b.interactiveAuthorized(nil, "admin@example.com", "demo", "alice@example.com") {

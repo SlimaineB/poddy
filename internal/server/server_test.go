@@ -13,6 +13,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/k8s"
+	"poddy/internal/quota"
 	"poddy/internal/templates"
 	"poddy/web"
 )
@@ -30,8 +31,10 @@ func newTestServer(token string) *Server {
 			Templates:       catalog,
 			DefaultTemplate: "base",
 		},
-		WebFS: web.FS,
-		Token: token,
+		WebFS:  web.FS,
+		Token:  token,
+		Access: k8s.NewMemoryAccessStore(),
+		Quota:  quota.NewMemory(),
 	}
 }
 

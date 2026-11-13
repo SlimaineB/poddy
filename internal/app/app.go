@@ -19,6 +19,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
+	"poddy/internal/access"
 	"poddy/internal/auth"
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
@@ -29,6 +30,7 @@ import (
 	"poddy/internal/local"
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
+	"poddy/internal/quota"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
 	"poddy/internal/server"
@@ -78,6 +80,8 @@ func Run(ctx context.Context, args []string) error {
 	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL mirror and audit enabled")
 	}
+	accessStore := openAccessStore(metaStore, cfg.Namespace)
+	quotaStore := openQuotaStore(metaStore, cfg.Namespace)
 
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
 	if err != nil {
@@ -225,6 +229,9 @@ func Run(ctx context.Context, args []string) error {
 			return fmt.Errorf("metadata sync: %w", err)
 		}
 	}
+	if err := migrateQuotas(ctx, quotaStore, rbacStore, metadataEnabled); err != nil {
+		return fmt.Errorf("quota migration: %w", err)
+	}
 
 	if appMetrics != nil {
 		appMetrics.SetWorkspaceLister(func(ctx context.Context) ([]metrics.WorkspaceInfo, error) {
@@ -245,7 +252,7 @@ func Run(ctx context.Context, args []string) error {
 		defer metricsServer.Close()
 	}
 
-	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA)
+	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA, accessStore)
 	if err != nil {
 		return err
 	}
@@ -368,6 +375,8 @@ func Run(ctx context.Context, args []string) error {
 		RBAC:              rbacStore,
 		Users:             userStore,
 		Metadata:          metadataStore,
+		Access:            accessStore,
+		Quota:             quotaStore,
 		Metrics:           appMetrics,
 		WebFS:             web.FS,
 		Token:             cfg.Token,
@@ -501,6 +510,7 @@ func RunBastion(ctx context.Context, args []string) error {
 	if metadataEnabled {
 		log.Printf("metadata: PostgreSQL audit enabled")
 	}
+	accessStore := openAccessStore(metaStore, cfg.Namespace)
 
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context)
 	if err != nil {
@@ -545,7 +555,7 @@ func RunBastion(ctx context.Context, args []string) error {
 	sshBastion.Broker = broker
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = sshCA
-	sshBastion.Access = k8s.NewAccessStore(manager.Client, manager.Namespace, "")
+	sshBastion.Access = accessStore
 	if metadataEnabled {
 		sshBastion.Audit = metaStore
 	}
@@ -577,6 +587,91 @@ func RunBastion(ctx context.Context, args []string) error {
 		}
 		return err
 	}
+}
+
+// openAccessStore returns a PostgreSQL-backed access store when the metadata
+// database is available. Without a database it falls back to an in-process
+// store, which only works for a single replica and cannot be shared between the
+// portal and a separate bastion process.
+func openAccessStore(store metadata.Store, namespace string) access.Store {
+	if pg, ok := store.(*metadata.Postgres); ok {
+		return pg.Access(namespace)
+	}
+	log.Printf("workspace access: using in-memory store; set PODDY_DATABASE_URL to share approvals and presence across replicas")
+	return access.NewMemory()
+}
+
+// openQuotaStore returns a PostgreSQL-backed quota store when the metadata
+// database is available. Without a database it falls back to an in-process
+// store, which is only suitable for a single replica.
+func openQuotaStore(store metadata.Store, namespace string) quota.Store {
+	if pg, ok := store.(*metadata.Postgres); ok {
+		return pg.Quota(namespace)
+	}
+	log.Printf("quotas: using in-memory store; set PODDY_DATABASE_URL to persist user and team quotas")
+	return quota.NewMemory()
+}
+
+// migrateQuotas imports quotas from the legacy RBAC ConfigMap into the quota
+// store. When the store is persistent the ConfigMap entries are cleared so the
+// database is the single source of truth. The import is skipped if the store
+// already contains quotas, which keeps restarts from overwriting live changes.
+func migrateQuotas(ctx context.Context, store quota.Store, rbacStore *rbac.Store, persistent bool) error {
+	cfg, err := rbacStore.Load(ctx)
+	if err != nil {
+		return err
+	}
+	hasLegacy := len(cfg.UserQuotas) > 0
+	for _, team := range cfg.Teams {
+		if team.Quota != nil && !team.Quota.IsZero() {
+			hasLegacy = true
+			break
+		}
+	}
+	if !hasLegacy {
+		return nil
+	}
+	if persistent {
+		users, err := store.UserQuotas(ctx)
+		if err != nil {
+			return err
+		}
+		teams, err := store.TeamQuotas(ctx)
+		if err != nil {
+			return err
+		}
+		if len(users) > 0 || len(teams) > 0 {
+			return nil
+		}
+	}
+	for identity, value := range cfg.UserQuotas {
+		if value.IsZero() {
+			continue
+		}
+		if err := store.SetUserQuota(ctx, identity, value); err != nil {
+			return err
+		}
+	}
+	for name, team := range cfg.Teams {
+		if team.Quota == nil || team.Quota.IsZero() {
+			continue
+		}
+		if err := store.SetTeamQuota(ctx, name, *team.Quota); err != nil {
+			return err
+		}
+	}
+	if !persistent {
+		return nil
+	}
+	_, err = rbacStore.Update(ctx, func(cfg *rbac.Config) error {
+		cfg.UserQuotas = nil
+		for name, team := range cfg.Teams {
+			team.Quota = nil
+			cfg.Teams[name] = team
+		}
+		return nil
+	})
+	return err
 }
 
 func syncAll(ctx context.Context, namespace string, store metadata.Store, rbacStore *rbac.Store, userStore *userstore.Store, manager *k8s.Manager, catalog *templates.Catalog) error {
@@ -644,7 +739,7 @@ func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Dyna
 	return keys, keyring, editor, nil
 }
 
-func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA) (*bastion.Bastion, error) {
+func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
 	}
@@ -661,7 +756,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	sshBastion.Broker = broker
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = ca
-	sshBastion.Access = k8s.NewAccessStore(manager.Client, manager.Namespace, "")
+	sshBastion.Access = accessStore
 	if err := sshBastion.Listen(); err != nil {
 		broker.Close()
 		return nil, fmt.Errorf("ssh bastion: %w", err)

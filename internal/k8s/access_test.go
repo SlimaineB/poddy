@@ -4,12 +4,10 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestAccessStoreRequestsAndGrants(t *testing.T) {
-	store := NewAccessStore(fake.NewClientset(), "poddy", "")
+	store := NewMemoryAccessStore()
 	ctx := context.Background()
 
 	granted, err := store.Request(ctx, "demo", "Admin@Example.com")
@@ -65,7 +63,7 @@ func TestAccessStoreRequestsAndGrants(t *testing.T) {
 }
 
 func TestAccessStorePresence(t *testing.T) {
-	store := NewAccessStore(fake.NewClientset(), "poddy", "")
+	store := NewMemoryAccessStore()
 	ctx := context.Background()
 	now := time.Now()
 
@@ -115,7 +113,7 @@ func TestAccessStorePresence(t *testing.T) {
 }
 
 func TestAccessStoreDeleteWorkspace(t *testing.T) {
-	store := NewAccessStore(fake.NewClientset(), "poddy", "")
+	store := NewMemoryAccessStore()
 	ctx := context.Background()
 	if _, err := store.Request(ctx, "demo", "admin@example.com"); err != nil {
 		t.Fatal(err)

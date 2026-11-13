@@ -31,7 +31,7 @@ type Bastion struct {
 	Broker       *tunnel.Broker
 	RequireAgent bool
 	CA           *sshca.CA
-	Access       *k8s.AccessStore
+	Access       k8s.AccessStore
 	keys         sshkeys.Keyring
 	config       *ssh.ServerConfig
 	listener     net.Listener
