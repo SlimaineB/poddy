@@ -67,6 +67,7 @@
         <button id="manage-users" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Users</button>
         <button id="manage-teams" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Teams</button>
         <button id="manage-templates" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-layers"></use></svg>Templates</button>
+        <button id="manage-env" class="button ghost small" type="button"><svg class="icon"><use href="#icon-lock"></use></svg>Environment</button>
         <button id="manage-audit" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-shield"></use></svg>Audit</button>
         <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
           <svg class="icon"><use href="#icon-refresh"></use></svg>
@@ -459,6 +460,63 @@
       </form>
     </div>
     <div id="teams-pagination" class="pagination" hidden></div>
+  </section>
+
+  <section id="environment-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="env-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Environment</h1>
+        <p>Variables and secrets resolved with workspace &gt; user &gt; team &gt; template precedence.</p>
+      </div>
+      <span id="env-count" class="count"></span>
+    </header>
+    <div class="env-layout">
+      <form id="env-form" class="panel env-form">
+        <div class="panel-header"><h2>Add or edit a variable</h2></div>
+        <div class="field">
+          <label for="env-scope">Scope</label>
+          <select id="env-scope">
+            <option value="user">User</option>
+            <option value="team">Team</option>
+            <option value="template">Template</option>
+            <option value="workspace">Workspace</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="env-target">Target</label>
+          <input id="env-target" list="env-target-list" autocomplete="off" spellcheck="false" required>
+          <datalist id="env-target-list"></datalist>
+        </div>
+        <p id="env-scope-hint" class="hint"></p>
+        <div class="field">
+          <label for="env-name">Name</label>
+          <input id="env-name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" required>
+          <p class="hint">Letters, numbers and underscores. Names starting with <code>PODDY_</code> are reserved.</p>
+        </div>
+        <div class="field">
+          <label for="env-value">Value</label>
+          <input id="env-value" autocomplete="off" spellcheck="false">
+        </div>
+        <label class="checkbox-field">
+          <input id="env-secret" type="checkbox">
+          Store as a secret
+        </label>
+        <p class="hint">Secret values are encrypted in PostgreSQL and injected through a Kubernetes Secret. They are never shown again.</p>
+        <p id="env-form-error" class="form-error" hidden></p>
+        <div class="form-actions">
+          <button id="env-cancel" class="button ghost" type="button" hidden>Cancel</button>
+          <button id="env-save" class="button primary" type="submit">Add variable</button>
+        </div>
+      </form>
+      <section class="panel env-panel">
+        <div class="panel-header">
+          <h2>Variables at this scope</h2>
+          <button id="env-refresh" class="button ghost small" type="button">Refresh</button>
+        </div>
+        <div id="env-list" class="env-list"></div>
+      </section>
+    </div>
   </section>
 
   <section id="audit-view" class="page" hidden>
@@ -1022,6 +1080,7 @@
   <script src="/static/templates.js"></script>
   <script src="/static/teams.js"></script>
   <script src="/static/users.js"></script>
+  <script src="/static/environment.js"></script>
   <script src="/static/connections.js"></script>
   <script src="/static/sshkeys.js"></script>
   <script src="/static/volumes.js"></script>

@@ -53,6 +53,20 @@ The token identity is `token`. This test sets `auth.tokenAdmin=true` so the
 operator token can administer workspaces. In a multi-user deployment leave it
 false and use OIDC.
 
+### PostgreSQL
+
+```bash
+PGPASSWORD="$(openssl rand -hex 16)"
+helm upgrade --install poddy-postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+  -n poddy-system --create-namespace \
+  --set auth.username=poddy \
+  --set auth.password="$PGPASSWORD" \
+  --set auth.database=poddy
+
+kubectl -n poddy-system create secret generic poddy-database \
+  --from-literal=database-url="postgres://poddy:${PGPASSWORD}@poddy-postgres-postgresql:5432/poddy?sslmode=disable"
+```
+
 ### SSH key
 
 For normal team use, skip this section: after signing in, open **SSH keys** in
@@ -103,6 +117,11 @@ auth:
   existingSecret: poddy-auth
   secretKey: token
   tokenAdmin: true
+
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
 
 workspaceNamespace: poddy-workspaces
 createWorkspaceNamespace: false

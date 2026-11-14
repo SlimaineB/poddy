@@ -68,6 +68,7 @@ func snapshotFromState(state WorkspaceState, phase, desired string, updatedAt ti
 	externalAuthEnv := externalAuthEnvNamesFromAnnotations(state.Annotations)
 	spec := *state.Spec.DeepCopy()
 	stripExternalAuthEnv(&spec, externalAuthEnv)
+	stripEnvironmentEnv(&spec, environmentEnvNamesFromAnnotations(state.Annotations), EnvironmentSecretName(state.Name))
 	rendered, err := json.Marshal(spec)
 	if err != nil {
 		return WorkspaceSnapshot{}, err

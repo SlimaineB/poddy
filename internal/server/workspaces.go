@@ -13,7 +13,10 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"poddy/internal/auth"
+	"poddy/internal/envstore"
 	"poddy/internal/k8s"
+	"poddy/internal/region"
 )
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +440,21 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.accessStore().DeleteWorkspace(r.Context(), name); err != nil {
 		log.Printf("workspace access %s: delete: %v", name, err)
+	}
+	if s.RegionMode && s.HubURL != "" {
+		hubClient := region.NewClient(region.Config{Name: s.RegionName, URL: s.HubURL, Key: s.RegionKey})
+		identity := region.Identity{
+			User:   auth.User{Username: "region", Subject: s.RegionName},
+			Admin:  true,
+			Region: s.RegionName,
+		}
+		if err := hubClient.DeleteEnvironment(r.Context(), name, identity); err != nil {
+			log.Printf("workspace environment %s: delete via hub: %v", name, err)
+		}
+	} else if s.Environment != nil {
+		if err := s.Environment.DeleteTarget(r.Context(), envstore.ScopeWorkspace, name); err != nil {
+			log.Printf("workspace environment %s: delete: %v", name, err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -72,6 +72,7 @@ name (without the leading `v`) is used.
 | `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
 | `ssh.authorizedKeys` or `ssh.existingKeysSecret` | Optional administrator-managed SSH keys. Teams normally add their own key under **SSH keys** in the portal. The comment binds an administrator-managed key to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token`) or marks it admin (`admin`, `*`). |
 | `ssh.existingHostKeySecret` | **Required** when `bastion.replicaCount > 1`. Secret with private host key. |
+| `database.url` or `database.existingSecret` | **Required** unless `regionManager.enabled=true`. PostgreSQL 13+ connection string. |
 
 ## Key values
 
@@ -143,11 +144,11 @@ name (without the leading `v`) is used.
 | `externalAuth.existingSecret` | `""` | Secret containing `externalAuth.keyKey` and provider secrets. |
 | `externalAuth.tokenSecretName` | `""` (`<fullname>-external-auth`) | Secret for encrypted per-user tokens. |
 | `externalAuth.providers` | `[]` | OAuth2 provider list. |
-| `database.url` | `""` | Optional PostgreSQL connection string. Enables metadata mirror and audit. |
+| `database.url` | `""` | PostgreSQL connection string. Required unless `regionManager.enabled=true`. |
 | `database.existingSecret` | `""` | Existing Secret with the connection string. Set either `url` or this. |
 | `database.urlKey` | `database-url` | Key in the database Secret. |
 | `database.autoMigrate` | `true` | Apply embedded schema migrations on startup. |
-| `database.connectTimeout` | `30s` | Retry window before starting without metadata and audit when PostgreSQL is not ready. |
+| `database.connectTimeout` | `30s` | Retry window before startup fails when PostgreSQL or the schema is not ready. |
 | `ssh.addr` | `:2222` | Bastion listen address in pod. |
 | `ssh.publicPort` | `2222` | Port users connect to. |
 | `ssh.existingKeysSecret` | `""` | Use existing Secret for authorized_keys. |
@@ -287,9 +288,10 @@ Register `https://poddy.example.com/external-auth/<id>/callback` with each provi
 
 ## PostgreSQL metadata and audit
 
-PostgreSQL is optional. Kubernetes remains the runtime source of truth; the
-database receives a metadata mirror and append-only audit events. The chart
-injects `PODDY_DATABASE_URL` into both the portal and bastion.
+PostgreSQL is required for the portal and bastion. It is the control plane for
+RBAC, users, quotas, access, shares, tokens, environment variables/secrets, and
+append-only audit events. Region managers use the hub instead. The chart injects
+`PODDY_DATABASE_URL` into both the portal and bastion.
 
 ```yaml
 database:
@@ -313,8 +315,8 @@ database:
 ```
 
 Set `autoMigrate: false` when migrations are managed externally. If PostgreSQL
-is not ready, the portal retries for `database.connectTimeout` (default `30s`)
-and then starts without metadata and audit. Poddy does not deploy PostgreSQL.
+or the schema is not ready, the portal retries for `database.connectTimeout`
+(default `30s`) and then exits. Poddy does not deploy PostgreSQL.
 With the official `postgres` image on an EBS-backed PVC, set
 `PGDATA=/var/lib/postgresql/data/pgdata`; otherwise `initdb` fails on
 `lost+found`. The portal mirrors RBAC, OIDC users, templates, workspaces, and

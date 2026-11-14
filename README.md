@@ -12,6 +12,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Templates are not embedded in the portal: the default `base`, `go`, `node`, and `python` templates ship in the separate `poddy-templates` Helm chart, and you can add your own via `-templates-dir`, that chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
+- **Environment variables and secrets**: set values per template, team, user, or workspace with `workspace > user > team > template` precedence. Secret values are AES-GCM encrypted in PostgreSQL and injected through a per-workspace Kubernetes Secret. See [Environment variables](docs/environment.md).
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyCommand) and forwards to a dedicated `poddy-agent` sidecar in each workspace. The sidecar has its own memory limit, and `sshd` gets a lowered OOM score so workspace memory spikes do not drop SSH sessions. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
 - **Desktop IDE launch**: Click **VS Code** or **Cursor** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy extension (installed once in VS Code or Cursor) enrolls the machine key, writes the SSH config, and opens the editor without manual setup. In local editor mode the portal launches Windows VS Code or Cursor directly. **PyCharm** opens a JetBrains Gateway link using the same SSH config. **JupyterLab** opens through the portal proxy when the workspace has the `jupyterlab` sidecar; the Python template enables it by default. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
 - **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; the rendered spec is retained in the workspace StatefulSet. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
@@ -19,7 +20,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion and opens an outbound WebSocket tunnel to the hub, so no VPN peering or hub-to-region inbound access is required. The hub routes workspace operations, terminal, desktop IDEs, logs, external-auth callbacks, and SSH-key sync through the tunnel using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Regions](docs/regions.md).
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, security context, central-hub regions, and region-manager mode.
 - **Prometheus metrics**: A dedicated metrics listener exposes HTTP, workspace lifecycle, authentication, template reload, and workspace phase metrics, plus Go/process metrics. The Helm chart creates a ClusterIP metrics Service and can render a ServiceMonitor.
-- **No database required**: Kubernetes is the source of truth; templates and RBAC are ConfigMaps. An optional PostgreSQL mirror adds metadata durability, an append-only audit log, and disaster-recovery snapshots. It is enabled with `database.url` / `PODDY_DATABASE_URL` and is never used for workspace, quota, or RBAC decisions; only the admin/auditor audit page reads it.
+- **PostgreSQL control plane**: the portal and bastion require PostgreSQL 13+ (except region managers, which call the hub). It is authoritative for RBAC, OIDC users, quotas, workspace access, share links, external-auth tokens, and environment variables/secrets; Kubernetes remains the runtime source of truth for workspaces and PVCs. See [PostgreSQL schema](docs/postgres-schema.md).
 
 ## Architecture
 
@@ -71,6 +72,22 @@ kubectl -n poddy-system create secret generic poddy-host-key \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
+Poddy requires PostgreSQL 13+. For a local quick start, install a development
+database in the same namespace and create the connection Secret:
+
+```bash
+PGPASSWORD="$(openssl rand -hex 16)"
+helm upgrade --install poddy-postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+  --namespace poddy-system \
+  --set auth.username=poddy \
+  --set auth.password="$PGPASSWORD" \
+  --set auth.database=poddy
+
+kubectl -n poddy-system create secret generic poddy-database \
+  --from-literal=database-url="postgres://poddy:${PGPASSWORD}@poddy-postgres-postgresql:5432/poddy?sslmode=disable" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
 ### 2. Install poddy
 The portal chart is published to GHCR as an OCI artifact. If the package is
 private, run `helm registry login ghcr.io` first.
@@ -82,6 +99,7 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
   --set auth.existingSecret=poddy-auth \
+  --set database.existingSecret=poddy-database \
   --set ssh.service.type=ClusterIP \
   --set ssh.publicHost=127.0.0.1 \
   --set ssh.publicPort=2222 \
@@ -172,7 +190,7 @@ instructions. The publish workflows build and push the GHCR images and Helm char
 Use the Helm charts for anything beyond a quick test. See [docs/deploy.md](docs/deploy.md) for:
 - Installing the portal chart (portal + bastion Deployments) and templates chart with TLS, LoadBalancer SSH, and a stable host key.
 - Scaling the portal and bastion independently, multi-team namespaces, RBAC, SSH keys, image pull secrets.
-- Whether you need PostgreSQL and how to enable the [optional control-plane database and audit log](docs/postgres-schema.md).
+- How to configure the required [PostgreSQL control plane and audit log](docs/postgres-schema.md), including the database URL, migrations, and backups.
 
 For a clean local k3s deployment with separate control-plane and workspace
 namespaces, see [docs/k3s-test.md](docs/k3s-test.md).
@@ -205,7 +223,7 @@ See [docs/templates.md](docs/templates.md) for:
 │   ├── bastion/                 # SSH bastion (direct-tcpip → port-forward, owner checks)
 │   ├── sshkeys/                 # authorized_keys parsing and owner mapping
 │   ├── links/                   # Custom link validation and ConfigMap storage
-│   ├── metadata/                # Optional PostgreSQL mirror, migrations, audit writer
+│   ├── metadata/                # PostgreSQL control plane, migrations, audit writer
 │   ├── server/                  # HTTP API, auth, RBAC, user directory, links, terminal WS, desktop IDE launch
 │   └── local/                   # Windows/WSL SSH config, key copy, VS Code/Cursor launch
 ├── web/                         # Embedded UI (index.html, core.js, workspaces.js, ..., style.css)
@@ -230,7 +248,7 @@ See [docs/templates.md](docs/templates.md) for:
 │       └── poddy-templates/    # Independently managed template ConfigMaps
 ├── migrations/
 │   ├── embed.go                 # Embeds migrations in the portal/bastion image
-│   ├── 0001_init.sql            # Optional PostgreSQL metadata schema
+│   ├── 0001_init.sql            # PostgreSQL control-plane schema
 │   └── 0002_quotas.sql          # Team and user quota mirror
 ├── mkdocs.yml                   # MkDocs Material site config
 ├── requirements-docs.txt        # Docs build dependencies
@@ -273,7 +291,7 @@ externalAuth:
     optional: true
 ```
 
-Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens AES-GCM encrypted in PostgreSQL when configured, or in the `poddy-external-auth` Secret otherwise. It refreshes them server-side and exposes `poddy-external-auth token <id>` plus a Git askpass helper in the base image. See [docs/external-auth.md](docs/external-auth.md).
+Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens AES-GCM encrypted in PostgreSQL; the old `poddy-external-auth` Secret is only a migration source. It refreshes them server-side and exposes `poddy-external-auth token <id>` plus a Git askpass helper in the base image. See [docs/external-auth.md](docs/external-auth.md).
 
 ## RBAC
 

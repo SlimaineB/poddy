@@ -25,6 +25,7 @@ import (
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
 	"poddy/internal/config"
+	"poddy/internal/envstore"
 	"poddy/internal/extension"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
@@ -72,16 +73,24 @@ func Run(ctx context.Context, args []string) error {
 		appMetrics = metrics.New()
 	}
 
+	regionOnly := cfg.RegionMode && cfg.RegionHubURL != "" && strings.TrimSpace(cfg.DatabaseURL) == ""
+	if !regionOnly && strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return fmt.Errorf("PODDY_DATABASE_URL is required (only region mode with PODDY_REGION_HUB_URL can run without PostgreSQL)")
+	}
 	metaStore, err := metadata.OpenWithRetry(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate, cfg.DatabaseConnectTimeout)
 	if err != nil {
-		log.Printf("metadata: PostgreSQL unavailable, continuing without metadata and audit: %v", err)
-		metaStore = metadata.Nop{}
+		return fmt.Errorf("metadata: PostgreSQL: %w", err)
 	}
 	defer metaStore.Close()
 	metadataEnabled := metaStore.AuditEnabled()
 	if metadataEnabled {
-		log.Printf("metadata: PostgreSQL mirror and audit enabled")
+		pg, ok := metaStore.(*metadata.Postgres)
+		if !ok || !pg.PGFirstReady(ctx) {
+			return fmt.Errorf("metadata: PostgreSQL schema is not ready; apply migrations or enable PODDY_DATABASE_AUTO_MIGRATE")
+		}
+		log.Printf("metadata: PostgreSQL control plane and audit enabled")
 	}
+	var environmentStore envstore.Store
 	regionIdentity := region.Identity{User: auth.User{Username: "region", Subject: cfg.RegionName}, Admin: true}
 	var hubClient *region.Client
 	var accessStore access.Store
@@ -92,8 +101,12 @@ func Run(ctx context.Context, args []string) error {
 		quotaStore = quotaremote.New(hubClient, regionIdentity)
 		log.Printf("workspace access and quotas: using hub control plane at %s", cfg.RegionHubURL)
 	} else {
-		accessStore = openAccessStore(metaStore, cfg.Namespace)
-		quotaStore = openQuotaStore(metaStore, cfg.Namespace)
+		pg, ok := metaStore.(*metadata.Postgres)
+		if !ok {
+			return fmt.Errorf("workspace access and quotas: PostgreSQL is required")
+		}
+		accessStore = pg.Access(cfg.Namespace)
+		quotaStore = pg.Quota(cfg.Namespace)
 	}
 
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context, cfg.K8sQPS, cfg.K8sBurst)
@@ -117,17 +130,17 @@ func Run(ctx context.Context, args []string) error {
 	var rbacStore rbac.ConfigStore = rbacK8s
 	var userStore userstore.Directory = userK8s
 	var shareStore server.ShareStore = shareK8s
-	if pg, ok := metaStore.(*metadata.Postgres); ok {
-		if !pg.PGFirstReady(ctx) {
-			log.Printf("metadata: PostgreSQL-first tables are missing; keeping RBAC, users, and shares in Kubernetes (apply migrations or enable database.autoMigrate)")
-		} else {
-			rbacStore = pg.RBACStore(cfg.Namespace, rbacK8s)
-			userStore = pg.UserStore(cfg.Namespace, userK8s)
-			if secret := postgresShareSecret(cfg); secret != "" {
-				shareStore = pg.ShareStore(cfg.Namespace, secret, shareK8s)
-			} else {
-				log.Printf("shares: PostgreSQL enabled but no stable encryption key is configured; keeping share links in Kubernetes (set PODDY_EXTERNAL_AUTH_KEY, PODDY_OIDC_SESSION_KEY or PODDY_DESKTOP_SECRET)")
-			}
+	if !regionOnly {
+		pg, ok := metaStore.(*metadata.Postgres)
+		if !ok {
+			return fmt.Errorf("metadata: PostgreSQL control plane is not available")
+		}
+		secret := postgresShareSecret(cfg)
+		rbacStore = pg.RBACStore(cfg.Namespace, rbacK8s)
+		userStore = pg.UserStore(cfg.Namespace, userK8s)
+		shareStore = pg.ShareStore(cfg.Namespace, secret, shareK8s)
+		if hubClient == nil {
+			environmentStore = pg.EnvStore(cfg.Namespace, secret)
 		}
 	}
 	if appMetrics != nil || metadataEnabled {
@@ -167,7 +180,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	go userkeys.Watch(ctx, userKeyStore, keyring, keys, allowUnmapped)
 
-	externalAuth, err := newExternalAuth(ctx, cfg, client, metaStore)
+	externalAuth, err := newExternalAuth(ctx, cfg, client, metaStore, regionOnly)
 	if err != nil {
 		return err
 	}
@@ -203,8 +216,32 @@ func Run(ctx context.Context, args []string) error {
 		}
 		manager.ExternalAuthToken = externalAuth.SignWorkspace
 	}
+	if environmentStore != nil {
+		manager.Environment = func(ctx context.Context, owner, template, workspace string) (map[string]string, map[string]bool, error) {
+			resolved, err := envstore.ResolveForOwner(ctx, environmentStore, rbacStore, userStore, owner, template, workspace)
+			if err != nil {
+				return nil, nil, err
+			}
+			return resolved.Values, resolved.Secrets, nil
+		}
+	}
 	if hubClient != nil {
 		var tokens sync.Map
+		manager.Environment = func(ctx context.Context, owner, template, workspace string) (map[string]string, map[string]bool, error) {
+			response, err := hubClient.FetchEnvironment(ctx, region.EnvironmentRequest{
+				Owner:     owner,
+				Template:  template,
+				Workspace: workspace,
+			}, regionIdentity)
+			if err != nil {
+				return nil, nil, err
+			}
+			secrets := make(map[string]bool, len(response.Secrets))
+			for _, name := range response.Secrets {
+				secrets[name] = true
+			}
+			return response.Values, secrets, nil
+		}
 		manager.ExternalAuth = func(ctx context.Context, owner, workspace, portalURL string, requirements []templates.ExternalAuth) (map[string]string, error) {
 			response, err := hubClient.FetchExternalAuth(ctx, region.ExternalAuthRequest{
 				Owner:        owner,
@@ -263,8 +300,10 @@ func Run(ctx context.Context, args []string) error {
 			return fmt.Errorf("metadata sync: %w", err)
 		}
 	}
-	if err := migrateQuotas(ctx, quotaStore, rbacStore, metadataEnabled); err != nil {
-		return fmt.Errorf("quota migration: %w", err)
+	if !regionOnly {
+		if err := migrateQuotas(ctx, quotaStore, rbacStore, true); err != nil {
+			return fmt.Errorf("quota migration: %w", err)
+		}
 	}
 
 	if appMetrics != nil {
@@ -409,6 +448,7 @@ func Run(ctx context.Context, args []string) error {
 		RBAC:              rbacStore,
 		Users:             userStore,
 		Shares:            shareStore,
+		Environment:       environmentStore,
 		Metadata:          metadataStore,
 		Access:            accessStore,
 		Quota:             quotaStore,
@@ -481,7 +521,7 @@ func newEditor(cfg config.Config) *local.Local {
 	return editor
 }
 
-func newExternalAuth(ctx context.Context, cfg config.Config, client kubernetes.Interface, metaStore metadata.Store) (*externalauth.Manager, error) {
+func newExternalAuth(ctx context.Context, cfg config.Config, client kubernetes.Interface, metaStore metadata.Store, regionOnly bool) (*externalauth.Manager, error) {
 	providers, err := externalauth.LoadProviders()
 	if err != nil {
 		return nil, fmt.Errorf("external auth: %w", err)
@@ -490,14 +530,11 @@ func newExternalAuth(ctx context.Context, cfg config.Config, client kubernetes.I
 		return nil, nil
 	}
 
-	secret := cfg.ExternalAuthKey
+	secret := postgresShareSecret(cfg)
 	if secret == "" {
-		secret = cfg.OIDCSessionKey
-	}
-	if secret == "" {
-		secret = cfg.DesktopSecret
-	}
-	if secret == "" {
+		if !regionOnly {
+			return nil, fmt.Errorf("external auth: a stable encryption key is required (set PODDY_EXTERNAL_AUTH_KEY, PODDY_OIDC_SESSION_KEY, PODDY_DESKTOP_SECRET, or PODDY_DATABASE_URL)")
+		}
 		secret = randomSecret()
 		log.Printf("external auth: using an ephemeral encryption key; set PODDY_EXTERNAL_AUTH_KEY to keep tokens across restarts")
 	}
@@ -509,14 +546,14 @@ func newExternalAuth(ctx context.Context, cfg config.Config, client kubernetes.I
 	var store externalauth.TokenStore = k8sStore
 	if pg, ok := metaStore.(*metadata.Postgres); ok {
 		pgStore := pg.ExternalAuthStore(cfg.Namespace, secret)
-		tokens, err := k8sStore.All(ctx)
-		if err != nil {
-			log.Printf("external auth: import Kubernetes Secret tokens: %v; continuing with the Secret store", err)
+		if tokens, err := k8sStore.All(ctx); err != nil {
+			log.Printf("external auth: import Kubernetes Secret tokens: %v", err)
 		} else if err := pgStore.SeedIfEmpty(ctx, tokens); err != nil {
-			log.Printf("external auth: seed PostgreSQL tokens: %v; continuing with the Secret store", err)
-		} else {
-			store = pgStore
+			log.Printf("external auth: import Kubernetes Secret tokens: %v", err)
 		}
+		store = pgStore
+	} else if !regionOnly {
+		return nil, fmt.Errorf("external auth: PostgreSQL is required")
 	}
 	log.Printf("external auth enabled (%d providers)", len(providers))
 	return externalauth.NewManager(providers, store, secret), nil
@@ -528,7 +565,7 @@ func postgresShareSecret(cfg config.Config) string {
 			return secret
 		}
 	}
-	return ""
+	return strings.TrimSpace(cfg.DatabaseURL)
 }
 
 // RunBastion starts only the SSH bastion. It is intended for deployments that
@@ -559,14 +596,21 @@ func RunBastion(ctx context.Context, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	regionOnly := cfg.RegionMode && cfg.RegionHubURL != "" && strings.TrimSpace(cfg.DatabaseURL) == ""
+	if !regionOnly && strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return fmt.Errorf("PODDY_DATABASE_URL is required (only region mode with PODDY_REGION_HUB_URL can run without PostgreSQL)")
+	}
 	metaStore, err := metadata.OpenWithRetry(ctx, cfg.DatabaseURL, cfg.DatabaseAutoMigrate, cfg.DatabaseConnectTimeout)
 	if err != nil {
-		log.Printf("metadata: PostgreSQL unavailable, continuing without audit: %v", err)
-		metaStore = metadata.Nop{}
+		return fmt.Errorf("metadata: PostgreSQL: %w", err)
 	}
 	defer metaStore.Close()
 	metadataEnabled := metaStore.AuditEnabled()
 	if metadataEnabled {
+		pg, ok := metaStore.(*metadata.Postgres)
+		if !ok || !pg.PGFirstReady(ctx) {
+			return fmt.Errorf("metadata: PostgreSQL schema is not ready; apply migrations or enable PODDY_DATABASE_AUTO_MIGRATE")
+		}
 		log.Printf("metadata: PostgreSQL audit enabled")
 	}
 	var accessStore access.Store
@@ -578,7 +622,11 @@ func RunBastion(ctx context.Context, args []string) error {
 		})
 		log.Printf("workspace access: using hub control plane at %s", cfg.RegionHubURL)
 	} else {
-		accessStore = openAccessStore(metaStore, cfg.Namespace)
+		pg, ok := metaStore.(*metadata.Postgres)
+		if !ok {
+			return fmt.Errorf("workspace access: PostgreSQL is required")
+		}
+		accessStore = pg.Access(cfg.Namespace)
 	}
 
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context, cfg.K8sQPS, cfg.K8sBurst)
@@ -662,25 +710,6 @@ func RunBastion(ctx context.Context, args []string) error {
 // database is available. Without a database it falls back to an in-process
 // store, which only works for a single replica and cannot be shared between the
 // portal and a separate bastion process.
-func openAccessStore(store metadata.Store, namespace string) access.Store {
-	if pg, ok := store.(*metadata.Postgres); ok {
-		return pg.Access(namespace)
-	}
-	log.Printf("workspace access: using in-memory store; set PODDY_DATABASE_URL to share approvals and presence across replicas")
-	return access.NewMemory()
-}
-
-// openQuotaStore returns a PostgreSQL-backed quota store when the metadata
-// database is available. Without a database it falls back to an in-process
-// store, which is only suitable for a single replica.
-func openQuotaStore(store metadata.Store, namespace string) quota.Store {
-	if pg, ok := store.(*metadata.Postgres); ok {
-		return pg.Quota(namespace)
-	}
-	log.Printf("quotas: using in-memory store; set PODDY_DATABASE_URL to persist user and team quotas")
-	return quota.NewMemory()
-}
-
 // migrateQuotas imports quotas from the legacy RBAC ConfigMap into the quota
 // store. When the store is persistent the ConfigMap entries are cleared so the
 // database is the single source of truth. The import is skipped if the store

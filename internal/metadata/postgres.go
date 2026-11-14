@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"poddy/internal/access"
+	"poddy/internal/envstore"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/quota"
@@ -42,11 +43,10 @@ func (p *Postgres) Quota(namespace string) quota.Store {
 	return quota.NewPostgres(p.pool, namespace)
 }
 
-// PGFirstReady reports whether the tables used by PostgreSQL-first RBAC,
-// users, external auth, and shares are present, including the one-time import
-// marker used by external auth and shares. It lets a portal with auto-migration
-// disabled fall back to Kubernetes instead of failing requests against an older
-// schema.
+// PGFirstReady reports whether the tables used by the PostgreSQL control plane
+// are present, including the one-time import marker used by external auth and
+// shares. The portal refuses to start when auto-migration is disabled and the
+// schema is incomplete.
 func (p *Postgres) PGFirstReady(ctx context.Context) bool {
 	var ready bool
 	err := p.pool.QueryRow(ctx, `
@@ -54,7 +54,13 @@ func (p *Postgres) PGFirstReady(ctx context.Context) bool {
 			AND to_regclass('poddy.share_links') IS NOT NULL
 			AND to_regclass('poddy.users') IS NOT NULL
 			AND to_regclass('poddy.external_auth_tokens') IS NOT NULL
-			AND to_regclass('poddy.metadata_imports') IS NOT NULL`,
+			AND to_regclass('poddy.metadata_imports') IS NOT NULL
+			AND to_regclass('poddy.user_quotas') IS NOT NULL
+			AND to_regclass('poddy.team_quotas') IS NOT NULL
+			AND to_regclass('poddy.access_requests') IS NOT NULL
+			AND to_regclass('poddy.access_grants') IS NOT NULL
+			AND to_regclass('poddy.access_presence') IS NOT NULL
+			AND to_regclass('poddy.env_vars') IS NOT NULL`,
 	).Scan(&ready)
 	return err == nil && ready
 }
@@ -79,6 +85,11 @@ func (p *Postgres) ExternalAuthStore(namespace, secret string) *externalauth.Pos
 // used to import existing Kubernetes Secret shares once.
 func (p *Postgres) ShareStore(namespace, secret string, mirror *k8s.ShareStore) *ShareStore {
 	return NewShareStore(p.pool, namespace, secret, mirror)
+}
+
+// EnvStore returns a PostgreSQL-backed scoped environment store.
+func (p *Postgres) EnvStore(namespace, secret string) *envstore.PostgresStore {
+	return envstore.NewPostgres(p.pool, namespace, secret)
 }
 
 // Open connects to PostgreSQL. An empty URL returns the disabled Nop backend.

@@ -263,6 +263,30 @@ func (c *Client) FetchExternalAuth(ctx context.Context, req ExternalAuthRequest,
 	return out, err
 }
 
+type EnvironmentRequest struct {
+	Owner     string `json:"owner"`
+	Template  string `json:"template"`
+	Workspace string `json:"workspace"`
+}
+
+type EnvironmentResponse struct {
+	Values  map[string]string `json:"values"`
+	Secrets []string          `json:"secrets"`
+}
+
+func (c *Client) FetchEnvironment(ctx context.Context, req EnvironmentRequest, identity Identity) (EnvironmentResponse, error) {
+	var out EnvironmentResponse
+	err := c.doJSON(ctx, http.MethodPost, "/api/internal/region/environment", identity, req, &out)
+	return out, err
+}
+
+// DeleteEnvironment removes the environment rows for a workspace. Region
+// managers call this after deleting a workspace so no stale secret values are
+// applied if the same name is created again.
+func (c *Client) DeleteEnvironment(ctx context.Context, workspace string, identity Identity) error {
+	return c.doJSON(ctx, http.MethodDelete, "/api/internal/region/environment?target="+url.QueryEscape(workspace), identity, nil, nil)
+}
+
 func (c *Client) ReplaceSSHKeys(ctx context.Context, owner string, keys []string, identity Identity) error {
 	body := struct {
 		Keys []string `json:"keys"`

@@ -1,3 +1,6 @@
+{{- if and (not .Values.database.url) (not .Values.database.existingSecret) (not .Values.regionManager.enabled) }}
+{{- fail "database.url or database.existingSecret is required unless regionManager.enabled=true" }}
+{{- end }}
 {{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
 {{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and bastion.replicaCount > 1" }}
 {{- end }}

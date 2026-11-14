@@ -1,6 +1,6 @@
 # RBAC: admins, auditors, owners, and teams
 
-poddy uses a deliberately small RBAC model. Without a database it is stored in the `poddy-rbac` ConfigMap. When PostgreSQL is configured, `rbac_documents` is authoritative and the ConfigMap is a materialized mirror. See [PostgreSQL schema](postgres-schema.md).
+poddy uses a deliberately small RBAC model stored in PostgreSQL `rbac_documents`; the `poddy-rbac` ConfigMap is a materialized mirror. See [PostgreSQL schema](postgres-schema.md).
 
 - **Global admins** see and manage every workspace and template.
 - **Auditors** can read the PostgreSQL audit trail, but cannot change workspaces, templates, teams, or RBAC.
@@ -141,8 +141,8 @@ Rules:
 a user-quota key. Sending an empty quota removes the override.
 
 Admins manage quotas in the UI: **Teams** has quota fields on the team form, and
-**Users** has **Set quota** / **Edit quota** actions. Both write to the RBAC
-ConfigMap; no database is required.
+**Users** has **Set quota** / **Edit quota** actions. Both write to PostgreSQL;
+the RBAC ConfigMap is a mirror.
 
 ## Workspace ownership
 
@@ -166,7 +166,7 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 ## UI
 
 - **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
-- **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The page and API are unavailable when `database.url` / `PODDY_DATABASE_URL` is not configured.
+- **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The database is required outside region-manager mode, so the page is available to admins and auditors.
 - **Teams** (admins): dedicated page to create, edit members, set quota defaults, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
 - **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
 - **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
@@ -256,5 +256,5 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 
 - One workspace namespace per portal; one RBAC document per portal.
 - Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/desktop IDE, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
-- No database is required: back up the ConfigMap if you rely on UI-managed access. With PostgreSQL, `rbac_documents` is authoritative and the ConfigMap is a mirror; back up the database.
+- Back up PostgreSQL. `rbac_documents` is authoritative and the `poddy-rbac` ConfigMap is a materialized mirror.
 - RBAC writes are serialized within a portal replica and retried on conflicts. PostgreSQL row locks serialize concurrent writes across replicas.

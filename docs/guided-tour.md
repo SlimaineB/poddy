@@ -59,17 +59,18 @@ oidc:
 The secret `poddy-oidc` contains `oidc-client-id`, `oidc-client-secret`, and
 `oidc-session-key`.
 
-## PostgreSQL: optional
+## PostgreSQL: required
 
-Kubernetes is the **source of truth** (workspaces, templates, RBAC, quotas,
-stopped specs). You do **not** need PostgreSQL to run poddy.
+PostgreSQL is the **control plane**. Kubernetes remains the runtime source of
+truth for workspaces, templates, and stopped specs.
 
-PostgreSQL adds:
+PostgreSQL stores:
+- RBAC, OIDC users, quotas, and workspace access,
+- encrypted external-auth tokens, share links, and environment secrets,
 - a queryable audit log,
-- a durable copy of metadata (RBAC, users, quotas),
-- snapshots for disaster recovery.
+- metadata mirrors for disaster recovery.
 
-If you want it:
+Configure it:
 ```yaml
 database:
   existingSecret: poddy-database
@@ -77,16 +78,22 @@ database:
   autoMigrate: true
 ```
 
-The secret `poddy-database` contains `database-url`.
+The secret `poddy-database` contains `database-url`. Region managers use the hub
+instead of a local database.
 
 ## Install in production (without the headache)
 
-1. **Prerequisites**: a Kubernetes cluster (k3s, EKS…), Helm 3.13+, a default
-   StorageClass for workspace PVCs, an Ingress controller for HTTPS.
-2. **Create the portal secret**:
+1. **Prerequisites**: a Kubernetes cluster (k3s, EKS…), PostgreSQL 13+, Helm
+   3.13+, a default StorageClass for workspace PVCs, and an Ingress controller
+   for HTTPS.
+2. **Create the portal and database secrets**:
    ```bash
    kubectl create secret generic poddy-auth \
      --from-literal=token="$(openssl rand -hex 32)" \
+     -n poddy-system
+
+   kubectl create secret generic poddy-database \
+     --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require' \
      -n poddy-system
    ```
 3. **Configure OIDC** (recommended):
@@ -117,6 +124,11 @@ image:
 auth:
   existingSecret: poddy-auth
   tokenAdmin: false
+
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
 
 oidc:
   enabled: true

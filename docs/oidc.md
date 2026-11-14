@@ -2,7 +2,7 @@
 
 poddy supports the OpenID Connect authorization code flow with PKCE. OIDC is optional and can be combined with the shared access token. When OIDC is enabled, the login page shows **Continue with SSO**.
 
-- Sessions are stateless, HMAC-signed cookies. No database is required.
+- Sessions are stateless, HMAC-signed cookies; session state is not stored in PostgreSQL.
 - The shared token remains valid for API automation. It is not a global admin unless `auth.tokenAdmin=true`.
 - OIDC identities are used by the RBAC model: global admins, template owners, teams, and per-template users. See [rbac.md](rbac.md).
 

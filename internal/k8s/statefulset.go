@@ -274,6 +274,7 @@ func (m *Manager) getStatefulSet(ctx context.Context, name string) (*appsv1.Stat
 
 func (m *Manager) stopDynamicEnv(pod *corev1.Pod) {
 	stripExternalAuthEnv(&pod.Spec, externalAuthEnvNames(pod))
+	stripEnvironmentEnv(&pod.Spec, environmentEnvNames(pod), EnvironmentSecretName(pod.Labels[labelWorkspace]))
 }
 
 func setStatefulSetStopped(sts *appsv1.StatefulSet, stoppedAt time.Time, scheduled bool) {

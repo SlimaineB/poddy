@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
+	"poddy/internal/envstore"
 	"poddy/internal/rbac"
 )
 
@@ -198,6 +200,11 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 		if err := s.Quota.DeleteTeamQuota(r.Context(), name); err != nil {
 			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+	if s.Environment != nil {
+		if err := s.Environment.DeleteTarget(r.Context(), envstore.ScopeTeam, name); err != nil {
+			log.Printf("team environment %s: delete: %v", name, err)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -10,6 +10,73 @@ kind: Namespace
 metadata:
   name: poddy
 ---
+# Development-only PostgreSQL. Use a managed database in production and
+# replace this Secret with a TLS-protected connection string.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: poddy-database
+  namespace: poddy
+type: Opaque
+stringData:
+  database-url: postgres://poddy:poddy@poddy-postgres:5432/poddy?sslmode=disable
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: poddy-postgres
+  namespace: poddy
+spec:
+  selector:
+    app.kubernetes.io/name: poddy-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: poddy-postgres
+  namespace: poddy
+spec:
+  serviceName: poddy-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: poddy-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: poddy-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: poddy
+            - name: POSTGRES_USER
+              value: poddy
+            - name: POSTGRES_PASSWORD
+              value: poddy
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -161,6 +228,11 @@ spec:
                 secretKeyRef:
                   name: poddy-token
                   key: token
+            - name: PODDY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: poddy-database
+                  key: database-url
             # OIDC (optional): enable SSO instead of / in addition to the token.
             # - name: PODDY_OIDC_ISSUER
             #   value: https://keycloak.example.com/realms/dev
@@ -181,7 +253,7 @@ spec:
             # External auth (optional): create a Secret named
             # poddy-external-auth-config with external-auth-key and
             # provider-<id>-client-secret, then uncomment these variables.
-            # The portal stores per-user tokens in poddy-external-auth.
+            # Tokens are stored in PostgreSQL; poddy-external-auth is imported once.
             # - name: PODDY_EXTERNAL_AUTH_KEY
             #   valueFrom:
             #     secretKeyRef:

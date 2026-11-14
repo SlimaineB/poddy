@@ -9,6 +9,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 
+	"poddy/internal/envstore"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/rbac"
@@ -253,6 +254,53 @@ func TestPostgresFirstStores(t *testing.T) {
 		}
 		if len(shares) != 0 {
 			t.Fatalf("deleted shares were re-imported: %+v", shares)
+		}
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		store := pg.EnvStore(namespace, "secret")
+		for _, item := range []struct {
+			scope  envstore.Scope
+			target string
+			name   string
+			value  string
+			secret bool
+		}{
+			{envstore.ScopeTemplate, "base", "A", "template", false},
+			{envstore.ScopeTeam, "devs", "A", "team", false},
+			{envstore.ScopeUser, "alice@example.com", "A", "user", false},
+			{envstore.ScopeWorkspace, "demo", "A", "workspace", false},
+			{envstore.ScopeUser, "alice@example.com", "TOKEN", "encrypted", true},
+		} {
+			if err := store.Set(ctx, item.scope, item.target, item.name, item.value, item.secret); err != nil {
+				t.Fatal(err)
+			}
+		}
+		resolved, err := store.Resolve(ctx, "Alice@Example.com", []string{"devs"}, "base", "demo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolved.Values["A"] != "workspace" || resolved.Values["TOKEN"] != "encrypted" || !resolved.Secrets["TOKEN"] {
+			t.Fatalf("resolved = %+v", resolved)
+		}
+		items, err := store.List(ctx, envstore.ScopeUser, "alice@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range items {
+			if item.Name == "TOKEN" && (item.Value != "" || !item.Set || !item.Secret) {
+				t.Fatalf("secret list entry = %+v", item)
+			}
+		}
+		if err := store.DeleteTarget(ctx, envstore.ScopeWorkspace, "demo"); err != nil {
+			t.Fatal(err)
+		}
+		resolved, err = store.Resolve(ctx, "alice@example.com", []string{"devs"}, "base", "demo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolved.Values["A"] != "user" {
+			t.Fatalf("workspace value was not deleted: %+v", resolved)
 		}
 	})
 }

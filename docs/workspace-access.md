@@ -65,16 +65,14 @@ used as an audit record.
 ## State storage
 
 Requests, grants, and presence are stored in PostgreSQL (tables
-`poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`)
-when `PODDY_DATABASE_URL` is configured. The hub portal and bastion share the
-same database and namespace key, so an approval made in the browser also
-unlocks SSH. Region portals and bastions do not connect to PostgreSQL; they
-proxy these operations to the hub.
+`poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`).
+The hub portal and bastion share the same database and namespace key, so an
+approval made in the browser also unlocks SSH. Region portals and bastions do not
+connect to PostgreSQL; they proxy these operations to the hub.
 
 This state is mutable and written frequently (presence heartbeats), so it is not
-stored in a Kubernetes Secret. Without a database, the portal falls back to an
-in-memory store, which only works for a single replica and cannot be shared with
-a separate bastion process. Set `PODDY_DATABASE_URL` in production.
+stored in a Kubernetes Secret. PostgreSQL is required and shares approvals
+between the portal and bastion.
 
 Expired grants and stale presence rows are filtered on read and pruned
 opportunistically. No Secret permissions are required for access state.

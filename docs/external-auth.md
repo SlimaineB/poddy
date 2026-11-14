@@ -12,7 +12,7 @@ Typical use: a private Git repository inside a workspace needs a token. The port
 4. When a workspace is created or started, the portal injects the access token into the workspace as environment variables.
 5. The workspace can also ask the portal for a refreshed token or Git credentials through a short-lived workspace bearer token.
 
-Without PostgreSQL, tokens are stored in the Kubernetes Secret `poddy-external-auth` (key `tokens`), encrypted with AES-GCM using `PODDY_EXTERNAL_AUTH_KEY`. With `PODDY_DATABASE_URL`, they are stored in `external_auth_tokens`, still encrypted in the application, and the old Secret is only an import source. Tokens are stripped from stopped StatefulSet templates.
+Tokens are stored AES-GCM encrypted in PostgreSQL `external_auth_tokens`; the old `poddy-external-auth` Secret is only an import source. Tokens are stripped from stopped StatefulSet templates.
 
 ## Configure providers
 
@@ -180,9 +180,9 @@ kubectl create secret generic poddy-external-auth-config \
 
 Alternatively put `key` and `clientSecret` in values for a quick test; the chart creates `poddy-external-auth-config` for you. Do not commit real secrets.
 
-Without PostgreSQL, the portal stores per-user tokens in `externalAuth.tokenSecretName` (default `<fullname>-external-auth`). That Secret is separate from the configuration Secret and is created on first use. With PostgreSQL, the Secret is imported only when `external_auth_tokens` is empty and is no longer updated. The chart still grants the portal `get/list/watch/create/update/patch` on Secrets for the fallback.
+Per-user tokens are stored in PostgreSQL `external_auth_tokens`. The old `externalAuth.tokenSecretName` Secret (default `<fullname>-external-auth`) is imported only when the table is empty and is no longer updated after that. The chart still grants Secret permissions for SSH keys and environment Secrets.
 
-`externalAuth.key`/`existingSecret` is required when `replicaCount > 1`, otherwise each replica would encrypt with a different ephemeral key. The same stable key is also used for encrypted share links in PostgreSQL.
+`externalAuth.key`/`existingSecret` is required when `replicaCount > 1`, otherwise each replica would encrypt with a different ephemeral key. The same stable key is also used for encrypted share links and environment secrets in PostgreSQL. When no key is set, the database URL is the fallback key.
 
 ## Quick manifest
 

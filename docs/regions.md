@@ -32,7 +32,7 @@ SSH public keys are replicated from the hub registry to every region.
 | Workspace list and UI | Yes | No |
 | Workspace pods, PVCs, stopped state | No | Yes |
 | SSH bastion and SSH endpoint | No | Yes |
-| PostgreSQL control plane and audit | Yes | No (uses Kubernetes fallback) |
+| PostgreSQL control plane and audit | Yes | No (uses hub) |
 | Access grants, presence, and quotas | Yes (PostgreSQL) | Proxied to hub |
 | Region key and signed identity | Verifies region keys | Trusts hub signature |
 

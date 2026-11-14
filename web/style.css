@@ -4426,3 +4426,58 @@ body {
     padding: 0 9px;
   }
 }
+
+.env-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.env-form,
+.env-panel {
+  padding: 18px;
+}
+.env-form .field + .field {
+  margin-top: 12px;
+}
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.env-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.env-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.env-name {
+  font-weight: 600;
+}
+.env-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+.env-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (max-width: 860px) {
+  .env-layout {
+    grid-template-columns: 1fr;
+  }
+}

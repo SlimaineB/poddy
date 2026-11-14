@@ -175,8 +175,26 @@ els.connectionsBack.addEventListener("click", () => showView("workspaces"));
 els.manageUsers.addEventListener("click", openUsers);
 els.manageTeams.addEventListener("click", openTeams);
 els.manageTemplates.addEventListener("click", openTemplates);
+els.manageEnv.addEventListener("click", openEnvironment);
 els.manageAudit.addEventListener("click", openAudit);
 els.auditBack.addEventListener("click", () => showView("workspaces"));
+els.envBack.addEventListener("click", () => showView("workspaces"));
+els.envScope.addEventListener("change", () => setEnvironmentScope(els.envScope.value));
+els.envTarget.addEventListener("change", () => {
+  envState.target = els.envTarget.value.trim();
+  resetEnvironmentForm();
+  loadEnvironment();
+});
+els.envForm.addEventListener("submit", saveEnvironment);
+els.envCancel.addEventListener("click", () => {
+  resetEnvironmentForm();
+  els.envName.readOnly = false;
+  els.envSecret.disabled = false;
+});
+els.envSecret.addEventListener("change", () => {
+  els.envValue.type = els.envSecret.checked ? "password" : "text";
+});
+els.envRefresh.addEventListener("click", loadEnvironment);
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
 els.quotaForm.addEventListener("submit", saveUserQuota);

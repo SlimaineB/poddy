@@ -7,6 +7,7 @@ or a local image build.
 You need:
 
 - A running Kubernetes or k3s cluster
+- PostgreSQL 13+ reachable from the cluster
 - `kubectl`
 - Helm 3.13+
 - Optional: VS Code with **Remote-SSH**, Cursor with Remote-SSH, PyCharm via JetBrains Gateway, or a browser for JupyterLab
@@ -31,6 +32,23 @@ kubectl -n poddy-system create secret generic poddy-auth \
 This token signs you in the first time. For a team, replace it with OIDC later
 (see the [guided tour](guided-tour.md)).
 
+Create a development PostgreSQL database and the connection Secret. Use a
+managed or external PostgreSQL instance in production and set `sslmode` as
+appropriate:
+
+```bash
+PGPASSWORD="$(openssl rand -hex 16)"
+helm upgrade --install poddy-postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+  --namespace poddy-system \
+  --set auth.username=poddy \
+  --set auth.password="$PGPASSWORD" \
+  --set auth.database=poddy
+
+kubectl -n poddy-system create secret generic poddy-database \
+  --from-literal=database-url="postgres://poddy:${PGPASSWORD}@poddy-postgres-postgresql:5432/poddy?sslmode=disable" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
 ## 2. Install poddy
 
 The chart pulls the portal/bastion image and the built-in workspace images from
@@ -44,6 +62,7 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
   --set auth.existingSecret=poddy-auth \
+  --set database.existingSecret=poddy-database \
   --set ssh.service.type=ClusterIP \
   --set ssh.publicHost=127.0.0.1 \
   --set ssh.publicPort=2222 \

@@ -57,12 +57,10 @@ kubernetes:
   qps: 50
   burst: 100
 
-# Optional PostgreSQL metadata mirror and audit log. When a connection string
-# is configured, the portal mirrors RBAC, users, templates, workspaces, and
-# quotas into PostgreSQL and records audit events. Kubernetes remains the
-# runtime source of truth. The portal exits if PostgreSQL is configured but
-# unreachable at startup; later sync and audit failures are logged without
-# blocking workspace operations.
+# PostgreSQL control plane. Required for the portal and bastion unless
+# regionManager.enabled=true (regions use the hub instead). PostgreSQL stores
+# RBAC, users, quotas, access grants, audit events, shares, external auth
+# tokens, and environment variables/secrets.
 database:
   # PostgreSQL connection string, for example:
   # postgres://poddy:secret@postgres:5432/poddy?sslmode=require
@@ -75,7 +73,7 @@ database:
   # Apply the embedded schema migrations on startup. Disable when migrations
   # are managed externally.
   autoMigrate: true
-  # How long to retry before starting without metadata and audit.
+  # How long to retry before failing startup.
   connectTimeout: 30s
 
 # Workspace volume backups to S3-compatible object storage. When enabled, the
@@ -280,16 +278,18 @@ externalAuth:
   # Public base URL for OAuth callbacks behind a proxy. When empty, it is
   # derived from the request (honours X-Forwarded-Proto/Host).
   redirectBase: ""
-  # Encrypts stored tokens and signs workspace tokens. Set a stable random
-  # value, or use existingSecret. Required for replicaCount > 1.
+  # Encrypts stored tokens, share links, environment secrets, and signs
+  # workspace tokens. Set a stable random value, or use existingSecret. When
+  # empty, the database URL is used as the fallback key. Required for
+  # replicaCount > 1.
   key: ""
   # Existing Secret containing keyKey. Provider client secrets can use the same
   # Secret with key "provider-<id>-client-secret" unless overridden per provider.
   existingSecret: ""
   keyKey: external-auth-key
-  # Secret where per-user tokens are stored. Defaults to "<fullname>-external-auth".
-  # The portal creates it on first use; it must not be the same Secret as the
-  # configuration Secret above.
+  # Legacy Secret imported into PostgreSQL once when external_auth_tokens is
+  # empty. Defaults to "<fullname>-external-auth"; it must not be the same
+  # Secret as the configuration Secret above.
   tokenSecretName: ""
   # Example:
   # providers:

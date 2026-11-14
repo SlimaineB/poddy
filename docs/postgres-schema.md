@@ -1,42 +1,36 @@
-# PostgreSQL metadata and audit (optional)
+# PostgreSQL control plane and audit
 
-!!! note "Optional PostgreSQL, Kubernetes fallback"
-    poddy runs without PostgreSQL. When `PODDY_DATABASE_URL` is set (Helm:
-    `database.url` or `database.existingSecret`), PostgreSQL becomes the
-    authoritative control-plane store for RBAC, OIDC users, encrypted external
-    auth tokens, workspace share links, workspace access, and quotas. The portal
-    keeps `poddy-rbac` and `poddy-users` ConfigMaps as materialized mirrors, and
-    writes an append-only audit trail. Kubernetes remains the runtime source of
-    truth for workspaces and templates.
+!!! note "PostgreSQL is required"
+    The portal and bastion require PostgreSQL 13+. Set `PODDY_DATABASE_URL` or
+    Helm `database.url` / `database.existingSecret`. PostgreSQL is the
+    authoritative store for RBAC, OIDC users, encrypted external auth tokens,
+    workspace share links, workspace access, quotas, and environment
+    variables/secrets. The portal keeps `poddy-rbac` and `poddy-users`
+    ConfigMaps as materialized mirrors and writes an append-only audit trail.
+    Kubernetes remains the runtime source of truth for workspaces and
+    templates.
 
-    Without a database, RBAC, users, shares, and external auth tokens stay in
-    Kubernetes objects, and access/quotas use an in-process store that only
-    works for a single replica.
+    Region managers are the exception: when `regionManager.enabled=true` they
+    use the hub's internal control-plane endpoints with their region key, so they
+    never connect to PostgreSQL. The hub owns the database.
 
-    In a multi-region deployment only the hub connects to PostgreSQL. Region
-    portals and bastions call the hub's internal control-plane endpoints
-    (`/api/internal/region/access` and `/api/internal/region/quotas`) with their
-    region key, so they never need database credentials or network access.
-
-    The portal retries the database at startup when it is configured. If it is
-    still unavailable, the portal starts with the Kubernetes and in-process
-    fallbacks. If the database becomes unavailable later, metadata and audit
-    writes are logged and workspace operations continue; RBAC, user, share, and
-    token reads fail until PostgreSQL is reachable again. Restart the portal to
-    re-enable PostgreSQL-first stores after a startup fallback.
+    The portal retries the database during startup for
+    `database.connectTimeout` (default `30s`) and then exits if PostgreSQL or the
+    embedded schema is not ready. If the database becomes unavailable later,
+    workspace operations continue but RBAC, user, share, token, quota, and
+    environment reads fail until PostgreSQL returns.
 
 PostgreSQL does **not** replace workspace PVCs. A database backup restores
 control-plane metadata; workspace files still need volume snapshots or another
 backup mechanism.
 
-## Why add PostgreSQL?
+## What PostgreSQL provides
 
 Kubernetes is excellent at running workspaces, but it is not a durable backup of
 its own metadata. If the cluster is lost, you lose the ConfigMaps and Secrets
 that describe templates, RBAC, users, stopped workspaces, external auth
-connections, and share links. With PostgreSQL configured, those control-plane
-records are stored in the database and Kubernetes objects become mirrors or
-runtime inputs.
+connections, and share links. PostgreSQL stores those control-plane records;
+Kubernetes objects become mirrors or runtime inputs.
 
 A PostgreSQL metadata store gives you:
 
@@ -163,6 +157,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | `external_auth_tokens` | AES-GCM encrypted OAuth2 access and refresh tokens per user/provider. |
 | `rbac_documents` | Authoritative RBAC YAML/JSON document per namespace. |
 | `share_links` | Workspace share links with hashed lookup tokens and encrypted raw tokens. |
+| `env_vars` | Template, team, user, and workspace environment variables; secrets are AES-GCM encrypted. |
 | `metadata_imports` | One-time Kubernetes Secret import markers for external auth tokens and shares. |
 | `audit_events` | Append-only control-plane audit trail. |
 | `schema_migrations` | Applied migration versions. |
@@ -177,6 +172,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | Workspace StatefulSets and stopped state | `workspaces` | Kubernetes first; PostgreSQL mirror |
 | `poddy-external-auth` Secret | `external_auth_tokens` | Migration source only after PostgreSQL is enabled |
 | `poddy-shares` Secret | `share_links` | Migration source only after PostgreSQL is enabled |
+| Environment UI | `env_vars`; per-workspace `pd-env-<workspace>` Secret | PostgreSQL authoritative; Secret is runtime input |
 | Audit stream | `audit_events` | Written by portal and bastion |
 
 Workspace access state (`access_requests`, `access_grants`, `access_presence`)
@@ -202,9 +198,9 @@ PostgreSQL-first stores reconcile as follows:
 - Templates remain Kubernetes-first and are mirrored after ConfigMap or local
   directory reloads. Workspaces are mirrored after create, stop, start, restart,
   and delete. Audit events are written as HTTP and SSH actions occur.
-- Regions still call the hub control plane for access and quotas. A region with
-  its own database uses local PostgreSQL-first stores; without one it keeps the
-  Kubernetes fallback.
+- Regions call the hub control plane for access, quotas, RBAC, users, and
+  environment resolution. A region with its own database can run the control
+  plane locally; there is no Kubernetes fallback for those stores.
 
 ## Audit read API and UI
 
@@ -269,7 +265,7 @@ owner as appropriate.
 - **Audit writes are best effort.** The portal does not block a workspace
   operation if the audit insert fails, but it logs the error. Use Kubernetes
   audit logs as a second source when you need stronger guarantees.
-- **Forward-only migrations.** Add new files as `migrations/0005_*.sql`; do not
+- **Forward-only migrations.** Add new files as `migrations/0006_*.sql`; do not
   edit an applied migration.
 
 ## Audit actions
@@ -285,6 +281,7 @@ owner as appropriate.
 | Teams | `team.update`, `team.delete` |
 | User quotas | `user_quota.update`, `user_quota.delete` |
 | External auth | `external_auth.connect`, `external_auth.disconnect` |
+| Environment | `environment.set`, `environment.delete` |
 | Audit | `audit.view` |
 
 Use `outcome = 'denied'` for authorization failures and `outcome = 'error'` for
@@ -317,14 +314,13 @@ For production, also enable:
 
 ## Current behavior and next steps
 
-1. **PostgreSQL-first control plane (available now).** RBAC, OIDC users,
-   external auth tokens, share links, access state, and quotas live in
-   PostgreSQL when a database is configured. The `poddy-rbac` and
-   `poddy-users` ConfigMaps are reconciled mirrors; templates and workspaces
-   remain Kubernetes-first and are mirrored for audit and recovery.
-2. **Kubernetes fallback (available now).** Without a database, RBAC, users,
-   shares, and external auth tokens stay in Kubernetes. Access and quotas use
-   the in-process fallback and should stay at one portal replica.
+1. **PostgreSQL control plane (available now).** RBAC, OIDC users, external
+   auth tokens, share links, access state, quotas, and environment variables
+   live in PostgreSQL. The `poddy-rbac` and `poddy-users` ConfigMaps are
+   reconciled mirrors; templates and workspaces remain Kubernetes-first and are
+   mirrored for audit and recovery.
+2. **Legacy import (available now).** Existing Kubernetes RBAC, user, share,
+   external-auth, and access objects are imported once on first startup.
 3. **Restore (roadmap).** Add a command that recreates the mirror ConfigMaps,
    templates, and workspace StatefulSets from PostgreSQL in a new cluster.
 

@@ -10,6 +10,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/backup"
+	"poddy/internal/envstore"
 	"poddy/internal/extension"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
@@ -60,14 +61,15 @@ type Server struct {
 	OIDC            *auth.OIDC
 	OIDCRedirectURL string
 
-	RBAC     rbac.ConfigStore
-	Users    userstore.Directory
-	Shares   ShareStore
-	Metadata metadata.Store
-	Access   k8s.AccessStore
-	Quota    quota.Store
-	Metrics  *metrics.Metrics
-	Backups  *backup.Store
+	RBAC        rbac.ConfigStore
+	Users       userstore.Directory
+	Shares      ShareStore
+	Environment envstore.Store
+	Metadata    metadata.Store
+	Access      k8s.AccessStore
+	Quota       quota.Store
+	Metrics     *metrics.Metrics
+	Backups     *backup.Store
 
 	ExternalAuth             *externalauth.Manager
 	ExternalAuthURL          string
@@ -124,6 +126,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/internal/region/quotas/teams/{team}", s.regionSetTeamQuota)
 	mux.HandleFunc("DELETE /api/internal/region/quotas/teams/{team}", s.regionDeleteTeamQuota)
 	mux.HandleFunc("GET /api/users", s.users)
+	mux.HandleFunc("GET /api/environment", s.listEnvironment)
+	mux.HandleFunc("PUT /api/environment", s.setEnvironment)
+	mux.HandleFunc("DELETE /api/environment", s.deleteEnvironment)
+	mux.HandleFunc("POST /api/internal/region/environment", s.regionEnvironment)
+	mux.HandleFunc("DELETE /api/internal/region/environment", s.deleteRegionEnvironment)
 	mux.HandleFunc("GET /api/user-quotas", s.userQuotas)
 	mux.HandleFunc("GET /api/user-quotas/{identity}", s.userQuotaDetails)
 	mux.HandleFunc("PUT /api/user-quotas/{identity}", s.updateUserQuota)

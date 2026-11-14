@@ -202,6 +202,22 @@ const els = {
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
   manageTemplates: document.getElementById("manage-templates"),
+  manageEnv: document.getElementById("manage-env"),
+  envBack: document.getElementById("env-back"),
+  envCount: document.getElementById("env-count"),
+  envForm: document.getElementById("env-form"),
+  envScope: document.getElementById("env-scope"),
+  envTarget: document.getElementById("env-target"),
+  envTargetList: document.getElementById("env-target-list"),
+  envScopeHint: document.getElementById("env-scope-hint"),
+  envName: document.getElementById("env-name"),
+  envValue: document.getElementById("env-value"),
+  envSecret: document.getElementById("env-secret"),
+  envFormError: document.getElementById("env-form-error"),
+  envSave: document.getElementById("env-save"),
+  envCancel: document.getElementById("env-cancel"),
+  envRefresh: document.getElementById("env-refresh"),
+  envList: document.getElementById("env-list"),
   manageAudit: document.getElementById("manage-audit"),
   userRole: document.getElementById("user-role"),
   workspacesView: document.getElementById("workspaces-view"),
@@ -1269,6 +1285,7 @@ function showView(name) {
   els.usersView.hidden = name !== "users";
   els.teamsView.hidden = name !== "teams";
   els.templatesView.hidden = name !== "templates";
+  els.environmentView.hidden = name !== "environment";
   els.templateDetailView.hidden = name !== "template";
   els.auditView.hidden = name !== "audit";
   const active = name === "workspaces" || name === "workspace-detail" || name === "topology" || name === "map" ? els.manageWorkspaces
@@ -1277,9 +1294,10 @@ function showView(name) {
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams
     : (name === "templates" || name === "template") ? els.manageTemplates
+    : name === "environment" ? els.manageEnv
     : name === "audit" ? els.manageAudit
     : null;
-  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageAudit]) {
+  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageEnv, els.manageAudit]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

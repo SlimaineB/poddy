@@ -1,9 +1,9 @@
 # Architecture
 
-poddy is a stateless Go portal plus a set of Kubernetes workspace StatefulSets. It does
-not require a database: Kubernetes is the control plane and the source of truth.
-An optional PostgreSQL mirror is available for metadata durability, disaster
-recovery, and an audit trail.
+poddy is a stateless Go portal plus a set of Kubernetes workspace StatefulSets.
+The portal and bastion require PostgreSQL for the control plane; region managers
+call the hub instead and do not need database credentials. Kubernetes remains the
+runtime source of truth for workspaces and PVCs.
 
 ## High-level view
 
@@ -72,12 +72,12 @@ internal region-authenticated endpoint.
 | Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
 | Workspace StatefulSets | One StatefulSet per workspace, scaled 0/1; pod `poddy-<name>-0` runs `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
-| RBAC store | Admins, teams, template access, and quotas | ConfigMap |
+| RBAC store | Admins, teams, template access, and quotas | PostgreSQL; ConfigMap mirror |
 | Workspace state | Rendered pod template, schedule, and stopped state | Workspace StatefulSet |
-| User directory | OIDC identities seen by the portal | ConfigMap |
+| User directory | OIDC identities seen by the portal | PostgreSQL; ConfigMap mirror |
 | Self-service SSH keys | Public keys bound to signed-in identities | ConfigMap `poddy-user-ssh-keys` |
-| External auth store | Encrypted OAuth2 tokens per user and provider | Secret |
-| Metadata mirror (optional) | Durable copy of control-plane metadata and append-only audit events | External PostgreSQL |
+| External auth store | Encrypted OAuth2 tokens per user and provider | PostgreSQL; Secret migration source |
+| Control plane | RBAC, users, quotas, access, shares, tokens, environment variables, and append-only audit events | PostgreSQL |
 
 ## Request flows
 
@@ -137,7 +137,7 @@ environment values. The action is audited as `workspace.manifests.view`.
 1. An admin or an identity in `rbac.auditors` opens the **Audit** page.
 2. The portal calls `GET /api/audit`, which reads `poddy.audit_events` from PostgreSQL with optional action, outcome, actor, workspace, date, and text filters.
 3. The portal returns a paginated, read-only view. Reading the trail is itself audited as `audit.view`.
-4. Without PostgreSQL the endpoint returns `501`; audit storage is optional and never used for access decisions.
+4. Audit events are append-only and never used for access decisions. Region managers proxy audit reads through the hub.
 
 ### Quota enforcement
 
@@ -212,34 +212,30 @@ poddy ships two Go binaries from one module:
 | `internal/sshkeys` | `authorized_keys` parsing and key-to-owner mapping |
 | `internal/links` | Template link validation |
 | `internal/local` | Local SSH config, port-forward, VS Code/Cursor launch |
-| `internal/metadata` | Optional PostgreSQL mirror, migrations, and audit writer |
+| `internal/metadata` | PostgreSQL control-plane stores, migrations, and audit writer |
 | `cmd/poddy-bastion` | Standalone bastion entry point |
 
 ## State and storage
 
-poddy does not require an external database. Kubernetes is the default source of
-truth:
+Kubernetes is the runtime source of truth for workspaces, while PostgreSQL is
+the control plane:
 
 - **Workspaces** are StatefulSets with `app.kubernetes.io/name=poddy`, one pod each, scaled 0/1.
 - **Ownership** is the `poddy.io/owner` annotation.
 - **Stopped workspace specs** live in the workspace StatefulSet template; the legacy `poddy-state` ConfigMap is read at startup to migrate stopped workspaces.
 - **Templates** are ConfigMaps labeled `poddy.io/template=true`.
-- **RBAC** lives in the `poddy-rbac` ConfigMap without PostgreSQL, or in
-  PostgreSQL with the ConfigMap as a materialized mirror.
-- **OIDC users** live in the `poddy-users` ConfigMap without PostgreSQL, or in
-  PostgreSQL with the ConfigMap as a materialized mirror.
-- **External auth tokens** live in the `poddy-external-auth` Secret without
-  PostgreSQL, or AES-GCM encrypted in PostgreSQL.
-- **Share links** live in the `poddy-shares` Secret without PostgreSQL, or
-  hashed and encrypted in PostgreSQL.
+- **RBAC** is authoritative in PostgreSQL, with `poddy-rbac` as a materialized mirror.
+- **OIDC users** are authoritative in PostgreSQL, with `poddy-users` as a materialized mirror.
+- **External auth tokens** are AES-GCM encrypted in PostgreSQL; `poddy-external-auth` is a migration source.
+- **Share links** are hashed and encrypted in PostgreSQL; `poddy-shares` is a migration source.
+- **Environment variables** live in PostgreSQL; secret values are AES-GCM encrypted and injected through a per-workspace Kubernetes Secret.
 - **Persistent data** lives in one PVC per persistent workspace.
 
-An optional PostgreSQL database stores RBAC, OIDC users, external auth tokens,
-share links, team/user quotas, access state, templates, workspaces, and audit
-events. When `PODDY_DATABASE_URL` is set, PostgreSQL is authoritative for RBAC,
-users, tokens, shares, access, and quotas; templates and workspaces remain
-Kubernetes-first and are mirrored. The portal syncs metadata at startup and
-after writes; the bastion writes `ssh.connect` audit events. PVC contents are
+PostgreSQL stores RBAC, OIDC users, external auth tokens, share links,
+team/user quotas, access state, templates, workspaces, environment variables,
+and audit events. The portal syncs templates and workspaces as a mirror while
+Kubernetes remains their runtime source. The portal syncs metadata at startup
+and after writes; the bastion writes `ssh.connect` audit events. PVC contents are
 not stored in PostgreSQL. Use volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
 and [Data model](data-model.md) for the object-level details.

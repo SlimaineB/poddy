@@ -22,7 +22,7 @@ The Helm chart in `deploy/helm/poddy` installs the portal and SSH bastion as sep
 - Container registry access for custom images (published GHCR images are available)
 - Ingress controller (nginx, traefik, etc.) for HTTPS
 - Optional: LoadBalancer for SSH (or use Ingress TCP)
-- Optional: PostgreSQL 13+ for the [control-plane database and audit log](postgres-schema.md)
+- PostgreSQL 13+ for the [control plane, audit log, and environment secrets](postgres-schema.md)
 
 ### 1. Use the published image
 
@@ -74,13 +74,13 @@ portal's **SSH keys** page after signing in. Each key is bound to their
 identity and only reaches their own workspaces. Administrator-managed keys are
 optional break-glass keys; see [RBAC and SSH keys](rbac.md) if you need them.
 
-**Optional: PostgreSQL control plane and audit.** Without a database, RBAC,
-users, share links, and external auth tokens stay in Kubernetes. With
-PostgreSQL configured, it becomes authoritative for RBAC, OIDC users, encrypted
-external auth tokens, share links, access state, and quotas. The RBAC and user
-ConfigMaps become materialized mirrors; templates and workspaces remain
-Kubernetes-first and are mirrored for audit and recovery. Create a Secret with
-the connection string:
+**PostgreSQL control plane and audit.** PostgreSQL is required for the portal
+and bastion. It is authoritative for RBAC, OIDC users, encrypted external auth
+tokens, share links, access state, quotas, and environment variables/secrets.
+The RBAC and user ConfigMaps become materialized mirrors; templates and
+workspaces remain Kubernetes-first and are mirrored for audit and recovery.
+Region managers use the hub instead and do not need database credentials. Create
+a Secret with the connection string:
 
 ```bash
 kubectl create secret generic poddy-database \
@@ -99,18 +99,19 @@ database:
 
 The chart injects `PODDY_DATABASE_URL` into the portal and bastion. The portal
 applies embedded migrations on startup by default. Set `autoMigrate: false` if
-migrations are managed externally. If PostgreSQL is configured but not ready,
-the portal retries for `database.connectTimeout` (default `30s`) and then starts
-with the Kubernetes fallback; later audit/sync failures are logged without
-blocking workspace operations. Restart the portal after the database is
-available to enable PostgreSQL-first RBAC, users, tokens, shares, and audit.
+migrations are managed externally. If PostgreSQL or the schema is not ready, the
+portal retries for `database.connectTimeout` (default `30s`) and then exits. If
+the database becomes unavailable later, workspace operations continue but
+control-plane reads fail until PostgreSQL returns.
 
 On the first start with PostgreSQL, the portal imports the existing RBAC and
 user ConfigMaps, the external auth Secret, and (when an encryption key is
 configured) the share Secret. The import only runs when the corresponding table
 is empty. Set a stable `PODDY_EXTERNAL_AUTH_KEY` (or `PODDY_OIDC_SESSION_KEY` or
-`PODDY_DESKTOP_SECRET`) so encrypted tokens and share links survive restarts.
-The old external auth and share Secrets are not updated after the switch.
+`PODDY_DESKTOP_SECRET`) so encrypted tokens, share links, and environment
+secrets survive restarts. If no key is set, the database URL is the fallback
+key; keep it stable. The old external auth and share Secrets are not updated
+after the switch.
 
 #### PostgreSQL on EBS
 
@@ -183,11 +184,11 @@ workspace:
   # Existing Secrets in the workspace namespace for a private registry.
   imagePullSecrets: []
 
-# Optional: mirror metadata and audit events to PostgreSQL.
-# database:
-#   existingSecret: poddy-database
-#   urlKey: database-url
-#   autoMigrate: true
+# Required unless regionManager.enabled=true.
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
 
 ingress:
   enabled: true
@@ -241,11 +242,11 @@ kubectl -n poddy-system get deploy
 poddy is designed for small and medium engineering teams, not as a multi-tenant SaaS control plane. A single portal replica comfortably handles hundreds of workspaces and low thousands of known users. The practical limits are:
 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
-- **ConfigMap size**: RBAC and user data live in ConfigMaps when PostgreSQL is not configured (1 MiB limit per ConfigMap). With PostgreSQL configured, these ConfigMaps are mirrors and PostgreSQL holds the authoritative records. Workspace specs live in StatefulSets, not ConfigMaps.
+- **ConfigMap size**: `poddy-rbac` and `poddy-users` are mirrors of PostgreSQL and stay well under the 1 MiB per-ConfigMap limit. PostgreSQL holds the authoritative records. Workspace specs live in StatefulSets, not ConfigMaps.
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key, the external-auth/share encryption key, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for RBAC, OIDC users, external auth tokens, share links, workspace access, and quotas when configured; it is also a metadata mirror and audit read path for workspaces and templates. Kubernetes remains the runtime source of truth for workspaces and templates.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for RBAC, OIDC users, external auth tokens, share links, workspace access, quotas, and environment variables; it is also a metadata mirror and audit read path for workspaces and templates. Kubernetes remains the runtime source of truth for workspaces and templates.
 
 ### HA state matrix
 
@@ -257,10 +258,11 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 | RBAC, teams, template ownership | PostgreSQL `rbac_documents`; ConfigMap `poddy-rbac` mirror | yes; PostgreSQL is authoritative when configured |
 | OIDC users | PostgreSQL `users`; ConfigMap `poddy-users` mirror | yes; PostgreSQL is authoritative when configured |
 | Templates | Labeled ConfigMaps | yes |
-| Access requests, grants, presence | PostgreSQL (`access_*`) | yes; the in-memory fallback is single-replica only |
-| User and team quotas | PostgreSQL (`user_quotas`, `team_quotas`) | yes; the in-memory fallback is single-replica only |
-| External auth tokens | PostgreSQL `external_auth_tokens`; Secret fallback | yes; requires a stable encryption key |
-| Workspace share links | PostgreSQL `share_links`; Secret fallback | yes; requires a stable encryption key |
+| Access requests, grants, presence | PostgreSQL (`access_*`) | yes |
+| User and team quotas | PostgreSQL (`user_quotas`, `team_quotas`) | yes |
+| External auth tokens | PostgreSQL `external_auth_tokens` | yes; requires a stable encryption key |
+| Workspace share links | PostgreSQL `share_links` | yes; requires a stable encryption key |
+| Environment variables and secrets | PostgreSQL `env_vars`; per-workspace Secret | yes; requires a stable encryption key for secrets |
 | OIDC sessions | Signed cookie | yes when every replica uses the same `PODDY_OIDC_SESSION_KEY` |
 | Desktop tickets | Signed ticket | yes when every replica uses the same stable key |
 | Region tunnels | Hub process memory | no; keep the hub at one replica or use sticky routing |
@@ -282,7 +284,7 @@ at the same time; a high QPS with a low burst still throttles short spikes.
 - **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
 - **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
 - **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
-- **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads require PostgreSQL; the page returns `501` when the database is not configured.
+- **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads use PostgreSQL; region managers proxy audit reads through the hub.
 - **DNS overrides**: set `hostAliases` to add `/etc/hosts` entries to the portal and bastion pods, for example when OIDC or a database hostname is not resolvable through cluster DNS.
 
 ### Multi-region
@@ -467,7 +469,7 @@ See [links.md](links.md) for examples.
 
 ### Template access and teams
 
-Without PostgreSQL, the portal stores global admins, teams, and per-template access in the `poddy-rbac` ConfigMap (key `rbac.yaml`) in `workspaceNamespace`. With PostgreSQL, it stores them in `rbac_documents` and reconciles the same ConfigMap as a mirror. It creates the ConfigMap on first write if it does not exist; the Helm chart can seed it from `rbac.admins`, `rbac.teams`, and `rbac.templates` for the initial import.
+The portal stores global admins, teams, and per-template access in PostgreSQL `rbac_documents` and reconciles the `poddy-rbac` ConfigMap (key `rbac.yaml`) in `workspaceNamespace` as a mirror. It creates the ConfigMap on first write if it does not exist; the Helm chart can seed it from `rbac.admins`, `rbac.teams`, and `rbac.templates` for the initial import.
 
 - Admins see and manage every workspace and template.
 - Template owners manage `users`/`teams` for their templates; only admins manage owners and teams.
@@ -590,7 +592,7 @@ The chart creates an Ingress for the HTTP service (port 80). The portal detects 
 
 ## OIDC / SSO
 
-poddy supports the OpenID Connect authorization code flow with PKCE. When enabled, the login page shows **Continue with SSO**; sessions are stateless, HMAC-signed cookies (no database).
+poddy supports the OpenID Connect authorization code flow with PKCE. When enabled, the login page shows **Continue with SSO**; sessions are stateless, HMAC-signed cookies; session state is not stored in PostgreSQL.
 
 ### Provider configuration
 

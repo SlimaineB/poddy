@@ -173,6 +173,9 @@ func (m *Manager) startStatefulSet(ctx context.Context, sts *appsv1.StatefulSet)
 	}
 
 	pod := podFromStatefulSet(sts)
+	if err := m.applyEnvironment(ctx, pod, state.Owner, state.Template, name); err != nil {
+		return Workspace{}, err
+	}
 	if err := m.applySSHKeys(ctx, pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
 	}
@@ -231,6 +234,9 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 	}
 
 	pod := m.podFromState(state)
+	if err := m.applyEnvironment(ctx, pod, state.Owner, state.Template, name); err != nil {
+		return Workspace{}, err
+	}
 	if err := m.applySSHKeys(ctx, pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
 	}
@@ -302,6 +308,9 @@ func (m *Manager) restart(ctx context.Context, name string) (Workspace, error) {
 
 	state := stateFromStatefulSet(sts)
 	pod := podFromStatefulSet(sts)
+	if err := m.applyEnvironment(ctx, pod, state.Owner, state.Template, name); err != nil {
+		return Workspace{}, err
+	}
 	if err := m.applySSHKeys(ctx, pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
 	}
@@ -430,6 +439,7 @@ func (m *Manager) stateForPod(ctx context.Context, pod *corev1.Pod) WorkspaceSta
 	}
 	delete(state.Annotations, annotationState)
 	stripExternalAuthEnv(&state.Spec, externalAuthEnvNames(pod))
+	stripEnvironmentEnv(&state.Spec, environmentEnvNames(pod), EnvironmentSecretName(state.Name))
 	state.Spec.NodeName = ""
 	for _, volume := range pod.Spec.Volumes {
 		if volume.PersistentVolumeClaim == nil {

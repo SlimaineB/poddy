@@ -120,6 +120,10 @@ func auditRoute(r *http.Request) (string, string) {
 		return "team.update", "team"
 	case "DELETE /api/teams/{name}":
 		return "team.delete", "team"
+	case "PUT /api/environment":
+		return "environment.set", "environment"
+	case "DELETE /api/environment":
+		return "environment.delete", "environment"
 	case "PUT /api/user-quotas/{identity}":
 		return "user_quota.update", "user"
 	case "DELETE /api/user-quotas/{identity}":

@@ -52,6 +52,7 @@ const (
 	// annotationExternalAuthEnv records the environment variable names injected
 	// from external auth so tokens are stripped from stopped StatefulSet templates.
 	annotationExternalAuthEnv = "poddy.io/external-auth-env"
+	annotationEnvironmentEnv  = "poddy.io/environment-env"
 	annotationApps            = "poddy.io/apps"
 
 	envPortalURL       = "PODDY_PORTAL_URL"
@@ -150,6 +151,7 @@ type Manager struct {
 	HelperImage         string
 	ExternalAuth        ExternalAuthFunc
 	ExternalAuthToken   WorkspaceTokenFunc
+	Environment         EnvironmentFunc
 	AgentURL            string
 	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
@@ -627,10 +629,18 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 		pod.Annotations[annotationOwner] = req.Owner
 	}
-	if err := m.applySSHKeys(ctx, pod, req.Name, req.Owner); err != nil {
+	cleanup := func() {
 		if createdPVC {
 			_ = m.deletePVC(ctx, req.Name)
 		}
+		_ = m.deleteEnvironmentSecret(ctx, req.Name)
+	}
+	if err := m.applyEnvironment(ctx, pod, req.Owner, templateName, req.Name); err != nil {
+		cleanup()
+		return Workspace{}, err
+	}
+	if err := m.applySSHKeys(ctx, pod, req.Name, req.Owner); err != nil {
+		cleanup()
 		return Workspace{}, fmt.Errorf("SSH keys: %w", err)
 	}
 	if pod.Spec.RestartPolicy == "" {
@@ -642,15 +652,11 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 	if req.ExternalAuthReady {
 		applyExternalAuthEnv(pod, req.Owner, req.Name, req.PortalURL, tmpl.ExternalAuth, req.ExternalAuthEnv, req.WorkspaceToken)
 	} else if err := m.applyExternalAuth(ctx, pod, req.Owner, req.Name, req.PortalURL, tmpl.ExternalAuth); err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
+		cleanup()
 		return Workspace{}, err
 	}
 	if err := m.applyAgentEnv(pod, req.Name, req.Owner); err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
+		cleanup()
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
 	if resolved.apps != nil {
@@ -676,18 +682,14 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 	}
 
 	if err := m.ensureGoverningService(ctx); err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
+		cleanup()
 		return Workspace{}, fmt.Errorf("governing service: %w", err)
 	}
 
 	sts := m.buildStatefulSet(req.Name, pod, 1)
 	created, err := m.Client.AppsV1().StatefulSets(m.Namespace).Create(ctx, sts, metav1.CreateOptions{})
 	if err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
-		}
+		cleanup()
 		return Workspace{}, err
 	}
 	return workspaceWithPhase(workspaceFromStatefulSet(created), "Pending"), nil
@@ -754,6 +756,9 @@ func (m *Manager) delete(ctx context.Context, name string) error {
 		return err
 	}
 	if err := m.deleteSSHKeysSecret(ctx, name); err != nil {
+		return err
+	}
+	if err := m.deleteEnvironmentSecret(ctx, name); err != nil {
 		return err
 	}
 	if stateExists {
