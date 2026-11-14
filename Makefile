@@ -28,7 +28,7 @@ export KUBECONFIG
 
 .PHONY: all build test vet fmt lint docs image values-hub values-eu values-us \
         deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help \
-        sync-templates check-templates
+        sync-templates check-templates check-helm-render
 
 all: build test vet
 
@@ -114,6 +114,9 @@ check-templates:
 		}; \
 	done
 
+check-helm-render:
+	python3 scripts/check-helm-render.py
+
 clean:
 	rm -f $(VALUES_DIR)/poddy-$(IMAGE_TAG).tar $(VALUES_DIR)/poddy-values.yaml \
 	      $(VALUES_DIR)/poddy-eu-values.yaml $(VALUES_DIR)/poddy-us-values.yaml
@@ -127,6 +130,7 @@ help:
 	@echo "  make docs         - mkdocs build --strict"
 	@echo "  make sync-templates - copy built-in templates into poddy-templates chart"
 	@echo "  make check-templates - verify built-in templates are in sync"
+	@echo "  make check-helm-render - verify charts render one ConfigMap per document"
 	@echo "  make image        - build podman image and import into k3s containerd"
 	@echo "  make deploy-hub   - helm upgrade hub release (poddy-system)"
 	@echo "  make deploy-eu    - helm upgrade eu region"

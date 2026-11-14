@@ -195,12 +195,12 @@ ingress:
 ### 4. Install
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.6 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.7 -f values.yaml
 
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.6 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.7 -f templates-values.yaml
 ```
-From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.6` with the published chart version when a new release is cut.
+From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.7` with the published chart version when a new release is cut.
 
 The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#adding-a-template).
 
@@ -234,7 +234,23 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key, the external-auth key when providers are enabled, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching, pagination, and the optional [PostgreSQL metadata mirror](postgres-schema.md) for audit and quota reporting. PostgreSQL is a metadata mirror and the audit read path, not the source of truth for workspace, quota, or RBAC decisions; it does not remove the ConfigMap size limit by itself.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for workspace access and quotas, and a metadata mirror plus audit read path for workspaces, RBAC, users, and templates. Kubernetes remains the runtime source of truth for workspaces, RBAC, and templates. PostgreSQL does not remove the ConfigMap size limit by itself.
+
+### HA state matrix
+
+| State | Stored in | Shared across portal replicas |
+|-------|-----------|-------------------------------|
+| Workspace Pods and PVCs | Kubernetes | yes |
+| Stopped workspace specs and schedule state | ConfigMap `poddy-state` | yes, through the API and retry-on-conflict |
+| RBAC, teams, template ownership | ConfigMap `poddy-rbac` | yes |
+| Templates | Labeled ConfigMaps | yes |
+| Access requests, grants, presence | PostgreSQL (`access_*`) | yes; the in-memory fallback is single-replica only |
+| User and team quotas | PostgreSQL (`user_quotas`, `team_quotas`) | yes; the in-memory fallback is single-replica only |
+| OIDC sessions | Signed cookie | yes when every replica uses the same `PODDY_OIDC_SESSION_KEY` |
+| External auth tokens and desktop tickets | Kubernetes Secrets and their keys | yes when every replica uses the same Stable key |
+| Region tunnels | Hub process memory | no; keep the hub at one replica or use sticky routing |
+
+Set `replicaCount` above one only with the session key (and external-auth key when providers are enabled) in stable Secrets. Enable the portal and bastion PodDisruptionBudgets, and give bastion replicas a shared SSH host key. See [PostgreSQL metadata and audit](postgres-schema.md) for the tables and their retention.
 
 ### Kubernetes client rate limits
 
@@ -662,7 +678,7 @@ if unauthenticated users should install them.
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.6 -f values.yaml
+  -n poddy-system --version 0.1.7 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.

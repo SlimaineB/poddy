@@ -18,11 +18,11 @@ namespace or set `namespace`:
 ```bash
 # Install directly in the portal's workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.6 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.7 -f templates-values.yaml
 
 # Or keep the release elsewhere and point it at the workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.6 --set namespace=poddy-workspaces -f templates-values.yaml
+  -n poddy-system --version 0.1.7 --set namespace=poddy-workspaces -f templates-values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -38,7 +38,7 @@ helm upgrade --install poddy-templates deploy/helm/poddy-templates \
   -n poddy-workspaces -f templates-values.yaml
 ```
 
-Replace `0.1.6` with the published chart version when a new release is cut.
+Replace `0.1.7` with the published chart version when a new release is cut.
 
 ## Default templates
 
@@ -183,6 +183,9 @@ Rules for multi-team setups:
   Kustomize; same labels, same behavior.
 - **One repository rendering for several namespaces**: set `namespace` per
   release instead of relying on the release namespace.
+- **Template content is cluster-privileged**: a template controls the pod spec.
+  Protect the ConfigMap write path and enforce admission policies; see
+  [Security and trust](../../../docs/templates.md#security-and-trust).
 
 Example team values (`builtins.enabled=false`):
 

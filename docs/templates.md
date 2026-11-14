@@ -21,6 +21,24 @@ For ConfigMaps, the template name comes from the `poddy.io/template-name` label,
 
 ConfigMaps can also carry `poddy.io/template-version` and `poddy.io/template-active=true`. This lets several versions of the same template coexist; the portal serves the active one. See [Versioning and rollback](#versioning-and-rollback).
 
+## Security and trust
+
+A template's `pod.yaml` is merged into the final Pod, so whoever can write a
+template can control the pod spec: privileged containers, hostPath volumes, host
+networking, service account tokens, and so on. Treat template ConfigMaps as
+cluster-privileged objects.
+
+- Only trusted operators and CI pipelines should have write access to the
+  template ConfigMaps (Kubernetes RBAC). Template `owners` in poddy RBAC manage
+  who can use a template, not its content.
+- A per-team GitOps repository that renders templates needs deploy credentials:
+  protect it like any other path to cluster-admin.
+- Use admission policies (Kyverno, OPA Gatekeeper, Pod Security Admission) to
+  reject privileged pods, hostPath volumes, or root users when teams do not need
+  them. poddy does not vet pod fields.
+- Poddy merges the overlay over its defaults; the defaults are not a security
+  boundary.
+
 ## template.yaml schema
 
 ```yaml

@@ -4,7 +4,12 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "deploy/helm/**"
+      - "deploy/helm/**/Chart.yaml"
+      - "deploy/helm/**/values.yaml"
+      - "deploy/helm/**/values.schema.json"
+      - "deploy/helm/**/templates/**"
+      - "deploy/helm/**/files/**"
+      - "scripts/check-helm-render.py"
       - ".github/workflows/helm-publish.yml"
     tags: ["v*"]
   workflow_dispatch:
@@ -46,8 +51,8 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Check built-in template sync
-        run: make check-templates
+      - name: Check chart templates
+        run: make check-templates check-helm-render
 
       - name: Lint charts
         run: |

@@ -11,7 +11,7 @@ directly from the registry:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.6 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.7 -f values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -30,10 +30,10 @@ Workspace templates are a separate release:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.6 -f templates-values.yaml
+  -n poddy-system --version 0.1.7 -f templates-values.yaml
 ```
 
-Replace `0.1.6` with the published chart version when a new release is cut.
+Replace `0.1.7` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
@@ -452,7 +452,7 @@ The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` 
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.6 -f values.yaml
+  -n poddy-system --version 0.1.7 -f values.yaml
 ```
 
 ## Uninstalling
