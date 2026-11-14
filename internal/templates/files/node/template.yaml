@@ -43,6 +43,12 @@ parameters:
     options:
       - label: Ephemeral (no persistence)
         value: ""
+      - label: 200 MiB
+        value: 200Mi
+      - label: 500 MiB
+        value: 500Mi
+      - label: 1 GiB
+        value: 1Gi
       - label: 5 GiB
         value: 5Gi
       - label: 10 GiB
