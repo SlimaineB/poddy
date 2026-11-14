@@ -38,7 +38,8 @@ npm run package
 
 The VSIX is written next to `package.json` and is ignored by Git. The
 `VS Code extension` GitHub Actions workflow builds it on changes and attaches
-the VSIX to `v*` releases.
+the VSIX to a `v*` release when the tag matches the extension version. Other
+app tags skip extension packaging and publishing instead of failing.
 
 ## Release
 

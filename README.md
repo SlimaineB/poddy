@@ -310,7 +310,7 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 - **CI** runs Go formatting/vet/tests, JavaScript syntax checks, Helm lint/template, and Docker image builds.
 - **Publish images** builds and pushes the portal/bastion image, workspace base, and workspace images to GHCR on pushes to `main`/`master` and `v*` tags.
-- **Poddy extension** packages the VSIX on changes and attaches it to `v*` GitHub releases; manual releases validate the tag, create it when needed, and update the release. Branch builds are available as workflow artifacts. The portal shows the extension version and download link.
+- **Poddy extension** packages the VSIX on changes and attaches it to a `v*` GitHub release only when the tag matches `vscode-extension/package.json`; unrelated app tags skip extension packaging and publishing instead of failing. Manual releases validate the tag, create it when needed, and update the release. Branch builds are available as workflow artifacts. The portal shows the extension version and download link.
 - **Pages** builds the MkDocs Material site and deploys it to GitHub Pages.
 
 Published images use the repository owner's GHCR namespace: `ghcr.io/slimaineb/poddy`, `ghcr.io/slimaineb/poddy-workspace-base`, `ghcr.io/slimaineb/poddy-workspace`, `ghcr.io/slimaineb/poddy-workspace-node`, and `ghcr.io/slimaineb/poddy-workspace-python`. `latest` follows `main`; `v*` tags get semver tags. Make the GHCR packages public for the quick start; private workspace images need `imagePullSecrets` in the workspace pod template. Set `workspace.imageRegistry` (global fallback), `workspace.imageRegistryMap` (per-host mirrors), and `workspace.imagePullSecrets` to pull workspace and sidecar images through a private registry mirror.

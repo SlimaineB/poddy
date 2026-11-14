@@ -49,27 +49,8 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        working-directory: vscode-extension
-        run: npm ci
-
-      - name: Check JavaScript syntax
-        working-directory: vscode-extension
-        run: npm run check
-
-      - name: Package VSIX
-        working-directory: vscode-extension
-        run: npm run package -- --out "poddy-remote-${{ steps.version.outputs.version }}.vsix"
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: poddy-remote-vsix-${{ steps.version.outputs.version }}
-          path: vscode-extension/poddy-remote-${{ steps.version.outputs.version }}.vsix
-          if-no-files-found: error
-          retention-days: 30
-
       - name: Validate release tag
+        id: release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -81,16 +62,44 @@ jobs:
             tag="v${INPUT_VERSION#v}"
           fi
           if [[ "$tag" != "v${VERSION}" ]]; then
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              echo "::notice title=VS Code extension::tag $tag does not match extension version v${VERSION}; skipping VSIX publish"
+              exit 0
+            fi
             echo "tag $tag does not match extension version v${VERSION}" >&2
             exit 1
           fi
-          echo "release_tag=$tag" >> "$GITHUB_ENV"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Check JavaScript syntax
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        working-directory: vscode-extension
+        run: npm run check
+
+      - name: Package VSIX
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        working-directory: vscode-extension
+        run: npm run package -- --out "poddy-remote-${{ steps.version.outputs.version }}.vsix"
+
+      - name: Upload VSIX artifact
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: poddy-remote-vsix-${{ steps.version.outputs.version }}
+          path: vscode-extension/poddy-remote-${{ steps.version.outputs.version }}.vsix
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create release tag
-        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        if: steps.release.outputs.release_tag != '' && github.event_name == 'workflow_dispatch' && inputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ env.release_tag }}
+          TAG: ${{ steps.release.outputs.release_tag }}
         run: |
           remote="$(git ls-remote --tags origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}" | cut -f1 | tail -n1)"
           if [[ -n "$remote" ]]; then
@@ -106,10 +115,10 @@ jobs:
           fi
 
       - name: Publish VSIX to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+        if: steps.release.outputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ env.release_tag }}
+          TAG: ${{ steps.release.outputs.release_tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           asset="vscode-extension/poddy-remote-${VERSION}.vsix"
