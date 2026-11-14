@@ -275,8 +275,8 @@ The portal hot-reloads the catalog; no portal restart is needed.
 - Prefer Kustomize or a small Helm release when the team repository cannot run
   the main chart. Removing a template from Git deletes its ConfigMap and the
   portal drops it; existing workspaces keep their spec.
-- See the [chart README](../deploy/helm/poddy-templates/README.md#gitops-and-one-repository-per-team)
-  for the multi-team rules and an example values file.
+- See `deploy/helm/poddy-templates/README.md` for the multi-team rules and an
+  example values file.
 
 ## Versioning and rollback
 
