@@ -28,7 +28,11 @@ rules:
   # Workspace lifecycle.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Startup logs shown in the workspace details dialog.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   # Browser terminal.
   - apiGroups: [""]
     resources: ["pods/exec"]
@@ -37,10 +41,18 @@ rules:
   - apiGroups: [""]
     resources: ["pods/portforward"]
     verbs: ["get", "create"]
+  # Workspace runtime: one StatefulSet per workspace, scaled 0/1.
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Headless Service for StatefulSet network identity.
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "create"]
   # Persistent workspace volumes.
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "delete"]
   # RBAC document: global admins, teams and template assignments.
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -48,7 +60,7 @@ rules:
   # External auth token store and OIDC user directory.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

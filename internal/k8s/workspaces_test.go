@@ -27,8 +27,10 @@ func newTestManager() *Manager {
 	if err != nil {
 		panic(err)
 	}
+	client := fake.NewClientset()
+	installFakeController(client)
 	return &Manager{
-		Client:          fake.NewClientset(),
+		Client:          client,
 		Namespace:       "poddy",
 		Templates:       catalog,
 		DefaultTemplate: "base",
@@ -47,7 +49,7 @@ func TestCreateWorkspace(t *testing.T) {
 		t.Fatalf("unexpected workspace: %+v", ws)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +311,7 @@ spec:
 		t.Fatalf("storage class = %v", pvc.Spec.StorageClassName)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +334,7 @@ func TestCreateRewritesImageRegistry(t *testing.T) {
 		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +366,7 @@ func TestCreateRewritesImageRegistryPathOnce(t *testing.T) {
 		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +398,7 @@ func TestCreateRewritesImageRegistryMap(t *testing.T) {
 		t.Fatalf("workspace image = %q, want %q", ws.Image, want)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +430,7 @@ func TestCreateWithTemplateParameters(t *testing.T) {
 		t.Fatalf("template = %q", ws.Template)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-gows", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("gows"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +514,7 @@ func TestDeleteWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("pod still exists: %v", err)
 	}
 	if _, err := m.Client.CoreV1().PersistentVolumeClaims("poddy").Get(ctx, "poddy-app", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
@@ -548,7 +550,7 @@ func TestCreateWorkspaceWithSSH(t *testing.T) {
 	if _, err := m.Create(ctx, CreateRequest{Name: "ssh"}); err != nil {
 		t.Fatal(err)
 	}
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-ssh", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("ssh"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,8 +649,9 @@ func TestStopStartRestartWorkspace(t *testing.T) {
 	if pod.Labels[labelWorkspace] != "app" || pod.Labels[labelTemplate] != "base" {
 		t.Fatalf("labels = %+v", pod.Labels)
 	}
-	if _, err := m.State(ctx, "app"); !apierrors.IsNotFound(err) {
-		t.Fatalf("state not cleared: %v", err)
+	sts, err := m.GetStatefulSet(ctx, "app")
+	if err != nil || statefulSetReplicas(sts) != 1 {
+		t.Fatalf("workspace not running after start: sts=%+v err=%v", sts, err)
 	}
 
 	pod.Annotations["test.poddy.io/marker"] = "before"
@@ -763,7 +766,7 @@ func TestCreateWorkspaceUsesOwnerSSHKeys(t *testing.T) {
 	if _, err := m.Create(context.Background(), CreateRequest{Name: "alice-ws", Owner: "alice@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(context.Background(), "poddy-alice-ws", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(context.Background(), PodName("alice-ws"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -941,7 +944,7 @@ func TestCreateQuotaCheckRunsBeforeResources(t *testing.T) {
 	if _, err := m.Client.CoreV1().PersistentVolumeClaims("poddy").Get(ctx, "poddy-blocked", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("pvc should not exist: %v", err)
 	}
-	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-blocked", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("blocked"), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("pod should not exist: %v", err)
 	}
 }
@@ -970,5 +973,130 @@ func TestListIncludesWorkspaceUsage(t *testing.T) {
 	ws := list[0]
 	if ws.CPU != "2" || ws.Memory != "1Gi" || ws.Storage != "7Gi" {
 		t.Fatalf("usage = cpu %q memory %q storage %q", ws.CPU, ws.Memory, ws.Storage)
+	}
+}
+
+func TestLegacyBarePodMigratesToStatefulSet(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy",
+			Namespace: "poddy",
+			Labels: map[string]string{
+				labelName:      AppName,
+				labelWorkspace: "legacy",
+			},
+			Annotations: map[string]string{annotationOwner: "alice@example.com"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: ContainerName, Image: "example/workspace:1"}},
+		},
+	}
+	if _, err := m.Client.CoreV1().Pods("poddy").Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.Get(ctx, "legacy"); err != nil {
+		t.Fatalf("legacy pod lookup: %v", err)
+	}
+	ws, err := m.GetWorkspace(ctx, "legacy")
+	if err != nil {
+		t.Fatalf("legacy workspace lookup: %v", err)
+	}
+	if ws.Owner != "alice@example.com" {
+		t.Fatalf("owner = %q", ws.Owner)
+	}
+
+	stopped, err := m.Stop(ctx, "legacy")
+	if err != nil {
+		t.Fatalf("stop legacy: %v", err)
+	}
+	if stopped.Phase != "Stopped" {
+		t.Fatalf("phase = %q", stopped.Phase)
+	}
+	if _, err := m.Get(ctx, "legacy"); !apierrors.IsNotFound(err) {
+		t.Fatalf("legacy pod still present: %v", err)
+	}
+	sts, err := m.GetStatefulSet(ctx, "legacy")
+	if err != nil {
+		t.Fatalf("statefulset: %v", err)
+	}
+	if statefulSetReplicas(sts) != 0 {
+		t.Fatalf("replicas = %d", statefulSetReplicas(sts))
+	}
+
+	if _, err := m.Start(ctx, "legacy"); err != nil {
+		t.Fatalf("start migrated workspace: %v", err)
+	}
+	if _, err := m.Get(ctx, "legacy"); err != nil {
+		t.Fatalf("pod after start: %v", err)
+	}
+
+	legacy2 := pod.DeepCopy()
+	legacy2.Name = "legacy2"
+	legacy2.Labels = copyStringMap(pod.Labels)
+	legacy2.Labels[labelWorkspace] = "legacy2"
+	if _, err := m.Client.CoreV1().Pods("poddy").Create(ctx, legacy2, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Start(ctx, "legacy2"); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("start running legacy = %v, want already running", err)
+	}
+	if _, err := m.Restart(ctx, "legacy2"); err != nil {
+		t.Fatalf("restart legacy: %v", err)
+	}
+	if _, err := m.Get(ctx, "legacy2"); err != nil {
+		t.Fatalf("pod after legacy restart: %v", err)
+	}
+	if _, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "legacy2", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("legacy pod still present after restart: %v", err)
+	}
+}
+
+func TestMigrateLegacyStoppedState(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+
+	state := WorkspaceState{
+		Name:     "old",
+		Template: "base",
+		Owner:    "alice@example.com",
+		Storage:  "5Gi",
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: ContainerName, Image: "example/workspace:1"}},
+		},
+	}
+	if err := m.stateStore().Save(ctx, map[string]WorkspaceState{"old": state}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.MigrateLegacy(ctx); err != nil {
+		t.Fatal(err)
+	}
+	sts, err := m.GetStatefulSet(ctx, "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statefulSetReplicas(sts) != 0 {
+		t.Fatalf("replicas = %d", statefulSetReplicas(sts))
+	}
+	ws, err := m.GetWorkspace(ctx, "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.Phase != "Stopped" || ws.Owner != "alice@example.com" || ws.Template != "base" {
+		t.Fatalf("workspace = %+v", ws)
+	}
+	if _, ok, err := m.stateStore().Get(ctx, "old"); err != nil || ok {
+		t.Fatalf("legacy state after migration: ok=%v err=%v", ok, err)
+	}
+
+	if _, err := m.Start(ctx, "old"); err != nil {
+		t.Fatalf("start migrated workspace: %v", err)
+	}
+	if _, err := m.Get(ctx, "old"); err != nil {
+		t.Fatalf("pod after start: %v", err)
 	}
 }

@@ -76,11 +76,11 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		s.enrichWorkspaceAccess(r.Context(), list, id, cfg)
 	}
 	if !pagedRequest(r) {
-		writeJSON(w, http.StatusOK, list)
+		writeJSONETag(w, r, http.StatusOK, list)
 		return
 	}
 	page, perPage := pageRequest(r)
-	writeJSON(w, http.StatusOK, paginateResult(list, page, perPage))
+	writeJSONETag(w, r, http.StatusOK, paginateResult(list, page, perPage))
 }
 
 func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {

@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	// DefaultStateConfigMap stores the pod specs of stopped workspaces.
+	// DefaultStateConfigMap is the legacy location of stopped workspace specs.
+	// StatefulSets are now the source of truth; the ConfigMap is only read for
+	// migration and for workspaces created by older releases.
 	DefaultStateConfigMap = "poddy-state"
 	stateDataKey          = "workspaces.yaml"
-	// annotationState keeps the original rendered spec on the pod so a stop
-	// can persist it even if the template catalog changes later.
+	// annotationState keeps the original rendered spec on legacy pods.
 	annotationState = "poddy.io/state"
 )
 
@@ -51,7 +52,7 @@ type stateDocument struct {
 	Workspaces map[string]WorkspaceState `json:"workspaces" yaml:"workspaces"`
 }
 
-// StateStore reads and writes stopped workspace specs in a ConfigMap.
+// StateStore reads and writes the legacy stopped workspace ConfigMap.
 type StateStore struct {
 	client    kubernetes.Interface
 	namespace string
@@ -68,23 +69,32 @@ func NewStateStore(client kubernetes.Interface, namespace, name string) *StateSt
 
 // Load returns the stopped workspaces. A missing ConfigMap is not an error.
 func (s *StateStore) Load(ctx context.Context) (map[string]WorkspaceState, error) {
+	states := map[string]WorkspaceState{}
 	cm, err := s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, s.name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		return map[string]WorkspaceState{}, nil
+		return states, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var doc stateDocument
-	if raw := strings.TrimSpace(cm.Data[stateDataKey]); raw != "" {
-		if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
-			return nil, fmt.Errorf("parse workspace state: %w", err)
-		}
+	doc, err := parseStateDocument(cm)
+	if err != nil {
+		return nil, err
 	}
-	if doc.Workspaces == nil {
-		doc.Workspaces = map[string]WorkspaceState{}
+	for key, state := range doc.Workspaces {
+		states[key] = state
 	}
-	return doc.Workspaces, nil
+	return states, nil
+}
+
+// Get returns one stopped workspace.
+func (s *StateStore) Get(ctx context.Context, name string) (WorkspaceState, bool, error) {
+	states, err := s.Load(ctx)
+	if err != nil {
+		return WorkspaceState{}, false, err
+	}
+	state, ok := states[name]
+	return state, ok, nil
 }
 
 // Update applies mutate to the latest version of the stopped workspace
@@ -93,51 +103,56 @@ func (s *StateStore) Update(ctx context.Context, mutate func(map[string]Workspac
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		cm, err := s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, s.name, metav1.GetOptions{})
-		notFound := apierrors.IsNotFound(err)
-		states := map[string]WorkspaceState{}
-		if err == nil {
-			var doc stateDocument
-			if raw := strings.TrimSpace(cm.Data[stateDataKey]); raw != "" {
-				if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
-					return fmt.Errorf("parse workspace state: %w", err)
-				}
-			}
-			if doc.Workspaces != nil {
-				states = doc.Workspaces
-			}
-		} else if !notFound {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		states, err := s.Load(ctx)
+		if err != nil {
 			return err
 		}
 		if err := mutate(states); err != nil {
 			return err
 		}
-		raw, err := yaml.Marshal(stateDocument{Workspaces: states})
-		if err != nil {
-			return fmt.Errorf("marshal workspace state: %w", err)
-		}
+		return s.writeConfigMap(ctx, states)
+	})
+}
+
+func (s *StateStore) writeConfigMap(ctx context.Context, states map[string]WorkspaceState) error {
+	cm, err := s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, s.name, metav1.GetOptions{})
+	notFound := apierrors.IsNotFound(err)
+	if err != nil && !notFound {
+		return err
+	}
+	if len(states) == 0 {
 		if notFound {
-			_, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: s.name},
-				Data:       map[string]string{stateDataKey: string(raw)},
-			}, metav1.CreateOptions{})
-			if apierrors.IsAlreadyExists(err) {
-				return apierrors.NewConflict(corev1.Resource("configmaps"), s.name, err)
-			}
+			return nil
+		}
+		if err := s.client.CoreV1().ConfigMaps(s.namespace).Delete(ctx, s.name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		if cm.Data == nil {
-			cm.Data = map[string]string{}
-		}
-		cm.Data[stateDataKey] = string(raw)
-		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, cm, metav1.UpdateOptions{})
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("update workspace state %s: %w", s.name, err)
+		return nil
 	}
-	return nil
+	raw, err := yaml.Marshal(stateDocument{Workspaces: states})
+	if err != nil {
+		return fmt.Errorf("marshal workspace state: %w", err)
+	}
+	if notFound {
+		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: s.name},
+			Data:       map[string]string{stateDataKey: string(raw)},
+		}, metav1.CreateOptions{})
+		if apierrors.IsAlreadyExists(err) {
+			return apierrors.NewConflict(corev1.Resource("configmaps"), s.name, err)
+		}
+		return err
+	}
+	if cm.Data == nil {
+		cm.Data = map[string]string{}
+	}
+	if cm.Data[stateDataKey] == string(raw) {
+		return nil
+	}
+	cm.Data[stateDataKey] = string(raw)
+	_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, cm, metav1.UpdateOptions{})
+	return err
 }
 
 // Save replaces the stopped workspace document.
@@ -154,6 +169,19 @@ func (s *StateStore) Save(ctx context.Context, states map[string]WorkspaceState)
 		}
 		return nil
 	})
+}
+
+func parseStateDocument(cm *corev1.ConfigMap) (stateDocument, error) {
+	var doc stateDocument
+	if raw := strings.TrimSpace(cm.Data[stateDataKey]); raw != "" {
+		if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+			return doc, fmt.Errorf("parse workspace state %s: %w", cm.Name, err)
+		}
+	}
+	if doc.Workspaces == nil {
+		doc.Workspaces = map[string]WorkspaceState{}
+	}
+	return doc, nil
 }
 
 func marshalState(state WorkspaceState) (string, error) {

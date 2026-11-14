@@ -45,6 +45,11 @@ func toWorkspace(pod *corev1.Pod) Workspace {
 }
 
 func scheduleFromPod(pod *corev1.Pod) *Schedule {
+	if pod != nil {
+		if schedule := scheduleFromAnnotations(pod.Annotations); schedule != nil {
+			return schedule
+		}
+	}
 	state, ok := stateFromPodAnnotation(pod)
 	if !ok {
 		return nil
@@ -97,6 +102,9 @@ func quantityString(quantity resource.Quantity) string {
 }
 
 func storageFromPod(pod *corev1.Pod) string {
+	if pod != nil && pod.Annotations[annotationStorage] != "" {
+		return pod.Annotations[annotationStorage]
+	}
 	raw := pod.Annotations[annotationState]
 	if raw == "" {
 		return ""

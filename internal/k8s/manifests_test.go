@@ -24,7 +24,7 @@ func TestWorkspaceManifestsRunningAndStopped(t *testing.T) {
 	if manifests.PodSource != "live" || manifests.Pod == nil || manifests.PVC == nil {
 		t.Fatalf("manifests = %+v", manifests)
 	}
-	if manifests.Pod.Kind != "Pod" || manifests.Pod.Name != "poddy-app" || manifests.Pod.Namespace != "poddy" {
+	if manifests.Pod.Kind != "Pod" || manifests.Pod.Name != PodName("app") || manifests.Pod.Namespace != "poddy" {
 		t.Fatalf("pod = %+v", manifests.Pod)
 	}
 	if manifests.Pod.Status.Phase != "" || manifests.Pod.Spec.NodeName != "" {

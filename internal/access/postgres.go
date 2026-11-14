@@ -9,7 +9,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const pruneInterval = 2 * time.Minute
+const (
+	pruneInterval = 2 * time.Minute
+	// presenceWriteInterval deduplicates presence heartbeats across portal
+	// replicas. It stays below DefaultPresenceTTL and below the 30s heartbeat
+	// so a live session is always refreshed.
+	presenceWriteInterval = 25 * time.Second
+)
 
 // Postgres stores access state in the poddy PostgreSQL schema. Presence
 // heartbeats update a single row instead of rewriting a whole document.
@@ -220,14 +226,18 @@ func (p *Postgres) SetPresence(ctx context.Context, workspace, session string, p
 	if presence.LastSeen.IsZero() {
 		presence.LastSeen = now
 	}
+	// The WHERE clause makes the throttle shared by every writer: concurrent
+	// replicas and the bastion all go through this row, so at most one update
+	// per interval succeeds. An older LastSeen never overwrites a newer one.
 	if _, err := p.pool.Exec(ctx,
 		`INSERT INTO poddy.access_presence (namespace, workspace, session, actor, kind, since, last_seen)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (namespace, workspace, session)
 		 DO UPDATE SET actor = EXCLUDED.actor,
 		               kind = EXCLUDED.kind,
-		               last_seen = EXCLUDED.last_seen`,
-		p.namespace, workspace, session, presence.Actor, presence.Kind, presence.Since, presence.LastSeen); err != nil {
+		               last_seen = EXCLUDED.last_seen
+		 WHERE poddy.access_presence.last_seen < EXCLUDED.last_seen - ($8 * interval '1 second')`,
+		p.namespace, workspace, session, presence.Actor, presence.Kind, presence.Since, presence.LastSeen, int(presenceWriteInterval/time.Second)); err != nil {
 		return fmt.Errorf("store presence: %w", err)
 	}
 	p.maybePrune(ctx)

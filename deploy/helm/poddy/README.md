@@ -11,7 +11,7 @@ directly from the registry:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.7 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.8 -f values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -30,10 +30,10 @@ Workspace templates are a separate release:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.7 -f templates-values.yaml
+  -n poddy-system --version 0.1.8 -f templates-values.yaml
 ```
 
-Replace `0.1.7` with the published chart version when a new release is cut.
+Replace `0.1.8` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
@@ -107,7 +107,7 @@ name (without the leading `v`) is used.
 | `vscodeExtension.version` | `0.1.0` | Extension version shown in the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.releaseUrl` | GitHub release | Release page linked from the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.downloadUrl` | GitHub VSIX | VSIX download linked from the portal. Empty uses the metadata embedded in the image. |
-| `workspaceState.configMapName` | `""` (`<fullname>-state`) | ConfigMap for stopped workspace specs. |
+| `workspaceState.configMapName` | `""` (`<fullname>-state`) | Legacy ConfigMap read at startup to migrate stopped workspaces to StatefulSets. |
 | `regions` | `[]` | Central hub only. Region list with `name`, `key`, optional `url` fallback, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
 | `regionsExistingSecret` | `""` | Existing Secret containing `regionsKey` instead of inline `regions`. |
 | `regionsKey` | `regions.yaml` | Key in the regions Secret. |
@@ -402,10 +402,10 @@ The bastion has its own ServiceAccount and Role with only `pods` read access and
 
 The portal can stop, start, and restart workspaces from the UI or API:
 
-- **Stop** deletes the pod, keeps the PVC, and stores the rendered spec in the `workspaceState` ConfigMap.
-- **Start** recreates the pod from that spec; **Restart** deletes and recreates it.
+- **Stop** scales the workspace StatefulSet to zero, keeps the PVC, and strips dynamic credentials from the pod template.
+- **Start** refreshes those credentials and scales back to one; **Restart** refreshes them and recreates the pod.
 - Ephemeral workspaces have no PVC and lose their data on Stop.
-- The ConfigMap is created on first use; the chart's `configmaps` Role rule covers it. Set `workspaceState.configMapName` to share or isolate it.
+- The portal needs `statefulsets` and `services` Role rules in addition to pods, PVCs, and Secrets. The legacy `workspaceState` ConfigMap is only read at startup to migrate stopped workspaces.
 
 
 ### Admins, auditors, teams, and template access
@@ -452,7 +452,7 @@ The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` 
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.7 -f values.yaml
+  -n poddy-system --version 0.1.8 -f values.yaml
 ```
 
 ## Uninstalling

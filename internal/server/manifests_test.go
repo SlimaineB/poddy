@@ -38,7 +38,7 @@ func TestWorkspaceManifestsAdminOnly(t *testing.T) {
 	}
 	pod, _ := manifests["pod"].(string)
 	pvc, _ := manifests["pvc"].(string)
-	if !strings.Contains(pod, "kind: Pod") || !strings.Contains(pod, "name: poddy-"+ws.Name) {
+	if !strings.Contains(pod, "kind: Pod") || !strings.Contains(pod, "name: poddy-"+ws.Name+"-0") {
 		t.Fatalf("pod manifest = %s", pod)
 	}
 	if !strings.Contains(pvc, "kind: PersistentVolumeClaim") || !strings.Contains(pvc, "name: poddy-"+ws.Name) {

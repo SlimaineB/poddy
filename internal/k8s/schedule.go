@@ -9,6 +9,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -135,6 +136,20 @@ func (m *Manager) SetSchedule(ctx context.Context, name string, schedule Schedul
 		return Workspace{}, err
 	}
 	defer release()
+
+	if _, err := m.getStatefulSet(ctx, name); err == nil {
+		updated, err := m.mutateStatefulSet(ctx, name, func(sts *appsv1.StatefulSet) error {
+			sts.Annotations = annotationsWithSchedule(sts.Annotations, stored)
+			sts.Spec.Template.Annotations = annotationsWithSchedule(sts.Spec.Template.Annotations, stored)
+			return nil
+		})
+		if err != nil {
+			return Workspace{}, err
+		}
+		return workspaceFromStatefulSet(updated), nil
+	} else if !apierrors.IsNotFound(err) {
+		return Workspace{}, err
+	}
 
 	pod, err := m.Get(ctx, name)
 	if err == nil {

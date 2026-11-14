@@ -229,6 +229,11 @@ func Run(ctx context.Context, args []string) error {
 		log.Printf("workspace agent tunnel disabled; SSH falls back to Kubernetes port-forward")
 	}
 
+	if err := manager.MigrateLegacy(ctx); err != nil {
+		log.Printf("legacy workspace migration: %v", err)
+	}
+	manager.StartInformers(ctx)
+
 	go manager.RunScheduleLoop(ctx, k8s.DefaultScheduleInterval)
 	log.Printf("workspace schedules enabled (every %s)", k8s.DefaultScheduleInterval)
 

@@ -74,7 +74,7 @@ func TestCreateWorkspaceApps(t *testing.T) {
 		t.Fatalf("apps = %#v", ws.Apps)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestCreateWorkspaceNoApps(t *testing.T) {
 		t.Fatalf("apps = %#v, want empty non-nil", ws.Apps)
 	}
 
-	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, "poddy-app", metav1.GetOptions{})
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

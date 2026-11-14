@@ -3,7 +3,7 @@
 A multi-region deployment uses one central hub and one region manager per
 Kubernetes cluster. The hub owns authentication, RBAC, users, templates, the
 workspace list, the UI, and external auth tokens. Each region manager owns the
-Kubernetes API connection, workspace pods, PVCs, stopped-state ConfigMap,
+Kubernetes API connection, workspace StatefulSets, PVCs, legacy stopped-state ConfigMap,
 terminal and desktop IDE proxying, and the region SSH bastion.
 
 ```text
@@ -182,7 +182,7 @@ opens its own tunnel and the hub load-balances requests across them.
 
 ```bash
 helm upgrade --install poddy-eu oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.7 \
+  --version 0.1.8 \
   -n poddy-eu \
   -f values-eu.yaml \
   --wait
@@ -257,7 +257,7 @@ path from the hub to the region.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.7 \
+  --version 0.1.8 \
   -n poddy-system \
   -f values-hub.yaml \
   --wait

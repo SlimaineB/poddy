@@ -24,6 +24,7 @@ func newTestServer(token string) *Server {
 		panic(err)
 	}
 	client := fake.NewClientset()
+	installFakeController(client)
 	return &Server{
 		Workspaces: &k8s.Manager{
 			Client:          client,

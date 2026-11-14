@@ -33,10 +33,14 @@ async function init() {
   } else if (initialView === "audit") {
     await openAudit();
   }
-  setInterval(() => {
-    if (!document.hidden) load({ silent: true });
-  }, 5000);
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    clearTimeout(pollTimer);
+    load({ silent: true });
+  }
+});
 
 document.querySelectorAll("[data-close]").forEach((button) => {
   button.addEventListener("click", () => closeDialog(button));

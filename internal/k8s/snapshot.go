@@ -39,7 +39,11 @@ func (m *Manager) Snapshot(ctx context.Context, name string) (WorkspaceSnapshot,
 		phase := string(pod.Status.Phase)
 		if pod.DeletionTimestamp != nil {
 			phase = "Terminating"
-			if state, stateErr := m.State(ctx, name); stateErr == nil && !state.StoppedAt.IsZero() {
+			if state, stateErr := m.State(ctx, name); stateErr == nil {
+				if state.StoppedAt.IsZero() {
+					state = m.stateForPod(ctx, pod)
+					state.StoppedAt = time.Now().UTC()
+				}
 				return snapshotFromState(state, phase, "stopped", state.StoppedAt)
 			}
 		}

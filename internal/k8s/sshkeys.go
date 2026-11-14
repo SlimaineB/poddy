@@ -18,7 +18,7 @@ const (
 )
 
 func sshKeysSecretName(workspace string) string {
-	return PodName(workspace) + "-ssh-keys"
+	return sshKeysName(workspace)
 }
 
 // SyncSSHKeysForOwner refreshes the per-workspace authorized_keys Secret for

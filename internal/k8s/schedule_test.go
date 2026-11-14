@@ -100,12 +100,12 @@ func TestSetScheduleRunningAndStopped(t *testing.T) {
 	if ws.Schedule == nil || *ws.Schedule != schedule {
 		t.Fatalf("running schedule = %+v", ws.Schedule)
 	}
-	pod, err := m.Get(ctx, "app")
+	sts, err := m.GetStatefulSet(ctx, "app")
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, ok := stateFromPodAnnotation(pod)
-	if !ok || state.Schedule == nil || *state.Schedule != schedule {
+	state := stateFromStatefulSet(sts)
+	if state.Schedule == nil || *state.Schedule != schedule {
 		t.Fatalf("annotation schedule = %+v", state.Schedule)
 	}
 
@@ -164,12 +164,12 @@ func TestReconcileSchedulesStopsAndStarts(t *testing.T) {
 	if _, err := m.Get(ctx, "app"); err != nil {
 		t.Fatalf("pod was not started: %v", err)
 	}
-	pod, err := m.Get(ctx, "app")
+	sts, err := m.GetStatefulSet(ctx, "app")
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, ok := stateFromPodAnnotation(pod)
-	if !ok || state.Schedule == nil || *state.Schedule != *schedule {
+	state := stateFromStatefulSet(sts)
+	if state.Schedule == nil || *state.Schedule != *schedule {
 		t.Fatalf("schedule lost after restart: %+v", state.Schedule)
 	}
 }

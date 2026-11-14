@@ -1,6 +1,6 @@
 # Architecture
 
-poddy is a stateless Go portal plus a set of Kubernetes workspace pods. It does
+poddy is a stateless Go portal plus a set of Kubernetes workspace StatefulSets. It does
 not require a database: Kubernetes is the control plane and the source of truth.
 An optional PostgreSQL mirror is available for metadata durability, disaster
 recovery, and an audit trail.
@@ -16,7 +16,7 @@ recovery, and an audit trail.
                                     ▼
                        ┌──────────────────────────┐
                        │    workspace namespace   │
-                       │ pods, PVCs, ConfigMaps   │
+                       │ StatefulSets, PVCs, CM   │
                        └────────────▲─────────────┘
                                     │ port-forward
 ┌───────────────┐   SSH   ┌─────────┴─────────────┐
@@ -45,7 +45,7 @@ when `ssh.requireAgent=false`.
 A central portal can front one or more regions. Each region runs the same image
 in region-manager mode (`-region-mode`) plus its own bastion. The central
 portal keeps auth, RBAC, users, templates, metadata, and the UI; regions keep
-workspace pods, PVCs, and local state.
+workspace StatefulSets, PVCs, and local state.
 
 The central portal calls a region manager with an HMAC-signed identity header
 (`X-Poddy-Region-Identity`) that expires after two minutes. Region managers
@@ -70,10 +70,10 @@ internal region-authenticated endpoint.
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
 | SSH bastion | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
 | Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
-| Workspace pods | `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
+| Workspace StatefulSets | One StatefulSet per workspace, scaled 0/1; pod `poddy-<name>-0` runs `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, template access, and quotas | ConfigMap |
-| Workspace state | Rendered specs of stopped workspaces | ConfigMap |
+| Workspace state | Rendered pod template, schedule, and stopped state | Workspace StatefulSet |
 | User directory | OIDC identities seen by the portal | ConfigMap |
 | Self-service SSH keys | Public keys bound to signed-in identities | ConfigMap `poddy-user-ssh-keys` |
 | External auth store | Encrypted OAuth2 tokens per user and provider | Secret |
@@ -220,9 +220,9 @@ poddy ships two Go binaries from one module:
 poddy does not require an external database. Kubernetes is the default source of
 truth:
 
-- **Workspaces** are pods with `app.kubernetes.io/name=poddy`.
+- **Workspaces** are StatefulSets with `app.kubernetes.io/name=poddy`, one pod each, scaled 0/1.
 - **Ownership** is the `poddy.io/owner` annotation.
-- **Stopped workspace specs** live in the `poddy-state` ConfigMap.
+- **Stopped workspace specs** live in the workspace StatefulSet template; the legacy `poddy-state` ConfigMap is read at startup to migrate stopped workspaces.
 - **Templates** are ConfigMaps labeled `poddy.io/template=true`.
 - **RBAC** lives in the `poddy-rbac` ConfigMap.
 - **OIDC users** live in the `poddy-users` ConfigMap.

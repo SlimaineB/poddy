@@ -29,7 +29,7 @@ func (m *Manager) createPVC(ctx context.Context, name, templateName, storage, st
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   PodName(name),
+			Name:   PVCName(name),
 			Labels: pvcLabels,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -54,7 +54,7 @@ func (m *Manager) createPVC(ctx context.Context, name, templateName, storage, st
 }
 
 func (m *Manager) deletePVC(ctx context.Context, name string) error {
-	err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Delete(ctx, PodName(name), metav1.DeleteOptions{})
+	err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Delete(ctx, PVCName(name), metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

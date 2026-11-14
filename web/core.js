@@ -50,6 +50,9 @@ const state = {
   userQuery: "",
   loaded: false,
   pollError: false,
+  loading: false,
+  reloadPending: false,
+  workspacesEtag: "",
   sshWorkspace: null,
   pendingDelete: null,
   detailWorkspace: null,
@@ -337,19 +340,33 @@ function withToken(url) {
   if (!token) return url;
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
+const apiNotModified = Symbol("apiNotModified");
+let pollTimer = 0;
+function schedulePoll(delay) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => {
+    if (document.hidden) {
+      schedulePoll(30000);
+      return;
+    }
+    load({ silent: true });
+  }, delay);
+}
 function icon(name, className = "icon") {
   return `<svg class="${className}" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 }
 async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
+  const { withMeta = false, ...fetchOptions } = options;
+  const headers = { ...(fetchOptions.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (options.body) headers["Content-Type"] = "application/json";
+  if (fetchOptions.body) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(path, { ...fetchOptions, headers });
   if (res.status === 401) {
     location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
     throw new Error("Your session has expired.");
   }
+  if (res.status === 304) return apiNotModified;
   if (!res.ok) {
     const text = (await res.text()).trim();
     let message = text;
@@ -361,8 +378,9 @@ async function api(path, options = {}) {
     }
     throw new Error(message || res.statusText);
   }
-  if (res.status === 204) return null;
-  return res.json();
+  const data = res.status === 204 ? null : await res.json();
+  if (withMeta) return { data, etag: res.headers.get("ETag") || "" };
+  return data;
 }
 function toast(message, type = "error") {
   const node = document.createElement("div");

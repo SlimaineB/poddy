@@ -39,11 +39,30 @@ func (m *Manager) Manifests(ctx context.Context, name string) (WorkspaceManifest
 	if err == nil {
 		out.PodSource = "live"
 		out.Template = pod.Labels[labelTemplate]
+		out.TemplateVersion = pod.Annotations[annotationTemplateVersion]
+		out.Parameters = parametersFromAnnotations(pod.Annotations)
 		if state, ok := stateFromPodAnnotation(pod); ok {
-			out.TemplateVersion = state.TemplateVersion
-			out.Parameters = state.Parameters
+			if out.TemplateVersion == "" {
+				out.TemplateVersion = state.TemplateVersion
+			}
+			if out.Parameters == nil {
+				out.Parameters = state.Parameters
+			}
 			if out.Template == "" {
 				out.Template = state.Template
+			}
+		}
+		if out.TemplateVersion == "" || out.Parameters == nil {
+			if state, stateErr := m.State(ctx, name); stateErr == nil {
+				if out.TemplateVersion == "" {
+					out.TemplateVersion = state.TemplateVersion
+				}
+				if out.Parameters == nil {
+					out.Parameters = state.Parameters
+				}
+				if out.Template == "" {
+					out.Template = state.Template
+				}
 			}
 		}
 		out.Pod, out.RedactedEnv = sanitizePodForManifest(pod)
@@ -61,7 +80,7 @@ func (m *Manager) Manifests(ctx context.Context, name string) (WorkspaceManifest
 		return WorkspaceManifests{}, err
 	}
 
-	pvc, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Get(ctx, PodName(name), metav1.GetOptions{})
+	pvc, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).Get(ctx, PVCName(name), metav1.GetOptions{})
 	if err == nil {
 		out.PVC = sanitizePVCForManifest(pvc)
 	} else if !apierrors.IsNotFound(err) {

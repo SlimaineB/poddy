@@ -2,20 +2,29 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	klabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	appsv1listers "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 
 	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
@@ -41,7 +50,7 @@ const (
 	// Kubernetes label values.
 	annotationOwner = "poddy.io/owner"
 	// annotationExternalAuthEnv records the environment variable names injected
-	// from external auth so tokens are never written to the stopped-state ConfigMap.
+	// from external auth so tokens are stripped from stopped StatefulSet templates.
 	annotationExternalAuthEnv = "poddy.io/external-auth-env"
 	annotationApps            = "poddy.io/apps"
 
@@ -144,10 +153,20 @@ type Manager struct {
 	AgentURL            string
 	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
+
+	stateOnce sync.Once
+	state     *StateStore
+
+	informerOnce    sync.Once
+	informerFactory informers.SharedInformerFactory
+	informersSynced atomic.Bool
+	podLister       corelisters.PodLister
+	claimLister     corelisters.PersistentVolumeClaimLister
+	stsLister       appsv1listers.StatefulSetLister
 }
 
 func PodName(name string) string {
-	return "poddy-" + name
+	return StatefulSetName(name) + "-0"
 }
 
 func labels(name string) map[string]string {
@@ -158,23 +177,91 @@ func labels(name string) map[string]string {
 	}
 }
 
+// StartInformers starts a cached read model for pods, PVCs and state
+// ConfigMaps. List keeps using the direct API until the caches sync, so a
+// failure to watch (for example missing RBAC) degrades instead of blocking.
+func (m *Manager) StartInformers(ctx context.Context) {
+	if m.Client == nil || m.Namespace == "" {
+		return
+	}
+	m.informerOnce.Do(func() {
+		factory := informers.NewSharedInformerFactoryWithOptions(m.Client, 0, informers.WithNamespace(m.Namespace))
+		m.podLister = factory.Core().V1().Pods().Lister()
+		m.claimLister = factory.Core().V1().PersistentVolumeClaims().Lister()
+		m.stsLister = factory.Apps().V1().StatefulSets().Lister()
+		m.informerFactory = factory
+		factory.Start(ctx.Done())
+		go func() {
+			factory.WaitForCacheSync(ctx.Done())
+			if ctx.Err() == nil {
+				m.informersSynced.Store(true)
+			}
+		}()
+	})
+}
+
 func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
+	if m.informersSynced.Load() {
+		return m.listCached()
+	}
+	return m.listAPI(ctx)
+}
+
+func (m *Manager) listCached() ([]Workspace, error) {
+	selector := klabels.SelectorFromSet(klabels.Set{labelName: AppName})
+	statefulSets, err := m.stsLister.StatefulSets(m.Namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	pods, err := m.podLister.Pods(m.Namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := m.claimLister.PersistentVolumeClaims(m.Namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	return assembleWorkspaces(statefulSets, pods, claims), nil
+}
+
+func (m *Manager) listAPI(ctx context.Context) ([]Workspace, error) {
+	statefulSets, err := m.Client.AppsV1().StatefulSets(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelName + "=" + AppName,
+	})
+	if err != nil {
+		return nil, err
+	}
 	pods, err := m.Client.CoreV1().Pods(m.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelName + "=" + AppName,
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	storage := map[string]string{}
 	claims, err := m.Client.CoreV1().PersistentVolumeClaims(m.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelName + "=" + AppName,
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	stsPointers := make([]*appsv1.StatefulSet, 0, len(statefulSets.Items))
+	for i := range statefulSets.Items {
+		stsPointers = append(stsPointers, &statefulSets.Items[i])
+	}
+	podPointers := make([]*corev1.Pod, 0, len(pods.Items))
+	for i := range pods.Items {
+		podPointers = append(podPointers, &pods.Items[i])
+	}
+	claimPointers := make([]*corev1.PersistentVolumeClaim, 0, len(claims.Items))
 	for i := range claims.Items {
-		claim := &claims.Items[i]
+		claimPointers = append(claimPointers, &claims.Items[i])
+	}
+	return assembleWorkspaces(stsPointers, podPointers, claimPointers), nil
+}
+
+func assembleWorkspaces(statefulSets []*appsv1.StatefulSet, pods []*corev1.Pod, claims []*corev1.PersistentVolumeClaim) []Workspace {
+	storage := map[string]string{}
+	for _, claim := range claims {
 		name := claim.Labels[labelWorkspace]
 		if name == "" {
 			name = strings.TrimPrefix(claim.Name, "poddy-")
@@ -184,48 +271,66 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 		}
 	}
 
-	out := make([]Workspace, 0, len(pods.Items))
-	seen := make(map[string]bool, len(pods.Items))
-	for i := range pods.Items {
-		ws := toWorkspace(&pods.Items[i])
-		if ws.Storage == "" {
-			ws.Storage = storage[ws.Name]
-		}
-		out = append(out, ws)
-		seen[ws.Name] = true
-	}
-
-	states, err := m.stateStore().Load(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for name, state := range states {
-		if seen[name] {
+	podsByWorkspace := map[string]*corev1.Pod{}
+	for _, pod := range pods {
+		name := pod.Labels[labelWorkspace]
+		if name == "" {
 			continue
 		}
-		if state.Name == "" {
-			state.Name = name
+		podsByWorkspace[name] = pod
+	}
+
+	out := make([]Workspace, 0, len(statefulSets)+len(pods))
+	seen := make(map[string]bool, len(statefulSets))
+	for _, sts := range statefulSets {
+		name := workspaceName(sts)
+		if name == "" {
+			continue
 		}
-		ws := workspaceFromState(state, "Stopped")
+		pod := podsByWorkspace[name]
+		ws := workspaceFromStatefulSet(sts)
+		ws.Phase = phaseForStatefulSet(sts, pod)
 		if ws.Storage == "" {
 			ws.Storage = storage[name]
 		}
 		out = append(out, ws)
+		seen[name] = true
+	}
+
+	// Legacy bare pods created before the StatefulSet migration remain visible
+	// until they are stopped or deleted.
+	for _, pod := range pods {
+		name := pod.Labels[labelWorkspace]
+		if name == "" || seen[name] {
+			continue
+		}
+		ws := toWorkspace(pod)
+		if ws.Storage == "" {
+			ws.Storage = storage[name]
+		}
+		out = append(out, ws)
+		seen[name] = true
 	}
 
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
 	})
-	return out, nil
+	return out
 }
 
-// State returns the stored spec of a stopped workspace.
+// State returns the stored spec of a stopped or running workspace.
 func (m *Manager) State(ctx context.Context, name string) (WorkspaceState, error) {
-	states, err := m.stateStore().Load(ctx)
+	if sts, err := m.getStatefulSet(ctx, name); err == nil {
+		return stateFromStatefulSet(sts), nil
+	} else if !apierrors.IsNotFound(err) {
+		return WorkspaceState{}, err
+	}
+
+	store := m.stateStore()
+	state, ok, err := store.Get(ctx, name)
 	if err != nil {
 		return WorkspaceState{}, err
 	}
-	state, ok := states[name]
 	if !ok {
 		return WorkspaceState{}, apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, name)
 	}
@@ -236,11 +341,14 @@ func (m *Manager) State(ctx context.Context, name string) (WorkspaceState, error
 }
 
 func (m *Manager) stateStore() *StateStore {
-	name := m.StateConfigMap
-	if name == "" {
-		name = DefaultStateConfigMap
-	}
-	return NewStateStore(m.Client, m.Namespace, name)
+	m.stateOnce.Do(func() {
+		name := m.StateConfigMap
+		if name == "" {
+			name = DefaultStateConfigMap
+		}
+		m.state = NewStateStore(m.Client, m.Namespace, name)
+	})
+	return m.state
 }
 
 // ListByOwner returns the workspaces owned by the identity. The portal filters
@@ -272,6 +380,10 @@ func Owner(pod *corev1.Pod) string {
 
 func (m *Manager) Get(ctx context.Context, name string) (*corev1.Pod, error) {
 	pod, err := m.Client.CoreV1().Pods(m.Namespace).Get(ctx, PodName(name), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) && PodName(name) != name {
+		// Legacy workspaces used the workspace name as the pod name.
+		pod, err = m.Client.CoreV1().Pods(m.Namespace).Get(ctx, name, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -279,6 +391,10 @@ func (m *Manager) Get(ctx context.Context, name string) (*corev1.Pod, error) {
 		return nil, fmt.Errorf("workspace %q not found", name)
 	}
 	return pod, nil
+}
+
+func (m *Manager) GetStatefulSet(ctx context.Context, name string) (*appsv1.StatefulSet, error) {
+	return m.getStatefulSet(ctx, name)
 }
 
 // GetWorkspace returns the workspace details (running or stopped).
@@ -291,12 +407,29 @@ func (m *Manager) GetWorkspace(ctx context.Context, name string) (Workspace, err
 // It fetches the pod once so callers that also need pod metadata do not issue
 // a second API call.
 func (m *Manager) GetWorkspacePod(ctx context.Context, name string) (Workspace, *corev1.Pod, error) {
+	if sts, err := m.getStatefulSet(ctx, name); err == nil {
+		pod, podErr := m.Client.CoreV1().Pods(m.Namespace).Get(ctx, PodName(name), metav1.GetOptions{})
+		if podErr != nil && !apierrors.IsNotFound(podErr) {
+			return Workspace{}, nil, podErr
+		}
+		workspace := workspaceFromStatefulSet(sts)
+		var runningPod *corev1.Pod
+		if podErr == nil {
+			runningPod = pod
+		}
+		workspace.Phase = phaseForStatefulSet(sts, runningPod)
+		workspace.StoppedBySchedule = sts.Annotations[annotationStoppedBySchedule] == "true"
+		return workspace, pod, nil
+	} else if !apierrors.IsNotFound(err) {
+		return Workspace{}, nil, err
+	}
+
 	pod, err := m.Get(ctx, name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return Workspace{}, nil, err
 		}
-		// Not running, check stopped state
+		// Not running and not a StatefulSet: check legacy stopped state.
 		state, err := m.State(ctx, name)
 		if err != nil {
 			return Workspace{}, nil, err
@@ -370,7 +503,7 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 		Name:           req.Name,
 		Namespace:      m.Namespace,
 		PodName:        PodName(req.Name),
-		PVCName:        PodName(req.Name),
+		PVCName:        PVCName(req.Name),
 		Image:          image,
 		Parameters:     params,
 		Storage:        storage,
@@ -526,43 +659,38 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		}
 		pod.Annotations[annotationApps] = strings.Join(resolved.apps, ",")
 	}
-	stateSpec := *pod.Spec.DeepCopy()
-	stripExternalAuthEnv(&stateSpec, externalAuthEnvNames(pod))
-	state := WorkspaceState{
-		Name:            req.Name,
-		Template:        templateName,
-		TemplateVersion: tmpl.Version,
-		Owner:           req.Owner,
-		Image:           containerImage(pod, ContainerName),
-		CreatedAt:       time.Now().UTC(),
-		Persistent:      storage != "",
-		Storage:         storage,
-		StorageClass:    params["storageClass"],
-		Parameters:      params,
-		Apps:            resolved.apps,
-		Schedule:        cloneSchedule(req.Schedule),
-		PortalURL:       req.PortalURL,
-		Labels:          copyStringMap(pod.Labels),
-		Annotations:     copyStringMap(pod.Annotations),
-		Spec:            stateSpec,
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
 	}
-	raw, err := marshalState(state)
-	if err != nil {
-		if createdPVC {
-			_ = m.deletePVC(ctx, req.Name)
+	setAnnotation(pod.Annotations, annotationTemplateVersion, tmpl.Version)
+	setAnnotation(pod.Annotations, annotationStorage, storage)
+	setAnnotation(pod.Annotations, annotationStorageClass, params["storageClass"])
+	setAnnotation(pod.Annotations, annotationPortalURL, req.PortalURL)
+	if params != nil {
+		if raw, err := json.Marshal(params); err == nil {
+			pod.Annotations[annotationParameters] = string(raw)
 		}
-		return Workspace{}, err
 	}
-	pod.Annotations[annotationState] = raw
+	if raw, err := json.Marshal(cloneSchedule(req.Schedule)); err == nil && req.Schedule != nil {
+		pod.Annotations[annotationSchedule] = string(raw)
+	}
 
-	created, err := m.Client.CoreV1().Pods(m.Namespace).Create(ctx, pod, metav1.CreateOptions{})
+	if err := m.ensureGoverningService(ctx); err != nil {
+		if createdPVC {
+			_ = m.deletePVC(ctx, req.Name)
+		}
+		return Workspace{}, fmt.Errorf("governing service: %w", err)
+	}
+
+	sts := m.buildStatefulSet(req.Name, pod, 1)
+	created, err := m.Client.AppsV1().StatefulSets(m.Namespace).Create(ctx, sts, metav1.CreateOptions{})
 	if err != nil {
 		if createdPVC {
 			_ = m.deletePVC(ctx, req.Name)
 		}
 		return Workspace{}, err
 	}
-	return toWorkspace(created), nil
+	return workspaceWithPhase(workspaceFromStatefulSet(created), "Pending"), nil
 }
 
 func (m *Manager) Delete(ctx context.Context, name string) error {
@@ -578,10 +706,16 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 }
 
 func (m *Manager) delete(ctx context.Context, name string) error {
-	pod, err := m.Get(ctx, name)
-	podExists := err == nil
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
+	sts, stsErr := m.getStatefulSet(ctx, name)
+	stsExists := stsErr == nil
+	if stsErr != nil && !apierrors.IsNotFound(stsErr) {
+		return stsErr
+	}
+
+	pod, podErr := m.Get(ctx, name)
+	podExists := podErr == nil
+	if podErr != nil && !apierrors.IsNotFound(podErr) {
+		return podErr
 	}
 
 	states, err := m.stateStore().Load(ctx)
@@ -589,16 +723,30 @@ func (m *Manager) delete(ctx context.Context, name string) error {
 		return err
 	}
 	_, stateExists := states[name]
-	if !podExists && !stateExists {
+	if !stsExists && !podExists && !stateExists {
 		return apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, name)
 	}
 
-	if podExists {
+	if stsExists {
+		if err := m.Client.AppsV1().StatefulSets(m.Namespace).Delete(ctx, sts.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: ptr.To(int64(0)),
+		}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
 		grace := int64(0)
-		err := m.Client.CoreV1().Pods(m.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+		if err := m.Client.CoreV1().Pods(m.Namespace).Delete(ctx, PodName(name), metav1.DeleteOptions{
 			GracePeriodSeconds: &grace,
-		})
-		if err != nil && !apierrors.IsNotFound(err) {
+		}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if err := m.waitForPodDeleted(ctx, PodName(name), 20*time.Second); err != nil {
+			return err
+		}
+	} else if podExists {
+		grace := int64(0)
+		if err := m.Client.CoreV1().Pods(m.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: &grace,
+		}); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}

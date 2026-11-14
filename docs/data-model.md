@@ -13,9 +13,9 @@ the source of truth and PostgreSQL is never read for access decisions. See
 
 | Data | Kubernetes object | Default name | Key |
 |------|-------------------|--------------|-----|
-| Running workspaces | Pods | `poddy-<workspace>` | labels + `poddy.io/owner` annotation |
+| Workspaces | StatefulSets | `poddy-<workspace>` | pod template + `poddy.io/owner` annotation |
 | Persistent workspace data | PVCs | `poddy-<workspace>` | mounted at `/home/dev` |
-| Stopped workspace specs | ConfigMap | `poddy-state` | `workspaces.yaml` |
+| Legacy stopped workspace specs | ConfigMap | `poddy-state` | `workspaces.yaml` (migration only) |
 | Templates | ConfigMaps | template name | `template.yaml`, `pod.yaml` |
 | RBAC | ConfigMap | `poddy-rbac` | `rbac.yaml` |
 | OIDC users | ConfigMap | `poddy-users` | `users.json` |
@@ -52,44 +52,31 @@ metadata:
 | `poddy.io/workspace` | Workspace name shown in the UI |
 | `poddy.io/template` | Template used to create the workspace |
 | `poddy.io/owner` | Authenticated owner; drives visibility and SSH checks |
-| `poddy.io/state` | Original rendered pod spec, used when stopping |
+| `poddy.io/state` | Legacy rendered pod spec on bare pods; removed when adopting into a StatefulSet |
 | `poddy.io/external-auth-env` | Environment variables that receive refreshed tokens |
 
-A persistent workspace gets a PVC named after the pod. Stopping a workspace
-deletes the pod but keeps the PVC and writes the rendered spec to the state
-ConfigMap. Optional volume backups are stored outside Kubernetes in
+A persistent workspace gets a PVC named `poddy-<workspace>`. Stopping a
+workspace scales its StatefulSet to zero but keeps the PVC and the rendered pod
+template. Optional volume backups are stored outside Kubernetes in
 S3-compatible object storage as gzip tar archives. Backups can be taken from
 running or stopped workspaces and restored into the same or another volume; see
 [Volumes and backups](volumes.md).
 
-## Stopped workspace state
+## Workspace state
 
-The `poddy-state` ConfigMap stores a YAML document under `workspaces.yaml`:
+Each workspace is one StatefulSet named `poddy-<workspace>`. The StatefulSet is
+the source of truth for both running and stopped workspaces:
 
-```yaml
-workspaces:
-  my-workspace:
-    name: my-workspace
-    template: go
-    owner: alice@example.com
-    image: ghcr.io/slimaineb/poddy-workspace:latest
-    persistent: true
-    storage: 10Gi
-    schedule:
-      enabled: true
-      timezone: Europe/Paris
-      start: "09:00"
-      stop: "18:00"
-    spec:
-      containers:
-        - name: workspace
-          image: ghcr.io/slimaineb/poddy-workspace:latest
-```
+- `replicas: 1` means running; the controller creates pod `poddy-<workspace>-0`.
+- `replicas: 0` means stopped; the pod template and annotations are retained.
+- The separate PVC `poddy-<workspace>` keeps `/home/dev`.
 
-This is enough to recreate the pod on **Start** even if the template catalog
-changed in the meantime. The optional `schedule` is the workspace auto-stop
-window; `stoppedBySchedule: true` marks a stop performed by the scheduler so a
-manual stop is not restarted automatically.
+The template carries the rendered pod spec. Metadata annotations carry the
+owner, template version, parameters, storage request, schedule, and stop state
+(`poddy.io/stopped-at`, `poddy.io/stopped-by-schedule`). Stopping strips
+dynamic credentials (external auth environment and agent token) from the
+template; starting refreshes them before scaling to one. The legacy
+`poddy-state` ConfigMap is read at startup to create stopped StatefulSets; running bare pods migrate on their next stop.
 
 ## Templates
 

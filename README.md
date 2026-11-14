@@ -14,7 +14,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyCommand) and forwards to a dedicated `poddy-agent` sidecar in each workspace. The sidecar has its own memory limit, and `sshd` gets a lowered OOM score so workspace memory spikes do not drop SSH sessions. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
 - **Desktop IDE launch**: Click **VS Code** or **Cursor** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy extension (installed once in VS Code or Cursor) enrolls the machine key, writes the SSH config, and opens the editor without manual setup. In local editor mode the portal launches Windows VS Code or Cursor directly. **PyCharm** opens a JetBrains Gateway link using the same SSH config. **JupyterLab** opens through the portal proxy when the workspace has the `jupyterlab` sidecar; the Python template enables it by default. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
-- **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; stopped specs are remembered in a ConfigMap. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
+- **Persistent volumes**: PVC per workspace; ephemeral storage when empty. Stop keeps the volume; the rendered spec is retained in the workspace StatefulSet. The **Volumes** page lists assigned and orphaned PVCs across regions, supports admin cleanup, backs up running or stopped volumes to S3-compatible storage, and restores a backup into the same or another volume. See [Volumes and backups](docs/volumes.md).
 - **RBAC-scoped**: Portal and bastion run as separate non-root ServiceAccounts. The portal can manage workspaces; the bastion can only read pods and create port-forwards.
 - **Multi-region**: One central hub provides authentication, RBAC, users, templates, the workspace list, and the UI. Each region runs its own manager and SSH bastion and opens an outbound WebSocket tunnel to the hub, so no VPN peering or hub-to-region inbound access is required. The hub routes workspace operations, terminal, desktop IDEs, logs, external-auth callbacks, and SSH-key sync through the tunnel using signed identities. The top bar region filter applies to workspaces, topology, and the map. See [Regions](docs/regions.md).
 - **Helm charts**: The portal chart runs portal and bastion as separate Deployments; the templates chart is a separate release. The portal chart supports TLS ingress, LoadBalancer SSH, a shared host key, PDBs, resource limits, security context, central-hub regions, and region-manager mode.
@@ -77,7 +77,7 @@ private, run `helm registry login ghcr.io` first.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.7 \
+  --version 0.1.8 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -96,7 +96,7 @@ as their own release in the portal's workspace namespace:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  --version 0.1.7 \
+  --version 0.1.8 \
   --namespace poddy-workspaces
 ```
 
@@ -138,7 +138,7 @@ Click **New workspace**, pick **Base**, **Go**, **Node.js**, or **Python**, set 
 - **VS Code Web**: Click **VS Code Web** to open the browser editor on `/home/dev` in a new tab when browser VS Code is enabled (`browserVSCode`, default `true` for the built-in templates).
 - **Ports**: Click **Ports** on a running workspace to open a dedicated ports window, see its listening TCP ports, and open an app in a new tab. The same list is available in workspace details. The portal authenticates the request, checks workspace ownership, port-forwards to the pod (through the central hub for remote regions), and proxies HTTP and WebSocket traffic. Apps bound to `127.0.0.1` work; apps that use root-relative asset URLs may need a base path. Use SSH `-L` for raw TCP.
 - **Template links**: Each template can declare its own buttons for dashboards, documentation, or any URL. They appear on running workspaces and follow template versioning; see [docs/links.md](docs/links.md).
-- **Stop / Start / Restart**: Stop deletes the pod but keeps the persistent volume; Start recreates it; Restart recreates the pod. Ephemeral workspaces lose their data on Stop. The optional auto-stop schedule stops the pod outside its active hours and starts it again at the next window only if the schedule stopped it.
+- **Stop / Start / Restart**: Stop scales the workspace StatefulSet to zero and keeps the persistent volume; Start scales it back up; Restart recreates the pod. Ephemeral workspaces lose their data on Stop. The optional auto-stop schedule stops the pod outside its active hours and starts it again at the next window only if the schedule stopped it.
 
 If you used an administrator-managed key instead, load it once:
 ```bash

@@ -217,7 +217,7 @@ creates the workspace. Each region's manager and bastion share their own
 - Rotating the CA or changing `ssh.requireAgent` updates the CA line only for
   workspaces created or restarted afterwards. Restart existing workspaces to
   apply the new line.
-- Agent tokens are bearer credentials. Anyone who can read a workspace pod's
+- Agent tokens are bearer credentials. Anyone who can read a workspace pod or its StatefulSet template's
   environment can impersonate that workspace's agent. Keep `pods/exec` and
   secret access restricted. Tokens default to 7 days and are not refreshed in
   place; restart long-running workspaces or raise `ssh.agent.tokenTtl` before

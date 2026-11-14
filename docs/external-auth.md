@@ -12,7 +12,7 @@ Typical use: a private Git repository inside a workspace needs a token. The port
 4. When a workspace is created or started, the portal injects the access token into the workspace as environment variables.
 5. The workspace can also ask the portal for a refreshed token or Git credentials through a short-lived workspace bearer token.
 
-Tokens are stored in the Kubernetes Secret `poddy-external-auth` (key `tokens`), encrypted with AES-GCM using `PODDY_EXTERNAL_AUTH_KEY`. They are never written to the stopped-state ConfigMap.
+Tokens are stored in the Kubernetes Secret `poddy-external-auth` (key `tokens`), encrypted with AES-GCM using `PODDY_EXTERNAL_AUTH_KEY`. They are stripped from stopped StatefulSet templates.
 
 ## Configure providers
 

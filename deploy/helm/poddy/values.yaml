@@ -165,8 +165,8 @@ rbac:
 workspaceNamespace: ""
 createWorkspaceNamespace: false
 
-# ConfigMap used to remember stopped workspace specs (stop/start). The portal
-# creates it on first use. Defaults to "<fullname>-state".
+# Legacy stopped-workspace ConfigMap, read only for migration. Workspaces are
+# stored as StatefulSets, so new installs can leave this empty.
 workspaceState:
   configMapName: ""
 

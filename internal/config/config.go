@@ -189,7 +189,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", cfg.MetricsAddr, "Prometheus metrics listen address (empty disables metrics)")
 	fs.StringVar(&cfg.Namespace, "namespace", cfg.Namespace, "workspace namespace")
 	fs.StringVar(&cfg.RBACConfigMap, "rbac-configmap", cfg.RBACConfigMap, "ConfigMap storing admins and template access")
-	fs.StringVar(&cfg.StateConfigMap, "state-configmap", cfg.StateConfigMap, "ConfigMap storing stopped workspace specs")
+	fs.StringVar(&cfg.StateConfigMap, "state-configmap", cfg.StateConfigMap, "legacy ConfigMap storing stopped workspace specs (migration only)")
 	fs.StringVar(&cfg.TemplatesDir, "templates-dir", cfg.TemplatesDir, "extra workspace templates directory")
 	fs.StringVar(&cfg.DefaultTemplate, "template", cfg.DefaultTemplate, "default workspace template")
 	fs.StringVar(&cfg.StorageClass, "storage-class", cfg.StorageClass, "default StorageClass for workspace home volumes")

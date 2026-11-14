@@ -147,8 +147,8 @@ The portal calls `template.Render(Data)` where `Data` contains:
 |-------|------|-------------|
 | `.Name` | string | Workspace name (user-provided) |
 | `.Namespace` | string | Workspace namespace |
-| `.PodName` | string | `poddy-<name>` |
-| `.PVCName` | string | Same as `.PodName` (PVC name if created) |
+| `.PodName` | string | `poddy-<name>-0` |
+| `.PVCName` | string | `poddy-<name>` (PVC name if created) |
 | `.Image` | string | Template image (or request override) |
 | `.Parameters` | map[string]string | Resolved parameters (defaults + user input) |
 | `.Storage` | string | Same as `.Parameters["storage"]` |
@@ -164,7 +164,7 @@ The portal calls `template.Render(Data)` where `Data` contains:
 - The `workspace` volume: PVC when `storage` is non-empty, `emptyDir` otherwise.
 - The `code-server` sidecar when `browserVSCode` is `"true"`; it opens `/home/dev`.
 - The portal sets `metadata.name`, `metadata.namespace`, labels (`app.kubernetes.io/name=poddy`, `poddy.io/workspace=<name>`, `poddy.io/template=<template>`), and `restartPolicy: Always` when empty.
-- External auth env vars are added after rendering and recorded in the `poddy.io/external-auth-env` annotation so tokens are not stored in the stopped-state ConfigMap.
+- External auth env vars are added after rendering and recorded in the `poddy.io/external-auth-env` annotation so tokens are stripped from stopped StatefulSet templates.
 
 **Customization and merge rules:**
 - Any field present in `pod.yaml` wins over the default.
@@ -470,7 +470,7 @@ The Helm chart's top-level `imagePullSecrets` applies only to the portal and bas
 
 - `go test ./...` runs template validation tests.
 - Start the portal with your `-templates-dir`; invalid templates log errors at startup.
-- Create a workspace via the UI; check `kubectl -n <ns> get pods` and `kubectl -n <ns> logs poddy-<name>`.
+- Create a workspace via the UI; check `kubectl -n <ns> get pods` and `kubectl -n <ns> logs poddy-<name>-0`.
 - The pod template is rendered server-side; if rendering fails, the API returns 400 with the error.
 
 ## Example: Node.js workspace

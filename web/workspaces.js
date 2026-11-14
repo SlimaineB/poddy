@@ -578,10 +578,28 @@ function renderWorkspaceRow(workspace) {
   return row;
 }
 async function load({ silent = false } = {}) {
+  if (state.loading) {
+    state.reloadPending = true;
+    return;
+  }
+  state.loading = true;
   if (!silent && !state.loaded) els.loading.hidden = false;
 
   try {
-    const data = await api(pageURL("/api/workspaces", state.workspacePage, state.workspacePerPage, state.workspaceQuery.trim()));
+    const headers = {};
+    if (state.workspacesEtag) headers["If-None-Match"] = state.workspacesEtag;
+    const result = await api(
+      pageURL("/api/workspaces", state.workspacePage, state.workspacePerPage, state.workspaceQuery.trim()),
+      { headers, withMeta: true },
+    );
+    if (result === apiNotModified) {
+      state.loaded = true;
+      state.pollError = false;
+      schedulePoll(30000);
+      return;
+    }
+    const data = result.data;
+    if (result.etag) state.workspacesEtag = result.etag;
     if (Array.isArray(data)) {
       state.workspaces = data;
       state.workspaceTotal = data.length;
@@ -618,10 +636,19 @@ async function load({ silent = false } = {}) {
       load({ silent: true });
     });
     if (typeof refreshTopologyIfVisible === "function") refreshTopologyIfVisible();
+    schedulePoll(5000);
   } catch (err) {
     if (!silent || !state.pollError) {
       toast(err.message || "Failed to load workspaces.");
       state.pollError = true;
+    }
+    schedulePoll(30000);
+  } finally {
+    state.loading = false;
+    els.loading.hidden = true;
+    if (state.reloadPending) {
+      state.reloadPending = false;
+      load({ silent: true });
     }
   }
 }

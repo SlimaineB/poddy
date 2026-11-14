@@ -195,12 +195,12 @@ ingress:
 ### 4. Install
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.7 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.8 -f values.yaml
 
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.7 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.8 -f templates-values.yaml
 ```
-From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.7` with the published chart version when a new release is cut.
+From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.8` with the published chart version when a new release is cut.
 
 The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#adding-a-template).
 
@@ -230,7 +230,7 @@ kubectl -n poddy-system get deploy
 poddy is designed for small and medium engineering teams, not as a multi-tenant SaaS control plane. A single portal replica comfortably handles hundreds of workspaces and low thousands of known users. The practical limits are:
 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
-- **ConfigMap size**: stopped workspace specs and RBAC/users data live in ConfigMaps (1 MiB limit per ConfigMap). Thousands of stopped workspaces with large rendered specs will hit this limit.
+- **ConfigMap size**: RBAC and user data live in ConfigMaps (1 MiB limit per ConfigMap). Workspace specs live in StatefulSets, not ConfigMaps.
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key, the external-auth key when providers are enabled, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
@@ -240,8 +240,9 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 
 | State | Stored in | Shared across portal replicas |
 |-------|-----------|-------------------------------|
-| Workspace Pods and PVCs | Kubernetes | yes |
-| Stopped workspace specs and schedule state | ConfigMap `poddy-state` | yes, through the API and retry-on-conflict |
+| Workspace StatefulSets, Pods and PVCs | Kubernetes | yes |
+| Workspace pod template and schedule state | StatefulSet `poddy-<workspace>` | yes, through the API and retry-on-conflict |
+| Legacy stopped workspace specs | ConfigMap `poddy-state` | migrated at startup |
 | RBAC, teams, template ownership | ConfigMap `poddy-rbac` | yes |
 | Templates | Labeled ConfigMaps | yes |
 | Access requests, grants, presence | PostgreSQL (`access_*`) | yes; the in-memory fallback is single-replica only |
@@ -274,9 +275,9 @@ at the same time; a high QPS with a low burst still throttles short spikes.
 
 Multi-region uses one central hub and one manager per region. The hub owns
 authentication, RBAC, users, templates, the workspace list, the UI, and external
-auth tokens. Region managers own the Kubernetes API connection, workspace pods,
-PVCs, stopped-state ConfigMap, terminal/desktop IDE proxying, and the region SSH
-bastion.
+auth tokens. Region managers own the Kubernetes API connection, workspace
+StatefulSets, PVCs, legacy stopped-state ConfigMap migration, terminal/desktop
+IDE proxying, and the region SSH bastion.
 
 See [Regions](regions.md) for the full step-by-step checklist to add, verify,
 rotate, and remove a region.
@@ -429,14 +430,15 @@ Neither the portal nor the bastion can access other namespaces or cluster-scoped
 
 ### Workspace lifecycle
 
-- **Stop** deletes the workspace pod, keeps its PVC, and stores the rendered pod spec in the `poddy-state` ConfigMap (key `workspaces.yaml`).
-- **Start** recreates the pod from the stored spec; **Restart** deletes and recreates it. The PVC is reused.
+- **Stop** scales the workspace StatefulSet to zero, keeps its PVC, and strips dynamic credentials from the pod template.
+- **Start** refreshes dynamic credentials (SSH keys, external auth, agent token) and scales to one; **Restart** refreshes them and recreates the pod. The PVC is reused.
+- **Upgrade migration**: on startup the portal converts stopped entries from the legacy `poddy-state` ConfigMap into stopped StatefulSets and removes them from the ConfigMap. Running bare pods stay visible and are adopted on their next stop or restart.
 - **Auto-stop schedules** are stored with the workspace state. The portal evaluates them every 30 seconds using the configured IANA timezone; outside the daily start/stop window it stops the pod, and at the next window it starts it again only if the schedule stopped it. A manual stop is never auto-started.
 - **Ephemeral workspaces** (`storage` empty) have no PVC: stopping them loses their data. The UI warns before stopping.
 - Stopped workspaces appear with phase `Stopped`; only their owner or a global admin can start/stop/restart/delete them.
 - Click a workspace card or name to open its details. The dialog shows metadata plus **startup logs** from init containers and workspace containers. Logs are fetched with the `pods/log` permission and are limited to the last 500 lines per container.
-- The state ConfigMap name is `workspaceState.configMapName` (default `<fullname>-state`) in the chart, or `-state-configmap` / `PODDY_STATE_CONFIGMAP`. It is created on first use and covered by the `configmaps` permission.
-- The rendered spec is preserved, so a stopped workspace resumes with the same image/resources even if the template changes. Delete and recreate to pick up template changes.
+- The template is preserved, so a stopped workspace resumes with the same image/resources even if the template changes. Delete and recreate to pick up template changes. `workspaceState.configMapName` / `-state-configmap` now only points at the legacy ConfigMap read during migration.
+- The portal needs `statefulsets` and `services` permissions in addition to pods, PVCs, and Secrets.
 
 ### Template links
 
@@ -678,7 +680,7 @@ if unauthenticated users should install them.
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.7 -f values.yaml
+  -n poddy-system --version 0.1.8 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.
