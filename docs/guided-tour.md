@@ -100,12 +100,12 @@ The secret `poddy-database` contains `database-url`.
 4. **Install the chart** (published on GHCR, no repo checkout required):
    ```bash
    helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-     -n poddy-system --create-namespace --version 0.1.5 -f values.yaml
+     -n poddy-system --create-namespace --version 0.1.6 -f values.yaml
    ```
 5. **Install the templates** (separate release; required for the default templates):
    ```bash
    helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-     -n poddy-workspaces --version 0.1.5 -f templates-values.yaml
+     -n poddy-workspaces --version 0.1.6 -f templates-values.yaml
    ```
 
 Minimal `values.yaml`:

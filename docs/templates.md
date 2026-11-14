@@ -244,6 +244,22 @@ No portal restart or `helm upgrade` is required. If the workspace image is
 private, add `imagePullSecrets` to the `pod.yaml` spec; the chart's top-level
 `imagePullSecrets` only covers the portal and bastion pods.
 
+## GitOps and one repository per team
+
+Because templates are ordinary labeled ConfigMaps, a team can keep them in its
+own repository and sync them with Argo CD or Flux into the workspace namespace.
+The portal hot-reloads the catalog; no portal restart is needed.
+
+- Keep one active ConfigMap per logical `poddy.io/template-name` in a namespace.
+  Duplicates make the catalog ambiguous and the reload is rejected.
+- Team releases of the `poddy-templates` chart should set
+  `builtins.enabled=false` and use a distinct release name.
+- Prefer Kustomize or a small Helm release when the team repository cannot run
+  the main chart. Removing a template from Git deletes its ConfigMap and the
+  portal drops it; existing workspaces keep their spec.
+- See the [chart README](../deploy/helm/poddy-templates/README.md#gitops-and-one-repository-per-team)
+  for the multi-team rules and an example values file.
+
 ## Versioning and rollback
 
 A template version is a labeled ConfigMap. To keep history, create one ConfigMap per version with the same `poddy.io/template-name` and a distinct `poddy.io/template-version`. Mark exactly one as active:

@@ -18,11 +18,11 @@ namespace or set `namespace`:
 ```bash
 # Install directly in the portal's workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.5 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.6 -f templates-values.yaml
 
 # Or keep the release elsewhere and point it at the workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.5 --set namespace=poddy-workspaces -f templates-values.yaml
+  -n poddy-system --version 0.1.6 --set namespace=poddy-workspaces -f templates-values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -38,7 +38,7 @@ helm upgrade --install poddy-templates deploy/helm/poddy-templates \
   -n poddy-workspaces -f templates-values.yaml
 ```
 
-Replace `0.1.5` with the published chart version when a new release is cut.
+Replace `0.1.6` with the published chart version when a new release is cut.
 
 ## Default templates
 
@@ -101,15 +101,15 @@ templates:
 Rollback by changing `active` and upgrading the chart:
 
 ```bash
-helm upgrade poddy-templates deploy/helm/poddy-templates -n poddy-system \
+helm upgrade poddy-templates deploy/helm/poddy-templates -n poddy-workspaces \
   -f templates-values.yaml --set-string templates.node.active=1.0.0
 ```
 
 Or, with raw ConfigMaps, move the label without restarting the portal:
 
 ```bash
-kubectl -n poddy-system label configmap node-1.0.0 poddy.io/template-active=true --overwrite
-kubectl -n poddy-system label configmap node-2.0.0 poddy.io/template-active-
+kubectl -n poddy-workspaces label configmap node-1.0.0 poddy.io/template-active=true --overwrite
+kubectl -n poddy-workspaces label configmap node-2.0.0 poddy.io/template-active-
 ```
 
 The portal serves the active version, exposes it in the Templates page, and reloads in place.
@@ -123,7 +123,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: node-template
-  namespace: poddy-system
+  namespace: poddy-workspaces
   labels:
     poddy.io/template: "true"
     poddy.io/template-name: node
@@ -153,16 +153,59 @@ add any field. See [docs/templates.md](../../../docs/templates.md) for the merge
 rules.
 
 ```bash
-kubectl -n poddy-system apply -f node-template.yaml
-kubectl -n poddy-system delete configmap node-template   # remove template
+kubectl -n poddy-workspaces apply -f node-template.yaml
+kubectl -n poddy-workspaces delete configmap node-template   # remove template
 ```
 
 The portal reloads within a few seconds. An invalid update is rejected and the previous catalog stays active; check `kubectl -n poddy-system logs deploy/poddy`.
+
+## GitOps and one repository per team
+
+Templates are plain Kubernetes ConfigMaps, so they fit Argo CD, Flux, or any
+GitOps controller. Keep templates in the team's own repository and sync them
+into that team's workspace namespace; the portal watches the namespace and
+reloads without a restart.
+
+Rules for multi-team setups:
+
+- **One logical name per namespace.** The logical name is
+  `poddy.io/template-name`, not the ConfigMap name. Two active ConfigMaps with
+  the same logical name make the catalog ambiguous and the portal rejects the
+  reload, keeping the previous catalog. Team releases should set
+  `builtins.enabled=false` and ship only their own templates, or use unique
+  names.
+- **Use a distinct release name per team** (for example
+  `helm upgrade --install team-a-templates ...`). The release name is part of
+  the ConfigMap name, so releases do not overwrite each other's objects.
+- **Removing a template from Git** deletes its ConfigMap (Helm or Argo pruning);
+  the portal drops it from the catalog. Existing workspaces keep their spec.
+- **Without Helm**, commit the labeled ConfigMaps directly and apply them with
+  Kustomize; same labels, same behavior.
+- **One repository rendering for several namespaces**: set `namespace` per
+  release instead of relying on the release namespace.
+
+Example team values (`builtins.enabled=false`):
+
+```yaml
+builtins:
+  enabled: false
+templates:
+  team-api:
+    template: |
+      name: team-api
+      image: ghcr.io/acme/poddy-workspace-api:1
+    pod: |
+      apiVersion: v1
+      kind: Pod
+      spec: {}
+```
 
 ## Values
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
+| `namespace` | release namespace | Namespace where the ConfigMaps are created (must be the portal's workspace namespace). |
+| `builtins.enabled` | `true` | Deploy the default `base`/`go`/`node`/`python` templates. |
 | `nameOverride` | `""` | Override the chart name. |
 | `fullnameOverride` | `""` | Override the generated ConfigMap prefix. |
 | `templates` | `{}` | Map of template name to `{template, pod}` or `{active, versions}`. |
