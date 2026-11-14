@@ -49,7 +49,7 @@ metadata:
     {{- end }}
 data:
   template.yaml: |
-    {{- .template | nindent 4 }}
+    {{- .template | trim | nindent 4 }}
   pod.yaml: |
-    {{- .pod | nindent 4 }}
-{{- end }}
+    {{- .pod | trim | nindent 4 }}
+{{ end }}

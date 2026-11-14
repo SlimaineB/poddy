@@ -77,7 +77,7 @@ private, run `helm registry login ghcr.io` first.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.4 \
+  --version 0.1.5 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -96,7 +96,7 @@ as their own release in the portal's workspace namespace:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  --version 0.1.4 \
+  --version 0.1.5 \
   --namespace poddy-workspaces
 ```
 

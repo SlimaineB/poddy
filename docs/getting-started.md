@@ -39,7 +39,7 @@ it works without a LoadBalancer or ingress:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.4 \
+  --version 0.1.5 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -63,7 +63,7 @@ their own release in the workspace namespace:
 
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  --version 0.1.4 -n poddy-workspaces
+  --version 0.1.5 -n poddy-workspaces
 ```
 
 ## 3. Open the portal

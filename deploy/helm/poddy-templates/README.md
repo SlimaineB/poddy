@@ -18,11 +18,11 @@ namespace or set `namespace`:
 ```bash
 # Install directly in the portal's workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.4 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.5 -f templates-values.yaml
 
 # Or keep the release elsewhere and point it at the workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.4 --set namespace=poddy-workspaces -f templates-values.yaml
+  -n poddy-system --version 0.1.5 --set namespace=poddy-workspaces -f templates-values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -38,7 +38,7 @@ helm upgrade --install poddy-templates deploy/helm/poddy-templates \
   -n poddy-workspaces -f templates-values.yaml
 ```
 
-Replace `0.1.4` with the published chart version when a new release is cut.
+Replace `0.1.5` with the published chart version when a new release is cut.
 
 ## Default templates
 

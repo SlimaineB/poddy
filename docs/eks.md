@@ -168,7 +168,7 @@ Then install:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.4 \
+  -n poddy-system --create-namespace --version 0.1.5 \
   -f examples/eks/values.yaml
 ```
 
