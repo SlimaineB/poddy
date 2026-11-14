@@ -2,15 +2,27 @@
 
 Workspace templates for the poddy portal, managed as a separate Helm release. Each template is its own labeled ConfigMap. The portal watches these ConfigMaps and reloads its catalog in place, so pushing a template does **not** restart the portal.
 
+The portal does not embed any templates. Install this chart (or apply equivalent labeled ConfigMaps) to get the default `base`, `go`, `node` and `python` templates; without templates the portal starts but cannot create workspaces.
+
 ## Install
 
-The chart is published as an OCI artifact in GHCR. Install it in the same
-namespace the portal uses for templates (`workspaceNamespace`, usually the
-portal release namespace):
+The chart is published as an OCI artifact in GHCR. It creates the template
+ConfigMaps in the namespace the portal watches (`workspaceNamespace`, which is
+`poddy-workspaces` in the quick start). That is **not** necessarily the portal
+release namespace.
+
+By default the chart writes to its own release namespace. When the portal and
+its workspace namespace differ, either install the chart in the workspace
+namespace or set `namespace`:
 
 ```bash
+# Install directly in the portal's workspace namespace.
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-system --version 0.1.0 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.4 -f templates-values.yaml
+
+# Or keep the release elsewhere and point it at the workspace namespace.
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  -n poddy-system --version 0.1.4 --set namespace=poddy-workspaces -f templates-values.yaml
 ```
 
 If the GHCR package is private, authenticate first:
@@ -23,10 +35,23 @@ Or install from a source checkout:
 
 ```bash
 helm upgrade --install poddy-templates deploy/helm/poddy-templates \
-  -n poddy-system -f templates-values.yaml
+  -n poddy-workspaces -f templates-values.yaml
 ```
 
-Replace `0.1.0` with the published chart version when a new release is cut.
+Replace `0.1.4` with the published chart version when a new release is cut.
+
+## Default templates
+
+The chart ships the default `base`, `go`, `node` and `python` templates and
+deploys them as ConfigMaps (`builtins.enabled=true`, the default). The portal
+does not embed any templates: without this chart (or equivalent labeled
+ConfigMaps) it starts with an empty catalog and no workspace can be created.
+Set `builtins.enabled=false` only when you manage every template yourself.
+
+The chart's copies live in `deploy/helm/poddy-templates/files/` and mirror
+`internal/templates/files/` in the Go source. After changing the source
+templates, run `make sync-templates` and commit both; `make check-templates`
+(also run in CI) fails when they drift.
 
 The portal discovers ConfigMaps with:
 

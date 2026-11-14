@@ -23,7 +23,7 @@ import (
 )
 
 func newTestManager() *Manager {
-	catalog, err := templates.Load("")
+	catalog, err := templates.Load("../templates/files")
 	if err != nil {
 		panic(err)
 	}

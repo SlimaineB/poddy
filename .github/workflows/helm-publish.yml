@@ -46,6 +46,9 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Check built-in template sync
+        run: make check-templates
+
       - name: Lint charts
         run: |
           helm lint deploy/helm/poddy \

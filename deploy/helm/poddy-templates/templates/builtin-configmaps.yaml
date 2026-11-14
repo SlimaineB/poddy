@@ -1,0 +1,11 @@
+{{- if .Values.builtins.enabled }}
+{{- $root := . }}
+{{- range $path, $_ := .Files.Glob "files/*/template.yaml" }}
+{{- $name := base (dir $path) }}
+{{- if not (hasKey $root.Values.templates $name) }}
+{{- $template := $root.Files.Get $path }}
+{{- $pod := $root.Files.Get (printf "files/%s/pod.yaml" $name) }}
+{{- include "poddy-templates.configmap" (dict "root" $root "name" $name "version" "" "active" true "template" $template "pod" $pod) }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -10,11 +10,12 @@ my-template/
 └── pod.yaml        # Go template → partial Pod overlay
 ```
 
-The portal loads templates from these sources (later sources override embedded templates with the same name):
+Templates are not embedded in the portal. The portal loads them from these sources (later sources override earlier ones with the same name):
 
-1. **Embedded** templates in `internal/templates/files/` (`base`, `go`, `node`, `python`).
-2. **Local directory** given by `-templates-dir` (or `PODDY_TEMPLATES_DIR`). It accepts either subdirectories (`node/template.yaml`, `node/pod.yaml`) or flat files (`node.template.yaml`, `node.pod.yaml`). The portal watches the directory and reloads on change.
-3. **Kubernetes ConfigMaps** labeled `poddy.io/template=true` in the workspace namespace. Each ConfigMap contains `template.yaml` and `pod.yaml`. The portal watches them and reloads in place, so templates can be pushed at any time without restarting the portal.
+1. **Local directory** given by `-templates-dir` (or `PODDY_TEMPLATES_DIR`). It accepts either subdirectories (`node/template.yaml`, `node/pod.yaml`) or flat files (`node.template.yaml`, `node.pod.yaml`). The portal watches the directory and reloads on change.
+2. **Kubernetes ConfigMaps** labeled `poddy.io/template=true` in the workspace namespace. Each ConfigMap contains `template.yaml` and `pod.yaml`. The portal watches them and reloads in place, so templates can be pushed at any time without restarting the portal.
+
+The **default** `base`, `go`, `node` and `python` templates ship in the separate `poddy-templates` Helm chart, which deploys them as labeled ConfigMaps. The portal starts with an empty catalog and cannot create workspaces until templates are installed.
 
 For ConfigMaps, the template name comes from the `poddy.io/template-name` label, or from the ConfigMap name when the label is absent. It must match `name` in `template.yaml`.
 
@@ -176,7 +177,10 @@ spec:
           value: /home/dev/go
 ```
 
-## Built-in templates
+## Default templates
+
+These are shipped by the `poddy-templates` chart, not by the portal. Install the
+chart (or apply equivalent ConfigMaps) to use them.
 
 | Name | Image | Parameters | Notes |
 |------|-------|------------|-------|
@@ -264,15 +268,15 @@ Rules:
 Rollback with the Helm chart: keep both versions under `templates.<name>.versions`, then change `active`:
 
 ```bash
-helm upgrade poddy-templates deploy/helm/poddy-templates -n poddy-system \
+helm upgrade poddy-templates deploy/helm/poddy-templates -n poddy-workspaces \
   -f templates-values.yaml --set-string templates.node.active=1.0.0
 ```
 
 Rollback with raw ConfigMaps: move the label to the old version:
 
 ```bash
-kubectl -n poddy-system label configmap node-1.0.0 poddy.io/template-active=true --overwrite
-kubectl -n poddy-system label configmap node-2.0.0 poddy.io/template-active-
+kubectl -n poddy-workspaces label configmap node-1.0.0 poddy.io/template-active=true --overwrite
+kubectl -n poddy-workspaces label configmap node-2.0.0 poddy.io/template-active-
 ```
 
 The portal picks up the change through the watch. Old ConfigMaps can stay for history or be deleted once no longer needed. Workspaces already created keep their rendered spec; new workspaces use the active version.
@@ -437,7 +441,7 @@ The Helm chart's top-level `imagePullSecrets` applies only to the portal and bas
 
 ## Example: Node.js workspace
 
-Poddy ships a built-in `node` template using `ghcr.io/slimaineb/poddy-workspace-node:latest`.
+The `poddy-templates` chart ships a default `node` template using `ghcr.io/slimaineb/poddy-workspace-node:latest`.
 The files in `examples/templates/node/` and `examples/workspaces/node/` show how
 to override it with a private image.
 

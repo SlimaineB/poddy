@@ -111,7 +111,7 @@ admins, template owners, teams, and workspace ownership. See
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.3 \
+  -n poddy-system --create-namespace --version 0.1.4 \
   -f values.yaml
 ```
 

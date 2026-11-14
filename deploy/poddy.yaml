@@ -1,6 +1,10 @@
 # Quick-start single-namespace deployment.
 # For production, multi-team deployments and easy customization, use the Helm
 # chart in deploy/helm/poddy instead.
+#
+# Templates are not part of this manifest. Install the separate poddy-templates
+# chart or apply labeled ConfigMaps (poddy.io/template=true) in this namespace;
+# without templates the portal starts but cannot create workspaces.
 apiVersion: v1
 kind: Namespace
 metadata:

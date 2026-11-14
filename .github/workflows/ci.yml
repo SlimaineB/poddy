@@ -74,6 +74,8 @@ jobs:
       - uses: azure/setup-helm@v5
         with:
           version: v3.16.4
+      - name: Check built-in template sync
+        run: make check-templates
       - name: Lint charts
         run: |
           helm lint deploy/helm/poddy \

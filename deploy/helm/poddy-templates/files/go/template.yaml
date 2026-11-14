@@ -1,0 +1,77 @@
+name: go
+displayName: Go 1.25
+description: Go 1.25.5 workspace with GOPATH, Git, SSH, and a persistent home. Good for CLIs, services, and Kubernetes tooling.
+image: ghcr.io/slimaineb/poddy-workspace:latest
+parameters:
+  - name: cpu
+    displayName: CPU
+    type: string
+    description: CPU request for the workspace container.
+    default: "1"
+    options:
+      - label: 250m (0.25 CPU)
+        value: "250m"
+      - label: 500m (0.5 CPU)
+        value: "500m"
+      - label: 1 CPU
+        value: "1"
+      - label: 2 CPUs
+        value: "2"
+      - label: 4 CPUs
+        value: "4"
+  - name: memory
+    displayName: Memory
+    type: string
+    description: Memory request for the workspace container.
+    default: "2Gi"
+    options:
+      - label: 512 MiB
+        value: 512Mi
+      - label: 1 GiB
+        value: 1Gi
+      - label: 2 GiB
+        value: 2Gi
+      - label: 4 GiB
+        value: 4Gi
+      - label: 8 GiB
+        value: 8Gi
+  - name: storage
+    displayName: Home storage
+    type: string
+    description: Size of the persistent home volume.
+    default: "10Gi"
+    options:
+      - label: Ephemeral (no persistence)
+        value: ""
+      - label: 200 MiB
+        value: 200Mi
+      - label: 500 MiB
+        value: 500Mi
+      - label: 1 GiB
+        value: 1Gi
+      - label: 5 GiB
+        value: 5Gi
+      - label: 10 GiB
+        value: 10Gi
+      - label: 20 GiB
+        value: 20Gi
+      - label: 50 GiB
+        value: 50Gi
+      - label: 100 GiB
+        value: 100Gi
+  - name: storageClass
+    displayName: Storage class
+    type: string
+    description: StorageClass name (empty for the cluster default).
+    default: ""
+  - name: browserVSCode
+    displayName: VS Code in the browser
+    type: boolean
+    description: Run an OpenVSCode Server sidecar and expose it from the workspace card.
+    default: "true"
+
+links:
+  - name: Go docs
+    url: https://go.dev/doc/
+    icon: external
+    newTab: true

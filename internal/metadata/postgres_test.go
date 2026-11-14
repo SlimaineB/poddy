@@ -60,7 +60,7 @@ func TestPostgresStore(t *testing.T) {
 	if err := store.SyncRBAC(ctx, namespace, cfg); err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := templates.Load("")
+	catalog, err := templates.Load("../templates/files")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,18 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Namespace where the template ConfigMaps are created. Defaults to the release
+# namespace. Set this to the portal's workspaceNamespace when the portal and
+# this chart are installed in different namespaces.
+namespace: ""
+
+# Deploy the default base, go, node and python templates as ConfigMaps. The
+# portal does not embed templates, so this chart is what provides the defaults.
+# Disable this only when you manage every template yourself. Defining a default
+# template under templates below overrides it and takes precedence.
+builtins:
+  enabled: true
+
 # One ConfigMap is created per template version. The map key is the template
 # name and must match name in template.yaml. The portal discovers these
 # ConfigMaps through the poddy.io/template=true label, so they can be applied at

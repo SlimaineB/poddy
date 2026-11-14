@@ -10,7 +10,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Auto-stop schedules**: Give a workspace a timezone and daily start/stop times. poddy stops it outside the active window and starts it again only when the schedule stopped it, so a manual stop stays stopped.
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
 - **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
-- **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Built-in `base`, `go`, `node`, and `python` templates; add your own via `-templates-dir`, the separate `poddy-templates` Helm chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
+- **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Templates are not embedded in the portal: the default `base`, `go`, `node`, and `python` templates ship in the separate `poddy-templates` Helm chart, and you can add your own via `-templates-dir`, that chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **SSH bastion**: A separate `poddy-bastion` Deployment provides a single SSH entry point (`poddy-ssh-*` via ProxyCommand) and forwards to a dedicated `poddy-agent` sidecar in each workspace. The sidecar has its own memory limit, and `sshd` gets a lowered OOM score so workspace memory spikes do not drop SSH sessions. Users add their public key from the **SSH keys** page; keys are bound to their signed-in identity and workspace owner.
 - **Desktop IDE launch**: Click **VS Code** or **Cursor** to open Remote-SSH in a new window. In cluster mode the portal returns a short-lived signed ticket; the Poddy extension (installed once in VS Code or Cursor) enrolls the machine key, writes the SSH config, and opens the editor without manual setup. In local editor mode the portal launches Windows VS Code or Cursor directly. **PyCharm** opens a JetBrains Gateway link using the same SSH config. **JupyterLab** opens through the portal proxy when the workspace has the `jupyterlab` sidecar; the Python template enables it by default. The **SSH** dialog remains available as a manual fallback, and **VS Code Web** opens the browser editor.
@@ -77,7 +77,7 @@ private, run `helm registry login ghcr.io` first.
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.3 \
+  --version 0.1.4 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -90,6 +90,18 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --set workspaceNamespace=poddy-workspaces \
   --set createWorkspaceNamespace=true
 ```
+
+Templates are **not** part of the portal release. Install the default templates
+as their own release in the portal's workspace namespace:
+
+```bash
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  --version 0.1.4 \
+  --namespace poddy-workspaces
+```
+
+Without this release (or equivalent labeled ConfigMaps) the portal has no
+templates and cannot create workspaces.
 
 If the GHCR packages are private, make them public for this quick start. The
 chart's `imagePullSecrets` only covers the portal and bastion; workspace
@@ -169,7 +181,7 @@ namespaces, see [docs/k3s-test.md](docs/k3s-test.md).
 
 See [docs/templates.md](docs/templates.md) for:
 - The template contract (`template.yaml` + `pod.yaml`).
-- Built-in `base`, `go`, `node`, and `python` templates.
+- Default `base`, `go`, `node`, and `python` templates deployed by the separate `poddy-templates` chart.
 - Adding external templates (`-templates-dir`, the `poddy-templates` chart, or labeled ConfigMaps).
 - Pushing a template at any time without restarting the portal.
 - Versioning templates and rolling back by moving the active label.

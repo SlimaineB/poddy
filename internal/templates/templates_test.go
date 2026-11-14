@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestLoadEmbedded(t *testing.T) {
-	catalog, err := Load("")
+func TestLoadTemplatesDirectory(t *testing.T) {
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestLoadEmbedded(t *testing.T) {
 }
 
 func TestImageRegistryIsDisplayOnly(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestImageRegistryIsDisplayOnly(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestLinks(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestBuiltInTemplateEnv(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestBuiltInTemplateEnv(t *testing.T) {
 }
 
 func TestRenderEphemeral(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,8 +249,8 @@ func TestLoadFlatTemplates(t *testing.T) {
 	if tmpl.DisplayName != "Node.js" {
 		t.Fatalf("display name = %q", tmpl.DisplayName)
 	}
-	if _, err := catalog.Get("base"); err != nil {
-		t.Fatalf("embedded template missing after flat load: %v", err)
+	if _, err := catalog.Get("base"); err == nil {
+		t.Fatal("flat load should not include templates from other directories")
 	}
 }
 
@@ -291,8 +291,8 @@ func TestLoadSources(t *testing.T) {
 	if tmpl.Version != "2.0.0" {
 		t.Fatalf("source version did not override template.yaml: %q", tmpl.Version)
 	}
-	if _, err := catalog.Get("base"); err != nil {
-		t.Fatalf("embedded template missing: %v", err)
+	if _, err := catalog.Get("base"); err == nil {
+		t.Fatal("LoadSources should not include templates from the filesystem")
 	}
 
 	_, err = LoadSources([]Source{{
@@ -366,7 +366,7 @@ parameters:
 }
 
 func TestImageRegistryMapIsDisplayOnly(t *testing.T) {
-	catalog, err := Load("")
+	catalog, err := Load("files")
 	if err != nil {
 		t.Fatal(err)
 	}

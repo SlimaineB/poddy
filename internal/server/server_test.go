@@ -19,7 +19,7 @@ import (
 )
 
 func newTestServer(token string) *Server {
-	catalog, err := templates.Load("")
+	catalog, err := templates.Load("../templates/files")
 	if err != nil {
 		panic(err)
 	}

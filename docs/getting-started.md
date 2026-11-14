@@ -39,7 +39,7 @@ it works without a LoadBalancer or ingress:
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  --version 0.1.3 \
+  --version 0.1.4 \
   --namespace poddy-system \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
@@ -56,6 +56,14 @@ Wait for the portal and bastion:
 ```bash
 kubectl -n poddy-system rollout status deploy/poddy
 kubectl -n poddy-system rollout status deploy/poddy-bastion
+```
+
+Templates are not embedded in the portal. Install the default templates as
+their own release in the workspace namespace:
+
+```bash
+helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
+  --version 0.1.4 -n poddy-workspaces
 ```
 
 ## 3. Open the portal

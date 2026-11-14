@@ -15,6 +15,10 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "poddy-templates.namespace" -}}
+{{- default .Release.Namespace .Values.namespace -}}
+{{- end -}}
+
 {{- define "poddy-templates.configmap" -}}
 {{- $root := .root -}}
 {{- $version := .version | toString -}}
@@ -30,7 +34,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $baseName | trunc 63 | trimSuffix "-" }}
-  namespace: {{ $root.Release.Namespace }}
+  namespace: {{ include "poddy-templates.namespace" $root }}
   labels:
     app.kubernetes.io/name: poddy-templates
     app.kubernetes.io/instance: {{ $root.Release.Name }}

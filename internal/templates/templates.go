@@ -2,7 +2,6 @@ package templates
 
 import (
 	"bytes"
-	"embed"
 	"fmt"
 	"io/fs"
 	"os"
@@ -24,9 +23,6 @@ const (
 	WorkspacePath = "/home/dev"
 	SSHCommand    = "/usr/local/bin/poddy-ssh-start"
 )
-
-//go:embed files
-var embedded embed.FS
 
 var (
 	parameterName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*$`)
@@ -118,17 +114,16 @@ func Load(dir string) (*Catalog, error) {
 	return loadSources(dir, nil)
 }
 
-// LoadSources builds a catalog from the embedded templates plus externally
-// pushed sources. It is used by the Kubernetes ConfigMap watcher.
+// LoadSources builds a catalog from externally pushed sources. It is used by
+// the Kubernetes ConfigMap watcher. The catalog is empty when no sources are
+// provided; the portal starts without templates and picks them up when they
+// are installed.
 func LoadSources(sources []Source) (*Catalog, error) {
 	return loadSources("", sources)
 }
 
 func loadSources(dir string, sources []Source) (*Catalog, error) {
 	c := &Catalog{templates: map[string]*Template{}, dir: dir}
-	if err := c.loadFS(embedded, "files"); err != nil {
-		return nil, err
-	}
 	if dir != "" {
 		if err := c.loadFS(os.DirFS(dir), "."); err != nil {
 			return nil, err
@@ -138,9 +133,6 @@ func loadSources(dir string, sources []Source) (*Catalog, error) {
 		if err := c.addTemplate(source.Name, source.Template, source.Pod, source.Version); err != nil {
 			return nil, err
 		}
-	}
-	if len(c.templates) == 0 {
-		return nil, fmt.Errorf("no workspace templates found")
 	}
 	return c, nil
 }
@@ -234,8 +226,8 @@ func (c *Catalog) Reload(dir string) error {
 	return nil
 }
 
-// ReloadSources replaces the catalog with embedded templates plus sources. If
-// loading fails, the current catalog stays active.
+// ReloadSources replaces the catalog with the configured directory templates
+// plus sources. If loading fails, the current catalog stays active.
 func (c *Catalog) ReloadSources(sources []Source) error {
 	c.mu.RLock()
 	dir := c.dir

@@ -414,11 +414,11 @@ ingress:
           pathType: Prefix
   tls: []
 
-# Template used when the UI does not specify one. Must exist in the embedded
-# templates or in a template ConfigMap watched by the portal.
+# Template used when the UI does not specify one. Must exist in a template
+# ConfigMap watched by the portal; the portal does not embed templates.
 defaultTemplate: base
 
-# Workspace templates are managed outside this chart: use the separate
+# Workspace templates are managed outside this chart: install the separate
 # poddy-templates chart, or apply labeled ConfigMaps with
 # poddy.io/template=true. The portal watches them and reloads without restart.
 

@@ -21,10 +21,14 @@ HUB_RELEASE := poddy
 HUB_NS      := poddy-system
 REGIONS     := poddy-eu poddy-us
 
+TEMPLATES_CHART := deploy/helm/poddy-templates
+TEMPLATE_NAMES  := base go node python
+
 export KUBECONFIG
 
 .PHONY: all build test vet fmt lint docs image values-hub values-eu values-us \
-        deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help
+        deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help \
+        sync-templates check-templates
 
 all: build test vet
 
@@ -95,6 +99,21 @@ status: kubeconfig
 	$(HELM) --kubeconfig $(KUBECONFIG) list -A
 	kubectl --kubeconfig $(KUBECONFIG) get deploy -A -l app.kubernetes.io/name=poddy
 
+# Copy the canonical built-in templates into the poddy-templates chart so the
+# chart can deploy them declaratively. Run this after editing internal/templates.
+sync-templates:
+	rm -rf $(TEMPLATES_CHART)/files
+	mkdir -p $(TEMPLATES_CHART)/files
+	for t in $(TEMPLATE_NAMES); do cp -R internal/templates/files/$$t $(TEMPLATES_CHART)/files/$$t; done
+
+check-templates:
+	@for t in $(TEMPLATE_NAMES); do \
+		diff -ru internal/templates/files/$$t $(TEMPLATES_CHART)/files/$$t || { \
+			echo "built-in templates out of sync; run 'make sync-templates'"; \
+			exit 1; \
+		}; \
+	done
+
 clean:
 	rm -f $(VALUES_DIR)/poddy-$(IMAGE_TAG).tar $(VALUES_DIR)/poddy-values.yaml \
 	      $(VALUES_DIR)/poddy-eu-values.yaml $(VALUES_DIR)/poddy-us-values.yaml
@@ -106,6 +125,8 @@ help:
 	@echo "  make vet          - go vet ./..."
 	@echo "  make fmt          - gofmt -w ."
 	@echo "  make docs         - mkdocs build --strict"
+	@echo "  make sync-templates - copy built-in templates into poddy-templates chart"
+	@echo "  make check-templates - verify built-in templates are in sync"
 	@echo "  make image        - build podman image and import into k3s containerd"
 	@echo "  make deploy-hub   - helm upgrade hub release (poddy-system)"
 	@echo "  make deploy-eu    - helm upgrade eu region"
