@@ -172,7 +172,7 @@ instructions. The publish workflows build and push the GHCR images and Helm char
 Use the Helm charts for anything beyond a quick test. See [docs/deploy.md](docs/deploy.md) for:
 - Installing the portal chart (portal + bastion Deployments) and templates chart with TLS, LoadBalancer SSH, and a stable host key.
 - Scaling the portal and bastion independently, multi-team namespaces, RBAC, SSH keys, image pull secrets.
-- Whether you need PostgreSQL and how to enable the [optional metadata mirror and audit log](docs/postgres-schema.md).
+- Whether you need PostgreSQL and how to enable the [optional control-plane database and audit log](docs/postgres-schema.md).
 
 For a clean local k3s deployment with separate control-plane and workspace
 namespaces, see [docs/k3s-test.md](docs/k3s-test.md).
@@ -273,7 +273,7 @@ externalAuth:
     optional: true
 ```
 
-Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens encrypted in the `poddy-external-auth` Secret, refreshes them server-side, and exposes `poddy-external-auth token <id>` plus a Git askpass helper in the base image. See [docs/external-auth.md](docs/external-auth.md).
+Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens AES-GCM encrypted in PostgreSQL when configured, or in the `poddy-external-auth` Secret otherwise. It refreshes them server-side and exposes `poddy-external-auth token <id>` plus a Git askpass helper in the base image. See [docs/external-auth.md](docs/external-auth.md).
 
 ## RBAC
 

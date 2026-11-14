@@ -60,8 +60,9 @@ type Server struct {
 	OIDC            *auth.OIDC
 	OIDCRedirectURL string
 
-	RBAC     *rbac.Store
-	Users    *userstore.Store
+	RBAC     rbac.ConfigStore
+	Users    userstore.Directory
+	Shares   ShareStore
 	Metadata metadata.Store
 	Access   k8s.AccessStore
 	Quota    quota.Store

@@ -103,6 +103,23 @@ func (s *Store) Delete(ctx context.Context, user, provider string) error {
 	})
 }
 
+// All returns a copy of every stored token. It is used to seed PostgreSQL
+// during an upgrade.
+func (s *Store) All(ctx context.Context) (map[string]map[string]Token, error) {
+	data, err := s.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]map[string]Token, len(data))
+	for user, providers := range data {
+		out[user] = make(map[string]Token, len(providers))
+		for provider, token := range providers {
+			out[user][provider] = token
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) update(ctx context.Context, mutate func(tokenMap) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

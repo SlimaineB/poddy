@@ -60,6 +60,12 @@ func TestPostgresStore(t *testing.T) {
 	if err := store.SyncRBAC(ctx, namespace, cfg); err != nil {
 		t.Fatal(err)
 	}
+	if err := pg.Quota(namespace).SetUserQuota(ctx, "alice@example.com", rbac.Quota{CPU: "4"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.Quota(namespace).SetTeamQuota(ctx, "backend", *cfg.Teams["backend"].Quota); err != nil {
+		t.Fatal(err)
+	}
 	catalog, err := templates.Load("../templates/files")
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +151,8 @@ func TestPostgresStore(t *testing.T) {
 	var teamQuotaMax sql.NullInt64
 	var teamCPU, teamMemory, teamStorage string
 	if err := pg.pool.QueryRow(ctx, `
-		SELECT quota_max_workspaces, quota_cpu, quota_memory, quota_storage
-		FROM poddy.teams WHERE namespace = $1 AND name = 'backend'`,
+		SELECT max_workspaces, cpu, memory, storage
+		FROM poddy.team_quotas WHERE namespace = $1 AND team = 'backend'`,
 		namespace,
 	).Scan(&teamQuotaMax, &teamCPU, &teamMemory, &teamStorage); err != nil {
 		t.Fatal(err)

@@ -4,10 +4,12 @@ poddy does not require a database. By default, the portal reads and writes
 Kubernetes objects in the workspace namespace. This page lists what is stored
 where and which fields matter.
 
-An optional PostgreSQL mirror can store RBAC, OIDC users, templates, workspaces,
-and audit events. It is enabled with `PODDY_DATABASE_URL`; Kubernetes remains
-the source of truth and PostgreSQL is never read for access decisions. See
-[PostgreSQL schema](postgres-schema.md).
+An optional PostgreSQL database can store the control plane. It is enabled with
+`PODDY_DATABASE_URL`. When configured, PostgreSQL is authoritative for RBAC,
+OIDC users, external auth tokens, share links, access state, and quotas. The
+`poddy-rbac` and `poddy-users` ConfigMaps become materialized mirrors. Templates
+and workspaces remain Kubernetes-first and are mirrored for audit and recovery.
+See [PostgreSQL schema](postgres-schema.md).
 
 ## Object map
 
@@ -17,15 +19,15 @@ the source of truth and PostgreSQL is never read for access decisions. See
 | Persistent workspace data | PVCs | `poddy-<workspace>` | mounted at `/home/dev` |
 | Legacy stopped workspace specs | ConfigMap | `poddy-state` | `workspaces.yaml` (migration only) |
 | Templates | ConfigMaps | template name | `template.yaml`, `pod.yaml` |
-| RBAC | ConfigMap | `poddy-rbac` | `rbac.yaml` |
-| OIDC users | ConfigMap | `poddy-users` | `users.json` |
+| RBAC (Kubernetes fallback or PostgreSQL mirror) | ConfigMap | `poddy-rbac` | `rbac.yaml` |
+| OIDC users (Kubernetes fallback or PostgreSQL mirror) | ConfigMap | `poddy-users` | `users.json` |
 | Self-service SSH keys | ConfigMap | `poddy-user-ssh-keys` | `keys.json` |
 | Workspace SSH keys | Secret | `poddy-<workspace>-ssh-keys` | `authorized_keys` |
-| Workspace share links | Secret | `poddy-shares` | `shares.json` |
+| Workspace share links (Kubernetes fallback or migration source) | Secret | `poddy-shares` | `shares.json` |
 | Agent tunnel key | Secret | `<release>-agent` | `agent-key` |
 | SSH certificate authority | Secret | `<release>-ssh-ca` | `ssh-ca-key` |
-| External auth tokens | Secret | `poddy-external-auth` | encrypted token document |
-| Optional metadata mirror | PostgreSQL | `poddy` schema | `migrations/*.sql` |
+| External auth tokens (Kubernetes fallback or migration source) | Secret | `poddy-external-auth` | encrypted token document |
+| PostgreSQL control plane and metadata mirror | PostgreSQL | `poddy` schema | `migrations/*.sql` |
 
 The portal's Kubernetes Role is scoped to this namespace. It needs access to
 pods, exec, port-forward, PVCs, ConfigMaps, and Secrets.
@@ -182,26 +184,33 @@ refreshed tokens through environment variables declared by the template.
 
 ## Optional PostgreSQL metadata
 
-When `PODDY_DATABASE_URL` is set, the portal mirrors the same metadata into
-PostgreSQL: tenants, users, teams, team/user quotas, RBAC, templates, template
-versions, workspaces, and audit events. The bastion also writes SSH audit
-events. The portal syncs at startup and after writes; it does not read
-PostgreSQL for RBAC, quota, or workspace decisions.
+When `PODDY_DATABASE_URL` is set, PostgreSQL stores RBAC (`rbac_documents`),
+OIDC users (`users`), encrypted external auth tokens (`external_auth_tokens`),
+workspace share links (`share_links`), access state, quotas, templates,
+workspace metadata, and audit events. The portal writes RBAC and users to
+PostgreSQL, then reconciles `poddy-rbac` and `poddy-users` as best-effort
+ConfigMap mirrors. External auth and share writes go only to PostgreSQL after
+the first import; their old Secrets are migration sources and are no longer
+updated.
 
-The `external_auth_tokens` table is reserved for a future encrypted mirror;
-tokens currently remain in the Kubernetes Secret. PostgreSQL never stores PVC
-contents or plaintext secrets.
+Share lookup uses a SHA-256 token hash and stores the raw token AES-GCM
+encrypted so existing share URLs can be rebuilt. External auth access and
+refresh tokens are also AES-GCM encrypted. Set a stable
+`PODDY_EXTERNAL_AUTH_KEY`, `PODDY_OIDC_SESSION_KEY`, or `PODDY_DESKTOP_SECRET`
+to keep tokens and shares valid across restarts. Without a stable key, external
+auth uses an ephemeral key and share links stay in Kubernetes. PostgreSQL never
+stores PVC contents or plaintext secrets.
 
 See [PostgreSQL schema](postgres-schema.md) for the table list, audit actions,
 backup strategy, and current limitations.
 
 ## What is not stored
 
-- No database is required at runtime.
+- No database is required at runtime; Kubernetes is the fallback.
 - No workspace files or PVC contents in PostgreSQL.
-- No PostgreSQL reads for access or quota decisions; Kubernetes remains
-  authoritative.
-- No plaintext OAuth tokens in PostgreSQL.
+- No PostgreSQL-first mode for workspaces or templates; Kubernetes remains
+  their runtime source of truth.
+- No plaintext OAuth or share tokens in PostgreSQL.
 - No long-lived Kubernetes credentials in the browser.
 - No cluster-wide access for the portal.
 - No shared home volumes across users unless you configure them yourself.

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -27,7 +28,20 @@ type workspaceShareInfo struct {
 	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 }
 
-func (s *Server) shareStore() *k8s.ShareStore {
+// ShareStore reads and writes workspace share links.
+type ShareStore interface {
+	Load(context.Context) (map[string]k8s.Share, error)
+	GetByToken(context.Context, string) (k8s.Share, bool, error)
+	GetByTarget(context.Context, string, string) (k8s.Share, bool, error)
+	Set(context.Context, k8s.Share) error
+	DeleteTarget(context.Context, string, string) error
+	DeleteWorkspace(context.Context, string) error
+}
+
+func (s *Server) shareStore() ShareStore {
+	if s.Shares != nil {
+		return s.Shares
+	}
 	return k8s.NewShareStore(s.Workspaces.Client, s.Workspaces.Namespace, "")
 }
 

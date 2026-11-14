@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"poddy/internal/access"
+	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/quota"
 	"poddy/internal/rbac"
@@ -39,6 +40,45 @@ func (p *Postgres) Access(namespace string) access.Store {
 // pool.
 func (p *Postgres) Quota(namespace string) quota.Store {
 	return quota.NewPostgres(p.pool, namespace)
+}
+
+// PGFirstReady reports whether the tables used by PostgreSQL-first RBAC,
+// users, external auth, and shares are present, including the one-time import
+// marker used by external auth and shares. It lets a portal with auto-migration
+// disabled fall back to Kubernetes instead of failing requests against an older
+// schema.
+func (p *Postgres) PGFirstReady(ctx context.Context) bool {
+	var ready bool
+	err := p.pool.QueryRow(ctx, `
+		SELECT to_regclass('poddy.rbac_documents') IS NOT NULL
+			AND to_regclass('poddy.share_links') IS NOT NULL
+			AND to_regclass('poddy.users') IS NOT NULL
+			AND to_regclass('poddy.external_auth_tokens') IS NOT NULL
+			AND to_regclass('poddy.metadata_imports') IS NOT NULL`,
+	).Scan(&ready)
+	return err == nil && ready
+}
+
+// RBACStore returns a PostgreSQL-backed RBAC store. mirror is used to import
+// the existing ConfigMap and to keep it as a materialized view.
+func (p *Postgres) RBACStore(namespace string, mirror *rbac.Store) *rbac.PostgresStore {
+	return rbac.NewPostgres(p.pool, namespace, mirror)
+}
+
+// UserStore returns a PostgreSQL-backed OIDC user directory.
+func (p *Postgres) UserStore(namespace string, mirror *userstore.Store) *userstore.PostgresStore {
+	return userstore.NewPostgres(p.pool, namespace, mirror)
+}
+
+// ExternalAuthStore returns a PostgreSQL-backed encrypted token store.
+func (p *Postgres) ExternalAuthStore(namespace, secret string) *externalauth.PostgresStore {
+	return externalauth.NewPostgres(p.pool, namespace, secret)
+}
+
+// ShareStore returns a PostgreSQL-backed workspace share store. mirror is only
+// used to import existing Kubernetes Secret shares once.
+func (p *Postgres) ShareStore(namespace, secret string, mirror *k8s.ShareStore) *ShareStore {
+	return NewShareStore(p.pool, namespace, secret, mirror)
 }
 
 // Open connects to PostgreSQL. An empty URL returns the disabled Nop backend.

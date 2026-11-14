@@ -1,6 +1,6 @@
 # RBAC: admins, auditors, owners, and teams
 
-poddy uses a deliberately small RBAC model stored in a Kubernetes ConfigMap. No database is required. An optional PostgreSQL mirror can copy RBAC metadata for disaster recovery and audit; Kubernetes remains authoritative. See [PostgreSQL schema](postgres-schema.md).
+poddy uses a deliberately small RBAC model. Without a database it is stored in the `poddy-rbac` ConfigMap. When PostgreSQL is configured, `rbac_documents` is authoritative and the ConfigMap is a materialized mirror. See [PostgreSQL schema](postgres-schema.md).
 
 - **Global admins** see and manage every workspace and template.
 - **Auditors** can read the PostgreSQL audit trail, but cannot change workspaces, templates, teams, or RBAC.
@@ -256,5 +256,5 @@ Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob`
 
 - One workspace namespace per portal; one RBAC document per portal.
 - Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/desktop IDE, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
-- No database is required: back up the ConfigMap if you rely on UI-managed access, or enable the optional PostgreSQL metadata mirror.
-- RBAC writes are serialized within a portal replica and retried on conflicts. With multiple replicas, avoid simultaneous edits.
+- No database is required: back up the ConfigMap if you rely on UI-managed access. With PostgreSQL, `rbac_documents` is authoritative and the ConfigMap is a mirror; back up the database.
+- RBAC writes are serialized within a portal replica and retried on conflicts. PostgreSQL row locks serialize concurrent writes across replicas.

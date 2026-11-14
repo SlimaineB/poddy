@@ -41,6 +41,15 @@ type document struct {
 	Users map[string]User `json:"users"`
 }
 
+// Directory reads and writes the OIDC user directory.
+type Directory interface {
+	Load(context.Context) (map[string]User, error)
+	List(context.Context) ([]User, error)
+	Upsert(context.Context, User) (User, error)
+	Search(context.Context, string, int) ([]User, error)
+	Save(context.Context, map[string]User) error
+}
+
 // Store persists users in a Kubernetes ConfigMap.
 type Store struct {
 	client    kubernetes.Interface
@@ -121,6 +130,22 @@ func (s *Store) Upsert(ctx context.Context, user User) (User, error) {
 		return nil
 	})
 	return saved, err
+}
+
+// Save replaces the complete user directory.
+func (s *Store) Save(ctx context.Context, users map[string]User) error {
+	if users == nil {
+		users = map[string]User{}
+	}
+	return s.update(ctx, func(target map[string]User) error {
+		for key := range target {
+			delete(target, key)
+		}
+		for key, user := range users {
+			target[key] = user
+		}
+		return nil
+	})
 }
 
 // Search returns users whose email, username or name contains q.

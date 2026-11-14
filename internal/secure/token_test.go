@@ -2,6 +2,39 @@ package secure
 
 import "testing"
 
+func TestEncryptDecrypt(t *testing.T) {
+	key := Key("test-key")
+	plaintext := []byte(`{"accessToken":"secret"}`)
+
+	encrypted, err := Encrypt(key, plaintext)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+	if string(encrypted) == string(plaintext) {
+		t.Fatal("Encrypt() returned plaintext")
+	}
+	got, err := Decrypt(key, encrypted)
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(got) != string(plaintext) {
+		t.Fatalf("Decrypt() = %q, want %q", got, plaintext)
+	}
+}
+
+func TestEncryptDecryptRejectsWrongKey(t *testing.T) {
+	encrypted, err := Encrypt(Key("key-a"), []byte("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decrypt(Key("key-b"), encrypted); err == nil {
+		t.Fatal("Decrypt() with wrong key succeeded")
+	}
+	if _, err := Encrypt(nil, []byte("secret")); err == nil {
+		t.Fatal("Encrypt() without a key succeeded")
+	}
+}
+
 func TestSignVerify(t *testing.T) {
 	key := []byte("test-key")
 	payload := []byte(`{"sub":"alice"}`)

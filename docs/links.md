@@ -117,11 +117,13 @@ to the IDE route instead of the generic port proxy: port `8888` uses `/lab/`
 when JupyterLab is enabled, and port `3000` uses `/code/` when VS Code Web is
 enabled. This keeps the IDE's expected base path.
 
-Share links are stored in the `poddy-shares` Secret in the workspace namespace.
-They survive workspace stop/start, are removed when the workspace is deleted,
-and are revoked immediately when the port is set back to **Private**. Treat a
-public link as a bearer credential: anyone who has it can reach the application
-until you revoke it.
+Without PostgreSQL, share links are stored in the `poddy-shares` Secret in the
+workspace namespace. With PostgreSQL, they are stored in `share_links` with a
+SHA-256 lookup hash and an encrypted raw token; the Secret is only an import
+source. They survive workspace stop/start, are removed when the workspace is
+deleted, and are revoked immediately when the port is set back to **Private**.
+Treat a public link as a bearer credential: anyone who has it can reach the
+application until you revoke it.
 
 To add an IDE, add its SVG symbol to `web/index.html`, then add one entry to
 `IDE_INTEGRATIONS`. No card or SSH-dialog markup needs to change.

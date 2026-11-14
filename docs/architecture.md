@@ -224,18 +224,23 @@ truth:
 - **Ownership** is the `poddy.io/owner` annotation.
 - **Stopped workspace specs** live in the workspace StatefulSet template; the legacy `poddy-state` ConfigMap is read at startup to migrate stopped workspaces.
 - **Templates** are ConfigMaps labeled `poddy.io/template=true`.
-- **RBAC** lives in the `poddy-rbac` ConfigMap.
-- **OIDC users** live in the `poddy-users` ConfigMap.
-- **External auth tokens** live in the `poddy-external-auth` Secret, encrypted
-  with AES-GCM when a key is configured.
+- **RBAC** lives in the `poddy-rbac` ConfigMap without PostgreSQL, or in
+  PostgreSQL with the ConfigMap as a materialized mirror.
+- **OIDC users** live in the `poddy-users` ConfigMap without PostgreSQL, or in
+  PostgreSQL with the ConfigMap as a materialized mirror.
+- **External auth tokens** live in the `poddy-external-auth` Secret without
+  PostgreSQL, or AES-GCM encrypted in PostgreSQL.
+- **Share links** live in the `poddy-shares` Secret without PostgreSQL, or
+  hashed and encrypted in PostgreSQL.
 - **Persistent data** lives in one PVC per persistent workspace.
 
-An optional PostgreSQL mirror stores RBAC, team/user quotas, OIDC users,
-templates, workspaces, and audit events. When `PODDY_DATABASE_URL` is set, the
-portal syncs the mirror at startup and after writes; the bastion writes
-`ssh.connect` audit events. Kubernetes remains authoritative and PostgreSQL is
-never read for access or quota decisions. It stores control-plane metadata only;
-PVC contents are not mirrored. Use volume snapshots or the built-in
+An optional PostgreSQL database stores RBAC, OIDC users, external auth tokens,
+share links, team/user quotas, access state, templates, workspaces, and audit
+events. When `PODDY_DATABASE_URL` is set, PostgreSQL is authoritative for RBAC,
+users, tokens, shares, access, and quotas; templates and workspaces remain
+Kubernetes-first and are mirrored. The portal syncs metadata at startup and
+after writes; the bastion writes `ssh.connect` audit events. PVC contents are
+not stored in PostgreSQL. Use volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
 and [Data model](data-model.md) for the object-level details.
 

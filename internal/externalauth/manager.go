@@ -59,18 +59,25 @@ type Status struct {
 	LoginURL        string     `json:"loginUrl"`
 }
 
+// TokenStore persists a user's credentials for one provider.
+type TokenStore interface {
+	Get(context.Context, string, string) (Token, bool, error)
+	Put(context.Context, string, string, Token) error
+	Delete(context.Context, string, string) error
+}
+
 // Manager runs external OAuth2 flows, refreshes tokens, and prepares workspace
 // credentials.
 type Manager struct {
 	providers map[string]*Provider
 	order     []string
-	store     *Store
+	store     TokenStore
 	signKey   []byte
 	http      *http.Client
 }
 
 // NewManager builds a manager from configured providers.
-func NewManager(providers []Provider, store *Store, signingSecret string) *Manager {
+func NewManager(providers []Provider, store TokenStore, signingSecret string) *Manager {
 	m := &Manager{
 		providers: map[string]*Provider{},
 		store:     store,

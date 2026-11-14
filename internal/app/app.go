@@ -111,8 +111,25 @@ func Run(ctx context.Context, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	rbacStore := rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap)
-	userStore := userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap)
+	rbacK8s := rbac.NewStore(client, cfg.Namespace, cfg.RBACConfigMap)
+	userK8s := userstore.NewStore(client, cfg.Namespace, userstore.DefaultConfigMap)
+	shareK8s := k8s.NewShareStore(client, cfg.Namespace, "")
+	var rbacStore rbac.ConfigStore = rbacK8s
+	var userStore userstore.Directory = userK8s
+	var shareStore server.ShareStore = shareK8s
+	if pg, ok := metaStore.(*metadata.Postgres); ok {
+		if !pg.PGFirstReady(ctx) {
+			log.Printf("metadata: PostgreSQL-first tables are missing; keeping RBAC, users, and shares in Kubernetes (apply migrations or enable database.autoMigrate)")
+		} else {
+			rbacStore = pg.RBACStore(cfg.Namespace, rbacK8s)
+			userStore = pg.UserStore(cfg.Namespace, userK8s)
+			if secret := postgresShareSecret(cfg); secret != "" {
+				shareStore = pg.ShareStore(cfg.Namespace, secret, shareK8s)
+			} else {
+				log.Printf("shares: PostgreSQL enabled but no stable encryption key is configured; keeping share links in Kubernetes (set PODDY_EXTERNAL_AUTH_KEY, PODDY_OIDC_SESSION_KEY or PODDY_DESKTOP_SECRET)")
+			}
+		}
+	}
 	if appMetrics != nil || metadataEnabled {
 		catalog.SetOnReload(func() {
 			if appMetrics != nil {
@@ -150,7 +167,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	go userkeys.Watch(ctx, userKeyStore, keyring, keys, allowUnmapped)
 
-	externalAuth, err := newExternalAuth(cfg, client)
+	externalAuth, err := newExternalAuth(ctx, cfg, client, metaStore)
 	if err != nil {
 		return err
 	}
@@ -391,6 +408,7 @@ func Run(ctx context.Context, args []string) error {
 		Backups:           backups,
 		RBAC:              rbacStore,
 		Users:             userStore,
+		Shares:            shareStore,
 		Metadata:          metadataStore,
 		Access:            accessStore,
 		Quota:             quotaStore,
@@ -463,7 +481,7 @@ func newEditor(cfg config.Config) *local.Local {
 	return editor
 }
 
-func newExternalAuth(cfg config.Config, client kubernetes.Interface) (*externalauth.Manager, error) {
+func newExternalAuth(ctx context.Context, cfg config.Config, client kubernetes.Interface, metaStore metadata.Store) (*externalauth.Manager, error) {
 	providers, err := externalauth.LoadProviders()
 	if err != nil {
 		return nil, fmt.Errorf("external auth: %w", err)
@@ -477,6 +495,9 @@ func newExternalAuth(cfg config.Config, client kubernetes.Interface) (*externala
 		secret = cfg.OIDCSessionKey
 	}
 	if secret == "" {
+		secret = cfg.DesktopSecret
+	}
+	if secret == "" {
 		secret = randomSecret()
 		log.Printf("external auth: using an ephemeral encryption key; set PODDY_EXTERNAL_AUTH_KEY to keep tokens across restarts")
 	}
@@ -484,9 +505,30 @@ func newExternalAuth(cfg config.Config, client kubernetes.Interface) (*externala
 		log.Printf("external auth: PODDY_EXTERNAL_AUTH_URL is empty; workspaces will use the portal URL captured at creation time")
 	}
 
-	store := externalauth.NewStore(client, cfg.Namespace, cfg.ExternalAuthSecret, secret)
+	k8sStore := externalauth.NewStore(client, cfg.Namespace, cfg.ExternalAuthSecret, secret)
+	var store externalauth.TokenStore = k8sStore
+	if pg, ok := metaStore.(*metadata.Postgres); ok {
+		pgStore := pg.ExternalAuthStore(cfg.Namespace, secret)
+		tokens, err := k8sStore.All(ctx)
+		if err != nil {
+			log.Printf("external auth: import Kubernetes Secret tokens: %v; continuing with the Secret store", err)
+		} else if err := pgStore.SeedIfEmpty(ctx, tokens); err != nil {
+			log.Printf("external auth: seed PostgreSQL tokens: %v; continuing with the Secret store", err)
+		} else {
+			store = pgStore
+		}
+	}
 	log.Printf("external auth enabled (%d providers)", len(providers))
 	return externalauth.NewManager(providers, store, secret), nil
+}
+
+func postgresShareSecret(cfg config.Config) string {
+	for _, secret := range []string{cfg.ExternalAuthKey, cfg.OIDCSessionKey, cfg.DesktopSecret} {
+		if strings.TrimSpace(secret) != "" {
+			return secret
+		}
+	}
+	return ""
 }
 
 // RunBastion starts only the SSH bastion. It is intended for deployments that
@@ -643,7 +685,7 @@ func openQuotaStore(store metadata.Store, namespace string) quota.Store {
 // store. When the store is persistent the ConfigMap entries are cleared so the
 // database is the single source of truth. The import is skipped if the store
 // already contains quotas, which keeps restarts from overwriting live changes.
-func migrateQuotas(ctx context.Context, store quota.Store, rbacStore *rbac.Store, persistent bool) error {
+func migrateQuotas(ctx context.Context, store quota.Store, rbacStore rbac.ConfigStore, persistent bool) error {
 	cfg, err := rbacStore.Load(ctx)
 	if err != nil {
 		return err
@@ -701,7 +743,7 @@ func migrateQuotas(ctx context.Context, store quota.Store, rbacStore *rbac.Store
 	return err
 }
 
-func syncAll(ctx context.Context, namespace string, store metadata.Store, rbacStore *rbac.Store, userStore *userstore.Store, manager *k8s.Manager, catalog *templates.Catalog) error {
+func syncAll(ctx context.Context, namespace string, store metadata.Store, rbacStore rbac.ConfigStore, userStore userstore.Directory, manager *k8s.Manager, catalog *templates.Catalog) error {
 	cfg, err := rbacStore.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("load rbac: %w", err)
@@ -745,7 +787,7 @@ func syncAll(ctx context.Context, namespace string, store metadata.Store, rbacSt
 	return nil
 }
 
-func syncTemplates(ctx context.Context, namespace string, store metadata.Store, rbacStore *rbac.Store, catalog *templates.Catalog) error {
+func syncTemplates(ctx context.Context, namespace string, store metadata.Store, rbacStore rbac.ConfigStore, catalog *templates.Catalog) error {
 	cfg, err := rbacStore.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("load rbac: %w", err)

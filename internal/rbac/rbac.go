@@ -297,6 +297,13 @@ func (q *Quota) fillMostPermissive(team, user Quota, hasUser bool) error {
 	return nil
 }
 
+// ConfigStore reads and writes the RBAC document.
+type ConfigStore interface {
+	Load(context.Context) (Config, error)
+	Update(context.Context, func(*Config) error) (Config, error)
+	Save(context.Context, Config) error
+}
+
 // Store reads and writes the RBAC ConfigMap.
 type Store struct {
 	client    kubernetes.Interface
