@@ -207,6 +207,7 @@ The portal and bastion use the same Go module. Workspace images build from the r
 - External-auth tokens, share links, and environment secrets are encrypted with a stable key in PostgreSQL.
 - Shared tokens are for local use and automation. Use OIDC for teams, and leave `tokenAdmin` disabled unless the token is a deliberate operator credential.
 - Templates are cluster-privileged objects. Use Kubernetes RBAC and admission policies to protect the template write path.
+- CI runs govulncheck, gosec, CodeQL, gitleaks, Trivy, kube-linter, Hadolint, npm audit, dependency review, and OpenSSF Scorecard. Dependabot keeps Go, npm, Docker, and GitHub Actions dependencies current.
 
 ## License
 

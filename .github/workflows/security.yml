@@ -1,0 +1,232 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan git history with gitleaks
+        uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  go-security:
+    name: Go security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Scan Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Run gosec
+        run: |
+          mkdir -p sarif
+          go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 \
+            -no-fail -fmt sarif -out sarif/gosec.sarif ./...
+      - name: Upload gosec SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/gosec.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/gosec.sarif
+          category: gosec
+
+  dependencies:
+    name: Dependency scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Audit docs dependencies
+        run: npm audit --audit-level=high
+      - name: Audit VS Code extension dependencies
+        working-directory: vscode-extension
+        run: npm audit --audit-level=high
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: high
+
+  containers:
+    name: Container image scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.76.2
+          cache: true
+      - name: Build images
+        run: |
+          docker build -t poddy:scan .
+          docker build -f Dockerfile.workspace-base -t poddy/workspace-base:scan .
+          docker build -f Dockerfile.workspace-go \
+            --build-arg BASE_IMAGE=poddy/workspace-base:scan \
+            -t poddy/workspace-go:scan .
+          docker build -f Dockerfile.workspace-node \
+            --build-arg BASE_IMAGE=poddy/workspace-base:scan \
+            -t poddy/workspace-node:scan .
+          docker build -f Dockerfile.workspace-python \
+            --build-arg BASE_IMAGE=poddy/workspace-base:scan \
+            -t poddy/workspace-python:scan .
+      - name: Scan images with Trivy
+        run: |
+          mkdir -p sarif
+          while IFS='|' read -r name image; do
+            trivy image \
+              --format sarif \
+              --output "sarif/container-${name}.sarif" \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --exit-code 0 \
+              "$image"
+          done <<'EOF'
+          portal|poddy:scan
+          base|poddy/workspace-base:scan
+          go|poddy/workspace-go:scan
+          node|poddy/workspace-node:scan
+          python|poddy/workspace-python:scan
+          EOF
+      - name: Upload portal image SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-portal.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/container-portal.sarif
+          category: container-portal
+      - name: Upload workspace base image SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-base.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/container-base.sarif
+          category: container-workspace-base
+      - name: Upload Go workspace image SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-go.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/container-go.sarif
+          category: container-workspace-go
+      - name: Upload Node workspace image SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-node.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/container-node.sarif
+          category: container-workspace-node
+      - name: Upload Python workspace image SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-python.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/container-python.sarif
+          category: container-workspace-python
+
+  iac:
+    name: IaC and Dockerfile scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.4
+      - uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.76.2
+          cache: true
+      - name: Render charts and collect manifests
+        run: |
+          mkdir -p rendered
+          helm template poddy deploy/helm/poddy \
+            --namespace poddy-system \
+            --set auth.token=ci-token \
+            --set workspaceNamespace=poddy-workspaces \
+            --set-string 'database.url=postgres://ci:ci@localhost:5432/poddy?sslmode=disable' \
+            --set ssh.publicHost=localhost \
+            --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid' \
+            > rendered/poddy.yaml
+          helm template poddy-templates deploy/helm/poddy-templates \
+            --namespace poddy-workspaces \
+            > rendered/templates.yaml
+          cp -R deploy/demo rendered/demo
+          cp -R deploy/dex rendered/dex
+          cp deploy/poddy.yaml rendered/standalone.yaml
+      - name: Scan manifests with Trivy
+        run: |
+          mkdir -p sarif
+          trivy config \
+            --format sarif \
+            --output sarif/trivy-iac.sarif \
+            --severity CRITICAL,HIGH \
+            --exit-code 0 \
+            rendered
+      - name: Run kube-linter
+        continue-on-error: true
+        uses: stackrox/kube-linter-action@v1.0.7
+        with:
+          directory: rendered
+          format: sarif
+          output-file: sarif/kube-linter.sarif
+          version: "0.8.3"
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          recursive: true
+          format: sarif
+          output-file: sarif/hadolint.sarif
+          no-fail: true
+          failure-threshold: error
+      - name: Upload Trivy IaC SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/trivy-iac.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/trivy-iac.sarif
+          category: iac-trivy
+      - name: Upload kube-linter SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/kube-linter.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/kube-linter.sarif
+          category: iac-kube-linter
+      - name: Upload Hadolint SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/hadolint.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/hadolint.sarif
+          category: dockerfile-hadolint

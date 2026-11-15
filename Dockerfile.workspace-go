@@ -1,7 +1,7 @@
 ARG BASE_IMAGE=poddy/workspace-base:latest
 FROM ${BASE_IMAGE}
 
-ARG GO_VERSION=1.25.5
+ARG GO_VERSION=1.26.11
 
 RUN arch="$(dpkg --print-architecture)" \
  && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o /tmp/go.tgz \

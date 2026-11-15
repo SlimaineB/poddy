@@ -1,0 +1,10 @@
+title = "poddy secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vendored third-party browser assets"
+paths = [
+  '''web/vendor/.*''',
+]

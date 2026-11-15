@@ -25,7 +25,7 @@ TEMPLATE_NAMES  := base go node python
 
 export KUBECONFIG
 
-.PHONY: all build test vet fmt lint docs image values-hub values-eu values-us \
+.PHONY: all build test vet fmt lint security docs image values-hub values-eu values-us \
         deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help \
         sync-templates check-templates check-helm-render
 
@@ -44,6 +44,12 @@ fmt:
 	gofmt -w .
 
 lint: fmt vet
+
+security:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+	$(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail ./...
+	npm audit --audit-level=high
+	cd vscode-extension && npm audit --audit-level=high
 
 docs:
 	npm ci
@@ -127,6 +133,7 @@ help:
 	@echo "  make test         - go test ./..."
 	@echo "  make vet          - go vet ./..."
 	@echo "  make fmt          - gofmt -w ."
+	@echo "  make security     - run Go and npm security scans locally"
 	@echo "  make docs         - build the Astro documentation site"
 	@echo "  make sync-templates - copy built-in templates into poddy-templates chart"
 	@echo "  make check-templates - verify built-in templates are in sync"
