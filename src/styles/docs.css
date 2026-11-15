@@ -66,6 +66,21 @@
   --sl-color-text: var(--sl-color-gray-2);
   --sl-color-text-accent: #6d28d9;
   --sl-color-bg-inline-code: rgba(124, 58, 237, 0.09);
+  --sl-color-orange-low: #ffedd5;
+  --sl-color-orange: #ea580c;
+  --sl-color-orange-high: #9a3412;
+  --sl-color-green-low: #dcfce7;
+  --sl-color-green: #059669;
+  --sl-color-green-high: #065f46;
+  --sl-color-blue-low: #e0f2fe;
+  --sl-color-blue: #0284c7;
+  --sl-color-blue-high: #075985;
+  --sl-color-purple-low: #f3e8ff;
+  --sl-color-purple: #7c3aed;
+  --sl-color-purple-high: #5b21b6;
+  --sl-color-red-low: #fee2e2;
+  --sl-color-red: #dc2626;
+  --sl-color-red-high: #991b1b;
 }
 
 body {
