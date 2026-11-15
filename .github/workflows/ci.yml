@@ -81,6 +81,7 @@ jobs:
           helm lint deploy/helm/poddy \
             --set auth.token=ci-token \
             --set workspaceNamespace=poddy-workspaces \
+            --set-string 'database.url=postgres://ci:ci@localhost:5432/poddy?sslmode=disable' \
             --set ssh.publicHost=localhost \
             --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid'
           helm lint deploy/helm/poddy-templates
@@ -90,6 +91,7 @@ jobs:
             --namespace poddy-system \
             --set auth.token=ci-token \
             --set workspaceNamespace=poddy-workspaces \
+            --set-string 'database.url=postgres://ci:ci@localhost:5432/poddy?sslmode=disable' \
             --set ssh.publicHost=localhost \
             --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid' \
             >/dev/null
@@ -102,12 +104,14 @@ jobs:
             --namespace poddy-system \
             --set auth.token=ci-token \
             --set workspaceNamespace=poddy-workspaces \
+            --set-string 'database.url=postgres://ci:ci@localhost:5432/poddy?sslmode=disable' \
             --set ssh.enabled=false \
             >/dev/null
           helm template poddy deploy/helm/poddy \
             --namespace poddy-system \
             --set auth.token=ci-token \
             --set workspaceNamespace=poddy-workspaces \
+            --set-string 'database.url=postgres://ci:ci@localhost:5432/poddy?sslmode=disable' \
             --set ssh.publicHost=localhost \
             --set-string 'ssh.authorizedKeys[0]=ssh-ed25519 AAAA ci@example.invalid' \
             --set ssh.existingHostKeySecret=poddy-host-key \
