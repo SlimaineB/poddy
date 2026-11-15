@@ -19,6 +19,8 @@ import (
 	"poddy/internal/templates"
 )
 
+const flowTTL = 10 * time.Minute
+
 var (
 	// ErrReauth is returned when a token is missing, expired, or cannot be refreshed.
 	ErrReauth = errors.New("external authentication required")
@@ -45,6 +47,16 @@ type Flow struct {
 	Next        string `json:"next"`
 	RedirectURL string `json:"redirectURL"`
 	IssuedAt    int64  `json:"issuedAt"`
+}
+
+// ExpiresAt returns the flow deadline.
+func (f *Flow) ExpiresAt() time.Time {
+	return time.Unix(f.IssuedAt, 0).Add(flowTTL)
+}
+
+// Expired reports whether the flow is too old to complete.
+func (f *Flow) Expired() bool {
+	return f == nil || time.Now().After(f.ExpiresAt())
 }
 
 // Status describes a provider connection for the current user.
@@ -135,10 +147,8 @@ func (m *Manager) Begin(providerID, user, next, redirectURL string) (string, *Fl
 		return "", nil, err
 	}
 	verifier := ""
-	opts := []oauth2.AuthCodeOption{}
 	if provider.PKCE {
 		verifier = oauth2.GenerateVerifier()
-		opts = append(opts, oauth2.S256ChallengeOption(verifier))
 	}
 	flow := &Flow{
 		State:       state,
@@ -149,8 +159,32 @@ func (m *Manager) Begin(providerID, user, next, redirectURL string) (string, *Fl
 		RedirectURL: redirectURL,
 		IssuedAt:    time.Now().Unix(),
 	}
-	cfg := m.oauthConfig(provider, redirectURL)
-	return cfg.AuthCodeURL(state, opts...), flow, nil
+	authURL, err := m.AuthURL(providerID, flow)
+	if err != nil {
+		return "", nil, err
+	}
+	return authURL, flow, nil
+}
+
+// AuthURL returns the provider authorization URL for a signed flow. It lets a
+// CLI-initiated flow resume in the browser without storing server-side state.
+func (m *Manager) AuthURL(providerID string, flow *Flow) (string, error) {
+	provider, ok := m.Provider(providerID)
+	if !ok {
+		return "", fmt.Errorf("unknown external auth provider %q", providerID)
+	}
+	if flow == nil {
+		return "", errors.New("missing external auth state")
+	}
+	if flow.Provider != providerID {
+		return "", errors.New("external auth state does not match the provider")
+	}
+	opts := []oauth2.AuthCodeOption{}
+	if flow.Verifier != "" {
+		opts = append(opts, oauth2.S256ChallengeOption(flow.Verifier))
+	}
+	cfg := m.oauthConfig(provider, flow.RedirectURL)
+	return cfg.AuthCodeURL(flow.State, opts...), nil
 }
 
 // SignFlow encodes OAuth state so it can travel in a short-lived cookie.
@@ -191,7 +225,7 @@ func (m *Manager) Complete(ctx context.Context, providerID, user, code string, f
 	if flow.Provider != providerID || flow.User != user {
 		return Token{}, errors.New("external auth state does not match the signed-in user")
 	}
-	if time.Since(time.Unix(flow.IssuedAt, 0)) > 10*time.Minute {
+	if flow.Expired() {
 		return Token{}, errors.New("external auth expired, please try again")
 	}
 	provider, ok := m.Provider(providerID)
@@ -339,18 +373,31 @@ func (m *Manager) Prepare(ctx context.Context, user string, requirements []templ
 	return env, nil
 }
 
+func gitPromptTarget(prompt string) string {
+	start := strings.Index(prompt, "'")
+	if start < 0 {
+		return prompt
+	}
+	end := strings.Index(prompt[start+1:], "'")
+	if end < 0 {
+		return prompt
+	}
+	return prompt[start+1 : start+1+end]
+}
+
 // GitCredentials returns the username/password pair for a Git HTTPS prompt.
 func (m *Manager) GitCredentials(ctx context.Context, user string, requirements []templates.ExternalAuth, prompt string) (string, string, error) {
 	if m == nil {
 		return "", "", errors.New("external auth is not configured")
 	}
+	target := gitPromptTarget(prompt)
 	matches := make([]*Provider, 0, 1)
 	for _, requirement := range requirements {
 		provider, ok := m.Provider(requirement.ID)
 		if !ok {
 			continue
 		}
-		if provider.MatchHost(prompt) {
+		if provider.MatchHost(target) {
 			matches = append(matches, provider)
 		}
 	}

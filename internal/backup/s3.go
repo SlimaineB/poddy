@@ -55,9 +55,11 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	useSSL := cfg.UseSSL
-	if parsed, err := url.Parse(endpoint); err == nil && parsed.Scheme != "" {
-		useSSL = parsed.Scheme == "https"
-		endpoint = parsed.Host
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		if parsed, err := url.Parse(endpoint); err == nil && parsed.Host != "" {
+			useSSL = parsed.Scheme == "https"
+			endpoint = parsed.Host
+		}
 	}
 	endpoint = strings.TrimSuffix(strings.TrimPrefix(endpoint, "http://"), "/")
 	endpoint = strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/")

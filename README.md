@@ -210,6 +210,7 @@ See [docs/templates.md](docs/templates.md) for:
 
 ```
 ├── main.go                      # Portal entry point, config, wiring
+├── cmd/poddy/                   # Workspace CLI (external auth, Git askpass, future commands)
 ├── cmd/poddy-bastion/           # Standalone SSH bastion entry point
 ├── internal/
 │   ├── config/                  # Flags & env
@@ -229,8 +230,8 @@ See [docs/templates.md](docs/templates.md) for:
 ├── web/                         # Embedded UI (index.html, core.js, workspaces.js, ..., style.css)
 ├── scripts/
 │   ├── poddy-ssh-start         # Entrypoint in workspace pods (keys, OOM protection, starts sshd)
-│   ├── poddy-external-auth      # Print a refreshed external auth token in a workspace
-│   ├── poddy-git-askpass        # Git askpass helper using the portal
+│   ├── poddy-external-auth      # Compatibility wrapper for poddy external-auth
+│   ├── poddy-git-askpass        # Compatibility wrapper for poddy git-askpass
 │   └── dev-oidc.sh              # Local Dex + OIDC + RBAC demo
 ├── Dockerfile                   # Portal + bastion distroless build
 ├── Dockerfile.workspace-base    # Reusable SSH + dev user base image
@@ -292,7 +293,7 @@ externalAuth:
     optional: true
 ```
 
-Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens AES-GCM encrypted in PostgreSQL; the old `poddy-external-auth` Secret is only a migration source. It refreshes them server-side and exposes `poddy-external-auth token <id>` plus a Git askpass helper in the base image. See [docs/external-auth.md](docs/external-auth.md).
+Users connect accounts under **Connections**. Required providers block workspace creation with HTTP `409` until connected. The portal stores tokens AES-GCM encrypted in PostgreSQL; the old `poddy-external-auth` Secret is only a migration source. It refreshes them server-side and exposes the `poddy` CLI in the base image (`poddy external-auth status|login|token <id>`), plus a Git askpass helper. See [docs/external-auth.md](docs/external-auth.md).
 
 ## RBAC
 

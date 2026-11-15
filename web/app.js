@@ -2,8 +2,7 @@
 
 async function init() {
   await loadMe();
-  await loadDirectory();
-  await loadExternalAuth();
+  const externalAuthPromise = loadExternalAuth();
   const authError = new URLSearchParams(location.search).get("externalAuthError");
   if (authError) {
     toast(authError);
@@ -23,6 +22,7 @@ async function init() {
   }
 
   await load();
+  await externalAuthPromise;
   const initialView = new URLSearchParams(location.search).get("view");
   if (initialView === "topology") {
     await openTopology();

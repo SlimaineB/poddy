@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex-config
+  namespace: poddy-system
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: poddy-demo
+data:
+  config.yaml: |
+    issuer: http://__DEMO_HOST__:30556/dex
+
+    storage:
+      type: memory
+
+    web:
+      http: 0.0.0.0:5556
+
+    oauth2:
+      skipApprovalScreen: true
+
+    staticClients:
+      - id: poddy
+        name: poddy
+        secret: poddy-secret
+        redirectURIs:
+          - http://__DEMO_HOST__:30081/oidc/callback
+
+    enablePasswordDB: true
+    staticPasswords:
+      - email: admin@example.com
+        hash: "$2a$10$RBpPsn8KzP/6uhNTwpv6gus..i.XfWcIGPBVAevVm/2hudgopagfe"
+        username: admin
+        userID: "1"
+        groups:
+          - admins
+      - email: dev@example.com
+        hash: "$2b$10$rH1sxs27TIKlMeahhen49u8S6uEHekvqn3teWj36qfPcJsy0.kK1q"
+        username: dev
+        userID: "2"
+        groups:
+          - backend
+          - go-users
+      - email: alice@example.com
+        hash: "$2a$10$w7g/EnCwjrqc/a12/4bmvey5Xo60qJ4aUkNEFXT1IujhgLMHcpHTK"
+        username: alice
+        userID: "3"
+        groups:
+          - backend
+          - go-users
+      - email: ops@example.com
+        hash: "$2a$10$rTym/jEvRLBx.OerWgkX8O3hwYPcn2J3rjkTaXa6XroO8ByU9MYIO"
+        username: ops
+        userID: "4"
+        groups:
+          - admins
+      - email: bob@example.com
+        hash: "$2a$10$9qjPSqNbzr9t0IMCLwInb.4oqtKF.1GlPWBOv5nyBt.fAGrM8BwGW"
+        username: bob
+        userID: "5"
+        groups:
+          - backend
+          - go-users
+      - email: carol@example.com
+        hash: "$2a$10$9J3ggArqVCKRcpV8BWQSKeQyL5YyLv7tvuSp6ajCq1GhOz.6goFqu"
+        username: carol
+        userID: "6"
+        groups:
+          - frontend
+      - email: dave@example.com
+        hash: "$2a$10$Q1cTQglnj42fVSuzADuAdeM7BKqsCN6OE9PcmKEbC/sRaukysms46"
+        username: dave
+        userID: "7"
+        groups:
+          - go-users
+      - email: erin@example.com
+        hash: "$2a$10$7ahB6rNCMOurEr4m6Iss7e1iBFEIZtgGxbQrrG3TSr9fInORzQG1G"
+        username: erin
+        userID: "8"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: poddy-system
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: poddy-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dex
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dex
+        app.kubernetes.io/part-of: poddy-demo
+    spec:
+      containers:
+        - name: dex
+          image: ghcr.io/dexidp/dex:v2.45.0
+          imagePullPolicy: IfNotPresent
+          command: ["dex", "serve", "/etc/dex/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 5556
+          readinessProbe:
+            httpGet:
+              path: /dex/.well-known/openid-configuration
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /dex/.well-known/openid-configuration
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: dex-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dex
+  namespace: poddy-system
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: poddy-demo
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: dex
+  ports:
+    - name: http
+      port: 5556
+      targetPort: http
+      nodePort: 30556

@@ -1,5 +1,7 @@
 /poddy
 *.test
+__pycache__/
+*.pyc
 /site/
 vscode-extension/*.vsix
 vscode-extension/node_modules/

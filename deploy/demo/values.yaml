@@ -1,0 +1,135 @@
+# Full-experience poddy demo. Use deploy/demo/demo.sh so the Gitea client
+# credentials and the __DEMO_HOST__ placeholder are rendered before install.
+auth:
+  existingSecret: poddy-auth
+  secretKey: token
+  # Demo only: lets the verification script drive the API with the shared token.
+  tokenAdmin: true
+
+bastion:
+  enabled: false
+
+createWorkspaceNamespace: false
+
+database:
+  autoMigrate: true
+  existingSecret: poddy-database
+  urlKey: database-url
+
+defaultTemplate: base
+
+fullnameOverride: poddy
+
+http:
+  service:
+    nodePort: 30081
+    port: 80
+    type: NodePort
+
+image:
+  pullPolicy: IfNotPresent
+  repository: ghcr.io/slimaineb/poddy
+  tag: demo
+
+ingress:
+  enabled: false
+
+metrics:
+  enabled: true
+
+oidc:
+  emailClaim: email
+  enabled: true
+  existingSecret: poddy-oidc
+  groupsClaim: groups
+  issuer: http://__DEMO_HOST__:30556/dex
+  redirectUrl: http://__DEMO_HOST__:30081/oidc/callback
+  scopes: openid,profile,email,groups
+  sessionTtl: 12h
+  usernameClaim: preferred_username
+
+rbac:
+  admins:
+    - admin@example.com
+    - ops@example.com
+  create: true
+  createConfigMap: true
+  extraRules:
+    - apiGroups:
+        - ""
+      resources:
+        - pods
+      verbs:
+        - update
+        - patch
+  teams:
+    backend:
+      members:
+        - alice@example.com
+        - bob@example.com
+    frontend:
+      members:
+        - carol@example.com
+  templates:
+    go:
+      owners:
+        - dev@example.com
+      teams: []
+      users:
+        - dave@example.com
+    gitea:
+      teams: []
+      users:
+        - admin@example.com
+        - ops@example.com
+        - dev@example.com
+        - alice@example.com
+        - bob@example.com
+        - carol@example.com
+        - dave@example.com
+        - erin@example.com
+
+regionManager:
+  enabled: false
+
+replicaCount: 1
+
+ssh:
+  agent:
+    enabled: false
+  ca:
+    existingSecret: poddy-ssh-ca
+    keyKey: ssh-ca-key
+  enabled: true
+  existingKeysSecret: poddy-ssh-keys
+  keysSecretKey: authorized_keys
+  publicHost: __DEMO_HOST__
+  publicPort: 30223
+  requireAgent: false
+  service:
+    port: 2222
+    type: ClusterIP
+
+workspaceNamespace: poddy-workspaces
+
+backup:
+  enabled: true
+  helperImage: busybox:1.36
+  s3:
+    endpoint: minio.poddy-system.svc.cluster.local:9000
+    region: us-east-1
+    bucket: poddy-backups
+    prefix: poddy-backups
+    useSSL: false
+    existingSecret: poddy-backup
+    accessKeyKey: access-key
+    secretKeyKey: secret-key
+
+externalAuth:
+  # The workspace reaches the portal through the in-cluster Service. The
+  # browser-facing callback uses redirectBase below.
+  url: http://poddy.poddy-system.svc.cluster.local
+  redirectBase: http://__DEMO_HOST__:30081
+  existingSecret: poddy-external-auth-config
+  keyKey: external-auth-key
+  providers: []

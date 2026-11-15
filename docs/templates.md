@@ -133,7 +133,7 @@ externalAuth:
 - Optional providers are skipped when not connected.
 - The portal injects the access token under the provider's default env names, plus `PODDY_EXTERNAL_AUTH_<ID>_TOKEN`.
 - It also sets `PODDY_PORTAL_URL`, `PODDY_WORKSPACE_NAME`, `PODDY_WORKSPACE_TOKEN`, `PODDY_EXTERNAL_AUTH_IDS`, `GIT_ASKPASS`, and `GIT_TERMINAL_PROMPT=0`.
-- Use `poddy-external-auth token <id>` in the workspace for a refreshed token. Git uses `poddy-git-askpass` automatically.
+- Use `poddy external-auth status` / `poddy external-auth login <id>` / `poddy external-auth token <id>` in the workspace. Git uses the askpass helper automatically.
 
 See [external-auth.md](external-auth.md) for provider configuration, Helm values, API endpoints, and troubleshooting.
 

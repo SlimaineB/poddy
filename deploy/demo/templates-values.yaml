@@ -1,0 +1,66 @@
+builtins:
+  enabled: true
+
+templates:
+  gitea:
+    template: |
+      name: gitea
+      displayName: Gitea demo
+      description: Debian workspace that requires a connected Gitea account and receives GITEA_TOKEN for Git over HTTPS.
+      image: ghcr.io/slimaineb/poddy-workspace-base:latest
+      externalAuth:
+        - id: gitea
+          env: [GITEA_TOKEN]
+      parameters:
+        - name: cpu
+          displayName: CPU
+          type: string
+          description: CPU request for the workspace container.
+          default: "250m"
+          options:
+            - label: 250m
+              value: "250m"
+            - label: 500m
+              value: "500m"
+            - label: 1 CPU
+              value: "1"
+        - name: memory
+          displayName: Memory
+          type: string
+          description: Memory request for the workspace container.
+          default: 512Mi
+          options:
+            - label: 512 MiB
+              value: 512Mi
+            - label: 1 GiB
+              value: 1Gi
+            - label: 2 GiB
+              value: 2Gi
+        - name: storage
+          displayName: Home storage
+          type: string
+          description: Size of the persistent home volume.
+          default: 2Gi
+          options:
+            - label: Ephemeral (no persistence)
+              value: ""
+            - label: 1 GiB
+              value: 1Gi
+            - label: 2 GiB
+              value: 2Gi
+            - label: 5 GiB
+              value: 5Gi
+        - name: storageClass
+          displayName: Storage class
+          type: string
+          description: StorageClass name (empty for the cluster default).
+          default: ""
+        - name: browserVSCode
+          displayName: VS Code in the browser
+          type: boolean
+          description: Run an OpenVSCode Server sidecar.
+          default: "true"
+    pod: |
+      apiVersion: v1
+      kind: Pod
+      spec: {}

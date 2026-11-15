@@ -203,6 +203,7 @@ const els = {
   manageTeams: document.getElementById("manage-teams"),
   manageTemplates: document.getElementById("manage-templates"),
   manageEnv: document.getElementById("manage-env"),
+  environmentView: document.getElementById("environment-view"),
   envBack: document.getElementById("env-back"),
   envCount: document.getElementById("env-count"),
   envForm: document.getElementById("env-form"),

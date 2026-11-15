@@ -8,7 +8,7 @@ Typical use: a private Git repository inside a workspace needs a token. The port
 
 1. An admin configures one or more providers on the portal (environment variables, or Helm values).
 2. A template declares which providers it needs under `externalAuth:`.
-3. The user opens **Connections** in the portal and connects each provider.
+3. The user opens **Connections** in the portal and connects each provider. Connected providers also show **Reconnect** so an expired or revoked token can be replaced without disconnecting first.
 4. When a workspace is created or started, the portal injects the access token into the workspace as environment variables.
 5. The workspace can also ask the portal for a refreshed token or Git credentials through a short-lived workspace bearer token.
 
@@ -118,12 +118,16 @@ For each required provider, the portal sets:
 | `GIT_ASKPASS` | `/usr/local/bin/poddy-git-askpass`. |
 | `GIT_TERMINAL_PROMPT` | `0`. |
 
-The base workspace image includes:
+The base workspace image includes the extensible `poddy` CLI:
 
 ```bash
-poddy-external-auth token github          # prints a refreshed access token
-poddy-external-auth token gitlab
+poddy external-auth status                 # all required providers
+poddy external-auth login github           # start a browser/OIDC flow and wait
+poddy external-auth token github           # print a refreshed access token
+poddy git-askpass "Password for 'https://github.com':"
 ```
+
+`poddy external-auth login` prints a portal URL. Open it in a browser; the portal signs you in with OIDC if needed, then runs the provider OAuth2 flow. The CLI polls the portal and exits once the token is stored. Use `--print-token` for scripts, `--no-open` on headless sessions, and `--timeout` / `--interval` to tune polling. The older `poddy-external-auth` and `poddy-git-askpass` commands remain as compatibility wrappers.
 
 Git uses the askpass helper automatically, so this works even after the original token expires:
 
@@ -139,8 +143,10 @@ The helper calls the portal, which refreshes the token if needed. The workspace 
 |---------------|------|---------|
 | `GET /api/external-auth?ids=github,gitlab` | user session | Connection status. |
 | `POST /api/external-auth/{id}/disconnect` | user session | Delete the stored token. |
-| `GET /external-auth/{id}/login?next=/` | user session | Start OAuth2. |
+| `GET /external-auth/{id}/login?next=/` | user session | Start OAuth2 from the portal. |
+| `GET /external-auth/{id}/cli?flow=...` | user session | Resume a CLI-initiated OAuth2 flow. |
 | `GET /external-auth/{id}/callback` | OAuth2 state cookie | Finish OAuth2. |
+| `POST /api/workspaces/{name}/external-auth/{id}/login` | `X-Poddy-Workspace-Token` | Start a CLI login and return a browser URL. |
 | `GET /api/workspaces/{name}/external-auth/{id}/token` | `X-Poddy-Workspace-Token` | Refreshed token JSON. |
 | `GET /api/workspaces/{name}/git-askpass?prompt=...` | `X-Poddy-Workspace-Token` | Git username or password. |
 

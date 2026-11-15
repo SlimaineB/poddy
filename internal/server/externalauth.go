@@ -95,6 +95,52 @@ func (s *Server) externalAuthLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusSeeOther)
 }
 
+func (s *Server) externalAuthCLI(w http.ResponseWriter, r *http.Request) {
+	if s.ExternalAuth == nil {
+		http.Error(w, "external auth is not configured", http.StatusNotImplemented)
+		return
+	}
+	value := r.URL.Query().Get("flow")
+	flow, err := s.ExternalAuth.ParseFlow(value)
+	if err != nil {
+		http.Error(w, "invalid external auth state", http.StatusBadRequest)
+		return
+	}
+	providerID := r.PathValue("id")
+	if flow.Provider != providerID {
+		http.Error(w, "external auth state does not match the provider", http.StatusBadRequest)
+		return
+	}
+	if flow.Expired() {
+		http.Error(w, "external auth expired, please try again", http.StatusBadRequest)
+		return
+	}
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if externalAuthUserKey(id.User) != flow.User {
+		http.Error(w, "this external auth link belongs to another user", http.StatusForbidden)
+		return
+	}
+	authURL, err := s.ExternalAuth.AuthURL(providerID, flow)
+	if err != nil {
+		http.Error(w, "external auth: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     externalAuthCookie,
+		Value:    value,
+		Path:     "/external-auth/",
+		MaxAge:   600,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secureRequest(r),
+	})
+	http.Redirect(w, r, authURL, http.StatusSeeOther)
+}
+
 func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if s.ExternalAuth == nil {
 		http.Error(w, "external auth is not configured", http.StatusNotImplemented)
@@ -225,6 +271,41 @@ func (s *Server) workspaceExternalAuthToken(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+func (s *Server) workspaceExternalAuthLogin(w http.ResponseWriter, r *http.Request) {
+	owner, requirements, ok := s.workspaceAuth(w, r)
+	if !ok {
+		return
+	}
+	providerID := r.PathValue("id")
+	if _, declared := externalAuthRequirement(requirements, providerID); !declared {
+		http.Error(w, "external auth provider is not declared by this template", http.StatusForbidden)
+		return
+	}
+	provider, ok := s.ExternalAuth.Provider(providerID)
+	if !ok {
+		http.Error(w, "unknown external auth provider", http.StatusNotFound)
+		return
+	}
+	redirectURL := s.externalAuthRedirectURL(r, provider)
+	next := safeNext(r.URL.Query().Get("next"))
+	_, flow, err := s.ExternalAuth.Begin(provider.ID, externalAuthOwnerKey(owner), next, redirectURL)
+	if err != nil {
+		http.Error(w, "external auth: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	value, err := s.ExternalAuth.SignFlow(flow)
+	if err != nil {
+		http.Error(w, "external auth: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	loginURL := s.externalAuthBrowserURL(r) + "/external-auth/" + url.PathEscape(provider.ID) + "/cli?flow=" + url.QueryEscape(value)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider":  provider.ID,
+		"loginUrl":  loginURL,
+		"expiresAt": flow.ExpiresAt(),
+	})
+}
+
 func (s *Server) workspaceGitAskpass(w http.ResponseWriter, r *http.Request) {
 	owner, requirements, ok := s.workspaceAuth(w, r)
 	if !ok {
@@ -331,6 +412,16 @@ func (s *Server) externalAuthRedirectURL(r *http.Request, provider *externalauth
 }
 
 func (s *Server) externalAuthPortalURL(r *http.Request) string {
+	if s.ExternalAuthURL != "" {
+		return strings.TrimRight(s.ExternalAuthURL, "/")
+	}
+	return requestBaseURL(r)
+}
+
+func (s *Server) externalAuthBrowserURL(r *http.Request) string {
+	if s.ExternalAuthRedirectBase != "" {
+		return strings.TrimRight(s.ExternalAuthRedirectBase, "/")
+	}
 	if s.ExternalAuthURL != "" {
 		return strings.TrimRight(s.ExternalAuthURL, "/")
 	}

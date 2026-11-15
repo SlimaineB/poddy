@@ -39,8 +39,42 @@ function mapRegionCoordinates(region, summary) {
   return { lat: fallback[0], lon: fallback[1] };
 }
 
+function mapRegions() {
+  const regions = configuredRegions();
+  if (regions.length) return regions;
+  const name = String(state.config.regionName || "").trim() || "local";
+  return [{
+    name,
+    displayName: name === "local" ? "Local" : regionDisplayName(name),
+    default: true,
+    sshHost: state.config.sshHost || "",
+    sshPort: state.config.sshPort || "",
+  }];
+}
+
 function mapRegionSummary(region) {
-  return (state.regionSummaries || []).find((item) => item.name === region.name) || null;
+  const summary = (state.regionSummaries || []).find((item) => item.name === region.name) || null;
+  if (summary || configuredRegions().length) return summary;
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : [];
+  const owners = new Set();
+  let running = 0;
+  let stopped = 0;
+  for (const workspace of workspaces) {
+    if (workspace.owner) owners.add(workspace.owner);
+    const phase = String(workspace.phase || "").toLowerCase();
+    if (phase === "running") running++;
+    else if (phase === "stopped") stopped++;
+  }
+  return {
+    name: region.name,
+    available: true,
+    workspaces: Number(state.workspaceTotal) || workspaces.length,
+    users: owners.size,
+    running,
+    stopped,
+    sshHost: region.sshHost,
+    sshPort: region.sshPort,
+  };
 }
 
 function mapScale() {
@@ -80,7 +114,7 @@ function mapPointer(event) {
 
 function mapSelectedCenter() {
   if (mapView.w < MAP_WIDTH) return null;
-  const region = configuredRegions().find((item) => item.name === state.mapSelected);
+  const region = mapRegions().find((item) => item.name === state.mapSelected);
   if (!region) return null;
   const coordinates = mapRegionCoordinates(region, mapRegionSummary(region));
   return mapProject(coordinates.lat, coordinates.lon);
@@ -92,7 +126,7 @@ function resetMapView() {
 }
 
 function focusMapRegion(name) {
-  const region = configuredRegions().find((item) => item.name === name);
+  const region = mapRegions().find((item) => item.name === name);
   if (!region) return false;
   const coordinates = mapRegionCoordinates(region, mapRegionSummary(region));
   const point = mapProject(coordinates.lat, coordinates.lon);
@@ -204,10 +238,11 @@ function ensureMapInteractions() {
 async function openMap() {
   state.mapActive = true;
   state.topologyActive = false;
+  const regions = mapRegions();
   if (state.regionFilter) {
     state.mapSelected = state.regionFilter;
-  } else if (!state.mapSelected && configuredRegions().length) {
-    const defaultRegion = configuredRegions().find((region) => region.default) || configuredRegions()[0];
+  } else if (!state.mapSelected && regions.length) {
+    const defaultRegion = regions.find((region) => region.default) || regions[0];
     if (defaultRegion) state.mapSelected = defaultRegion.name;
   }
   showView("map");
@@ -229,7 +264,7 @@ function renderMap() {
   ensureMapWorld();
   ensureMapInteractions();
 
-  const allRegions = configuredRegions();
+  const allRegions = mapRegions();
   const regions = state.regionFilter
     ? allRegions.filter((region) => region.name === state.regionFilter)
     : allRegions;
@@ -384,7 +419,7 @@ function renderMapRegionList(regions) {
 }
 
 function selectMapRegion(name) {
-  if (!configuredRegions().some((region) => region.name === name)) return;
+  if (!mapRegions().some((region) => region.name === name)) return;
   state.mapSelected = name;
   renderMap();
 }

@@ -56,6 +56,12 @@ function connectionCard(status) {
   const actions = document.createElement("div");
   actions.className = "connection-actions";
   if (status.authenticated) {
+    const reconnect = document.createElement("button");
+    reconnect.type = "button";
+    reconnect.className = "button small";
+    reconnect.textContent = "Reconnect";
+    reconnect.addEventListener("click", () => connectExternalAuth(status.id));
+    actions.append(reconnect);
     const disconnect = document.createElement("button");
     disconnect.type = "button";
     disconnect.className = "button danger small";

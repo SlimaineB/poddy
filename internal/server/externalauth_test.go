@@ -139,6 +139,88 @@ func TestExternalAuthEndToEnd(t *testing.T) {
 			t.Fatalf("askpass %q = %q, want %q", prompt, rec.Body.String(), want)
 		}
 	}
+
+	rec = requestAs(t, s, session, http.MethodPost, "/api/external-auth/mock/disconnect", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("disconnect status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/workspaces/alice-extws/external-auth/mock/login", nil)
+	req.Header.Set(workspaceAuthHeader, workspaceToken)
+	loginRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(loginRec, req)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("CLI login status = %d, body = %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginBody struct {
+		Provider string `json:"provider"`
+		LoginURL string `json:"loginUrl"`
+	}
+	if err := json.Unmarshal(loginRec.Body.Bytes(), &loginBody); err != nil {
+		t.Fatal(err)
+	}
+	if loginBody.Provider != "mock" {
+		t.Fatalf("CLI provider = %q", loginBody.Provider)
+	}
+	loginURL, err := url.Parse(loginBody.LoginURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loginURL.Scheme != "http" || loginURL.Host != "portal.example" || loginURL.Path != "/external-auth/mock/cli" {
+		t.Fatalf("CLI login URL = %q", loginBody.LoginURL)
+	}
+
+	unauthRec := request(t, s, http.MethodGet, loginURL.RequestURI(), nil)
+	if unauthRec.Code != http.StatusSeeOther {
+		t.Fatalf("unauthenticated CLI login status = %d, body = %s", unauthRec.Code, unauthRec.Body.String())
+	}
+	if loc := unauthRec.Header().Get("Location"); !strings.HasPrefix(loc, "/oidc/login?next=") {
+		t.Fatalf("unauthenticated CLI login redirect = %q", loc)
+	}
+
+	cliRec := requestAs(t, s, session, http.MethodGet, loginURL.RequestURI(), nil)
+	if cliRec.Code != http.StatusSeeOther {
+		t.Fatalf("CLI browser status = %d, body = %s", cliRec.Code, cliRec.Body.String())
+	}
+	providerURL, err := url.Parse(cliRec.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(providerURL.String(), provider.URL+"/auth?") {
+		t.Fatalf("CLI provider location = %q", providerURL.String())
+	}
+	var cliFlowCookie *http.Cookie
+	for _, cookie := range cliRec.Result().Cookies() {
+		if cookie.Name == externalAuthCookie {
+			cliFlowCookie = cookie
+		}
+	}
+	if cliFlowCookie == nil || cliFlowCookie.Value == "" {
+		t.Fatalf("CLI flow cookie not set: %+v", cliRec.Result().Cookies())
+	}
+
+	callback = httptest.NewRequest(http.MethodGet, "/external-auth/mock/callback?code=good-code&state="+url.QueryEscape(providerURL.Query().Get("state")), nil)
+	callback.AddCookie(session)
+	callback.AddCookie(cliFlowCookie)
+	callbackRec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(callbackRec, callback)
+	if callbackRec.Code != http.StatusSeeOther {
+		t.Fatalf("CLI callback status = %d, body = %s", callbackRec.Code, callbackRec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/workspaces/alice-extws/external-auth/mock/token", nil)
+	req.Header.Set(workspaceAuthHeader, workspaceToken)
+	tokenRec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(tokenRec, req)
+	if tokenRec.Code != http.StatusOK {
+		t.Fatalf("CLI token status = %d, body = %s", tokenRec.Code, tokenRec.Body.String())
+	}
+	if err := json.Unmarshal(tokenRec.Body.Bytes(), &tokenBody); err != nil {
+		t.Fatal(err)
+	}
+	if tokenBody.AccessToken != "ext-access" {
+		t.Fatalf("CLI token = %+v", tokenBody)
+	}
 }
 
 func newExternalAuthTestServer(t *testing.T) (*Server, *httptest.Server) {
@@ -197,7 +279,7 @@ spec:
 		"PODDY_EXTERNAL_AUTH_0_CLIENT_SECRET=secret",
 		"PODDY_EXTERNAL_AUTH_0_AUTH_URL=" + provider.URL + "/auth",
 		"PODDY_EXTERNAL_AUTH_0_TOKEN_URL=" + provider.URL + "/token",
-		"PODDY_EXTERNAL_AUTH_0_REGEX=git\\.example\\.com",
+		"PODDY_EXTERNAL_AUTH_0_REGEX=^https://git\\.example\\.com(/.*)?$",
 		"PODDY_EXTERNAL_AUTH_0_SCOPES=repo",
 	})
 	if err != nil {
