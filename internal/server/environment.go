@@ -193,6 +193,47 @@ func (s *Server) resolveEnvironment(ctx context.Context, owner, template, worksp
 	return resolved.Values, secrets, nil
 }
 
+type workspaceEnvironmentItem struct {
+	Name   string          `json:"name"`
+	Value  string          `json:"value,omitempty"`
+	Secret bool            `json:"secret"`
+	Source envstore.Source `json:"source"`
+}
+
+// workspaceEnvironment returns the effective environment for a workspace and
+// the scope that supplied each value. Secret values are intentionally omitted.
+func (s *Server) workspaceEnvironment(ctx context.Context, owner, template, workspace string) ([]workspaceEnvironmentItem, error) {
+	if s.Environment == nil {
+		return nil, nil
+	}
+	resolved, err := envstore.ResolveForOwner(ctx, s.Environment, s.RBAC, s.Users, owner, template, workspace)
+	if err != nil {
+		return nil, err
+	}
+	return environmentItems(resolved), nil
+}
+
+func environmentItems(resolved envstore.Resolved) []workspaceEnvironmentItem {
+	names := make([]string, 0, len(resolved.Values))
+	for name := range resolved.Values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	items := make([]workspaceEnvironmentItem, 0, len(names))
+	for _, name := range names {
+		item := workspaceEnvironmentItem{
+			Name:   name,
+			Secret: resolved.Secrets[name],
+			Source: resolved.Sources[name],
+		}
+		if !item.Secret {
+			item.Value = resolved.Values[name]
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
 func (s *Server) deleteRegionEnvironment(w http.ResponseWriter, r *http.Request) {
 	if s.Regions == nil {
 		http.Error(w, "not found", http.StatusNotFound)

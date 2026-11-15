@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"poddy/internal/auth"
+	"poddy/internal/k8s"
 	"poddy/internal/rbac"
 )
 
@@ -144,6 +145,60 @@ func TestUserQuotaDetails(t *testing.T) {
 
 	if rec := requestAs(t, s, alice, http.MethodGet, "/api/user-quotas/alice%40example.com", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("non-admin details = %d", rec.Code)
+	}
+}
+
+func TestWorkspaceDetailsQuotaSources(t *testing.T) {
+	s := newRBACServer(t, rbac.Config{
+		Admins: []string{"admin@example.com"},
+		Teams: map[string]rbac.Team{
+			"backend":  {Members: []string{"alice@example.com"}},
+			"platform": {Members: []string{"alice@example.com"}},
+		},
+	})
+	if err := s.Quota.SetTeamQuota(t.Context(), "backend", rbac.Quota{CPU: "4", Memory: "8Gi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Quota.SetTeamQuota(t.Context(), "platform", rbac.Quota{Memory: "16Gi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Quota.SetUserQuota(t.Context(), "alice@example.com", rbac.Quota{CPU: "8"}); err != nil {
+		t.Fatal(err)
+	}
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "one", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create workspace = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var ws k8s.Workspace
+	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = requestAs(t, s, alice, http.MethodGet, "/api/workspaces/"+ws.Name, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("workspace details = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var details struct {
+		Quota workspaceQuotaInfo `json:"quota"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details.Quota.Effective.CPU != "8" || details.Quota.Effective.Memory != "16Gi" {
+		t.Fatalf("effective quota = %+v", details.Quota.Effective)
+	}
+	if details.Quota.Usage.Workspaces != 1 {
+		t.Fatalf("usage = %+v", details.Quota.Usage)
+	}
+	if got := details.Quota.Sources["cpu"]; got.Scope != "user" || got.Target != "alice@example.com" {
+		t.Fatalf("cpu source = %+v", got)
+	}
+	if got := details.Quota.Sources["memory"]; got.Scope != "team" || got.Target != "platform" {
+		t.Fatalf("memory source = %+v", got)
+	}
+	if got, ok := details.Quota.Sources["storage"]; ok {
+		t.Fatalf("storage source = %+v, want none", got)
 	}
 }
 

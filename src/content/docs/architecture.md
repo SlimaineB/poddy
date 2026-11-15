@@ -125,8 +125,10 @@ See [SSH access](ssh.md) for the certificate flow and Helm values.
 
 1. Clicking a workspace card or name opens the details dialog.
 2. The portal checks authentication and workspace ownership, then reads the pod.
-3. The dialog shows metadata and fetches startup output for init containers and
-   regular containers through the Kubernetes `pods/log` subresource.
+3. The dialog shows metadata, the effective environment grouped by winning
+   scope, the owner's quota with per-field sources and usage, and fetches startup
+   output for init containers and regular containers through the Kubernetes
+   `pods/log` subresource.
 4. A container that is waiting or has no output reports its state and error
    inline; a stopped workspace asks the user to start it first.
 

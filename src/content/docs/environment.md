@@ -10,9 +10,10 @@ into the workspace's `workspace` container:
 workspace > user > team > template
 ```
 
-The **Environment** page in the top bar manages values per scope. Changes are
-resolved when a workspace is created or started, so restart a running workspace
-to pick up new values.
+The **Environment** page under **Manage** in the top bar manages values per
+scope. Changes are resolved when a workspace is created or started, so restart a
+running workspace to pick up new values. The workspace details page shows the
+effective variables grouped by the scope that wins; secret values stay hidden.
 
 ## Scopes
 

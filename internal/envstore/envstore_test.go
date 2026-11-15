@@ -80,6 +80,16 @@ func TestMergePrecedenceAndSecrets(t *testing.T) {
 	if !resolved.Secrets["S"] || resolved.Secrets["A"] {
 		t.Fatalf("secrets = %#v", resolved.Secrets)
 	}
+	wantSources := map[string]Source{
+		"A": {Scope: ScopeWorkspace, Target: "app"},
+		"T": {Scope: ScopeTemplate, Target: "base"},
+		"Z": {Scope: ScopeTeam, Target: "zeta"},
+		"U": {Scope: ScopeUser, Target: "alice@example.com"},
+		"S": {Scope: ScopeWorkspace, Target: "app"},
+	}
+	if !reflect.DeepEqual(resolved.Sources, wantSources) {
+		t.Fatalf("sources = %#v, want %#v", resolved.Sources, wantSources)
+	}
 }
 
 func TestMergeSecretRequiresKey(t *testing.T) {

@@ -101,27 +101,33 @@ The server rejects unknown team names when saving access.
 
 ## Quotas
 
-Quotas are optional per-user budgets stored in the same `rbac.yaml` document.
-The portal checks them when a workspace is created. Usage includes every
+Quotas are optional per-user budgets stored in PostgreSQL `user_quotas` and
+`team_quotas`. The RBAC document carries team membership; the ConfigMap remains
+a mirror. The portal checks quotas when a workspace is created. Usage includes every
 workspace owned by the user, running or stopped, plus the workspace being
 created. CPU, memory, and storage are summed from the rendered resource requests
 and PVC size.
 
-```yaml
-teams:
-  backend:
-    members:
-      - alice@example.com
-    quota:
-      maxWorkspaces: 5
-      cpu: "4"
-      memory: "8Gi"
-      storage: "50Gi"
+Team quota (set on the team form or `PUT /api/teams/{team}`):
 
-userQuotas:
-  alice@example.com:
-    maxWorkspaces: 2
-    cpu: "2"
+```json
+{
+  "quota": {
+    "maxWorkspaces": 5,
+    "cpu": "4",
+    "memory": "8Gi",
+    "storage": "50Gi"
+  }
+}
+```
+
+User override (`PUT /api/user-quotas/{identity}`):
+
+```json
+{
+  "maxWorkspaces": 2,
+  "cpu": "2"
+}
 ```
 
 Rules:
@@ -147,7 +153,9 @@ a user-quota key. Sending an empty quota removes the override.
 
 Admins manage quotas in the UI: **Teams** has quota fields on the team form, and
 **Users** has **Set quota** / **Edit quota** actions. Both write to PostgreSQL;
-the RBAC ConfigMap is a mirror.
+the RBAC ConfigMap is a mirror. The workspace details page shows the owner's
+effective quota, usage across all their workspaces, the current workspace
+request, and which user override or team supplied each limit.
 
 ## Workspace ownership
 

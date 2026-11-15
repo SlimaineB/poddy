@@ -43,6 +43,7 @@ function renderMonitoringConfig() {
   if (els.manageMonitoring) {
     els.manageMonitoring.hidden = !canSeeGlobalMonitoring();
   }
+  if (typeof syncManageMenu === "function") syncManageMenu();
   if (els.detailMonitoring) {
     els.detailMonitoring.hidden = !canSeeWorkspaceMonitoring();
   }

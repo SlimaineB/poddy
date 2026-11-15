@@ -411,10 +411,25 @@ func Owner(pod *corev1.Pod) string {
 }
 
 func (m *Manager) Get(ctx context.Context, name string) (*corev1.Pod, error) {
-	pod, err := m.Client.CoreV1().Pods(m.Namespace).Get(ctx, PodName(name), metav1.GetOptions{})
-	if apierrors.IsNotFound(err) && PodName(name) != name {
-		// Legacy workspaces used the workspace name as the pod name.
-		pod, err = m.Client.CoreV1().Pods(m.Namespace).Get(ctx, name, metav1.GetOptions{})
+	names := []string{PodName(name)}
+	if legacy := StatefulSetName(name); legacy != PodName(name) {
+		// Older releases used poddy-<workspace> for running bare pods.
+		names = append(names, legacy)
+	}
+	if name != PodName(name) && name != StatefulSetName(name) {
+		// The oldest releases used the workspace name as the pod name.
+		names = append(names, name)
+	}
+	var pod *corev1.Pod
+	var err error
+	for _, podName := range names {
+		pod, err = m.Client.CoreV1().Pods(m.Namespace).Get(ctx, podName, metav1.GetOptions{})
+		if err == nil {
+			break
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
 	}
 	if err != nil {
 		return nil, err

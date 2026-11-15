@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"poddy/internal/auth"
+	"poddy/internal/envstore"
 	"poddy/internal/k8s"
 	"poddy/internal/quota"
 	"poddy/internal/rbac"
@@ -127,6 +128,144 @@ type userQuotaDetails struct {
 	Identity  string         `json:"identity"`
 	Effective rbac.Quota     `json:"effective"`
 	Usage     quotaUsageInfo `json:"usage"`
+}
+
+type quotaSourceInfo struct {
+	Scope  string `json:"scope"`
+	Target string `json:"target,omitempty"`
+}
+
+type workspaceQuotaUsage struct {
+	CPU     string `json:"cpu,omitempty"`
+	Memory  string `json:"memory,omitempty"`
+	Storage string `json:"storage,omitempty"`
+}
+
+type workspaceQuotaInfo struct {
+	Owner     string                     `json:"owner"`
+	Effective rbac.Quota                 `json:"effective"`
+	Usage     quotaUsageInfo             `json:"usage"`
+	Workspace workspaceQuotaUsage        `json:"workspace"`
+	Sources   map[string]quotaSourceInfo `json:"sources"`
+}
+
+// workspaceQuota resolves the owner's effective quota, usage, and the source of
+// each limit. The viewer must already be authorized for the workspace.
+func (s *Server) workspaceQuota(ctx context.Context, viewer *identity, cfg rbac.Config, owner, cpu, memory, storage string) (*workspaceQuotaInfo, error) {
+	if s.Quota == nil {
+		return nil, nil
+	}
+	identity := envstore.IdentityForOwner(ctx, s.Users, owner)
+	userQuotas, err := s.Quota.UserQuotas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	teamQuotas, err := s.Quota.TeamQuotas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	effective, err := cfg.EffectiveQuotaWith(identity, userQuotas, teamQuotas)
+	if err != nil {
+		return nil, err
+	}
+	var usage rbac.Usage
+	if viewer != nil && !s.isAdmin(viewer, cfg) && strings.EqualFold(owner, ownerID(viewer.User)) {
+		usage, err = s.workspaceUsage(ctx, viewer, cfg)
+	} else {
+		usage, err = s.usageForOwner(ctx, viewer, owner)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &workspaceQuotaInfo{
+		Owner:     owner,
+		Effective: effective,
+		Usage:     usageInfo(usage),
+		Workspace: workspaceQuotaUsage{CPU: cpu, Memory: memory, Storage: storage},
+		Sources:   quotaSources(cfg, identity, owner, userQuotas, teamQuotas, effective),
+	}, nil
+}
+
+func quotaSources(cfg rbac.Config, id rbac.Identity, owner string, userQuotas, teamQuotas map[string]rbac.Quota, effective rbac.Quota) map[string]quotaSourceInfo {
+	out := map[string]quotaSourceInfo{}
+	user, hasUser := (rbac.Config{UserQuotas: userQuotas}).UserQuota(id)
+	user.Normalize()
+	if hasUser {
+		for _, field := range []string{"maxWorkspaces", "cpu", "memory", "storage"} {
+			if quotaFieldSet(user, field) {
+				out[field] = quotaSourceInfo{Scope: "user", Target: owner}
+			}
+		}
+	}
+	for _, field := range []string{"maxWorkspaces", "cpu", "memory", "storage"} {
+		if _, ok := out[field]; ok || !quotaFieldSet(effective, field) {
+			continue
+		}
+		if team, ok := quotaTeamSource(cfg, id, teamQuotas, effective, field); ok {
+			out[field] = quotaSourceInfo{Scope: "team", Target: team}
+		}
+	}
+	return out
+}
+
+func quotaTeamSource(cfg rbac.Config, id rbac.Identity, teamQuotas map[string]rbac.Quota, effective rbac.Quota, field string) (string, bool) {
+	for _, name := range cfg.TeamNames() {
+		quota, ok := teamQuotas[name]
+		if !ok || !cfg.InTeam(name, id) {
+			continue
+		}
+		if quotaFieldEqual(quota, effective, field) {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+func quotaFieldSet(quota rbac.Quota, field string) bool {
+	switch field {
+	case "maxWorkspaces":
+		return quota.MaxWorkspaces != nil
+	case "cpu":
+		return strings.TrimSpace(quota.CPU) != ""
+	case "memory":
+		return strings.TrimSpace(quota.Memory) != ""
+	case "storage":
+		return strings.TrimSpace(quota.Storage) != ""
+	default:
+		return false
+	}
+}
+
+func quotaFieldEqual(left, right rbac.Quota, field string) bool {
+	switch field {
+	case "maxWorkspaces":
+		return left.MaxWorkspaces != nil && right.MaxWorkspaces != nil && *left.MaxWorkspaces == *right.MaxWorkspaces
+	case "cpu", "memory", "storage":
+		var leftValue, rightValue string
+		switch field {
+		case "cpu":
+			leftValue, rightValue = left.CPU, right.CPU
+		case "memory":
+			leftValue, rightValue = left.Memory, right.Memory
+		case "storage":
+			leftValue, rightValue = left.Storage, right.Storage
+		}
+		leftValue, rightValue = strings.TrimSpace(leftValue), strings.TrimSpace(rightValue)
+		if leftValue == "" || rightValue == "" {
+			return false
+		}
+		leftQuantity, err := resource.ParseQuantity(leftValue)
+		if err != nil {
+			return false
+		}
+		rightQuantity, err := resource.ParseQuantity(rightValue)
+		if err != nil {
+			return false
+		}
+		return leftQuantity.Cmp(rightQuantity) == 0
+	default:
+		return false
+	}
 }
 
 func usageInfo(usage rbac.Usage) quotaUsageInfo {

@@ -1055,6 +1055,38 @@ func TestLegacyBarePodMigratesToStatefulSet(t *testing.T) {
 	}
 }
 
+func TestPrefixedLegacyBarePodLookup(t *testing.T) {
+	m := newTestManager()
+	ctx := context.Background()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      StatefulSetName("legacy"),
+			Namespace: "poddy",
+			Labels: map[string]string{
+				labelName:      AppName,
+				labelWorkspace: "legacy",
+			},
+			Annotations: map[string]string{annotationOwner: "alice@example.com"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: ContainerName, Image: "example/workspace:1"}},
+		},
+	}
+	if _, err := m.Client.CoreV1().Pods("poddy").Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Get(ctx, "legacy"); err != nil {
+		t.Fatalf("prefixed legacy pod lookup: %v", err)
+	}
+	ws, err := m.GetWorkspace(ctx, "legacy")
+	if err != nil {
+		t.Fatalf("prefixed legacy workspace lookup: %v", err)
+	}
+	if ws.Owner != "alice@example.com" {
+		t.Fatalf("owner = %q", ws.Owner)
+	}
+}
+
 func TestMigrateLegacyStoppedState(t *testing.T) {
 	m := newTestManager()
 	ctx := context.Background()

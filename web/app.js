@@ -179,6 +179,18 @@ els.connectionsBack.addEventListener("click", () => showView("workspaces"));
 els.manageUsers.addEventListener("click", openUsers);
 els.manageTeams.addEventListener("click", openTeams);
 els.manageTemplates.addEventListener("click", openTemplates);
+document.addEventListener("click", (event) => {
+  if (els.manageMenu && els.manageMenu.open && !els.manageMenu.contains(event.target)) {
+    els.manageMenu.open = false;
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && els.manageMenu && els.manageMenu.open) {
+    els.manageMenu.open = false;
+    const toggle = els.manageMenu.querySelector("summary");
+    if (toggle) toggle.focus();
+  }
+});
 els.manageEnv.addEventListener("click", openEnvironment);
 els.manageAudit.addEventListener("click", openAudit);
 els.auditBack.addEventListener("click", () => showView("workspaces"));

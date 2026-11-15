@@ -104,6 +104,23 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 			writeRegionError(w, detailErr)
 			return
 		}
+		owner, _ := details["owner"].(string)
+		template, _ := details["template"].(string)
+		environment, envErr := s.workspaceEnvironment(r.Context(), owner, template, name)
+		if envErr != nil {
+			log.Printf("workspace environment %s: %v", name, envErr)
+		} else {
+			details["environment"] = environment
+		}
+		cpu, _ := details["cpu"].(string)
+		memory, _ := details["memory"].(string)
+		storage, _ := details["storage"].(string)
+		quotaInfo, quotaErr := s.workspaceQuota(r.Context(), id, cfg, owner, cpu, memory, storage)
+		if quotaErr != nil {
+			log.Printf("workspace quota %s: %v", name, quotaErr)
+		} else {
+			details["quota"] = quotaInfo
+		}
 		writeJSON(w, http.StatusOK, details)
 		return
 	}
@@ -164,6 +181,15 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		log.Printf("workspace access %s: %v", name, accessErr)
 	}
 
+	environment, envErr := s.workspaceEnvironment(r.Context(), ws.Owner, ws.Template, ws.Name)
+	if envErr != nil {
+		log.Printf("workspace environment %s: %v", name, envErr)
+	}
+	quotaInfo, quotaErr := s.workspaceQuota(r.Context(), id, cfg, ws.Owner, ws.CPU, ws.Memory, ws.Storage)
+	if quotaErr != nil {
+		log.Printf("workspace quota %s: %v", name, quotaErr)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":          ws.Name,
 		"template":      ws.Template,
@@ -175,6 +201,9 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"jupyterLab":    ws.JupyterLab,
 		"apps":          ws.Apps,
 		"createdAt":     ws.CreatedAt,
+		"cpu":           ws.CPU,
+		"memory":        ws.Memory,
+		"storage":       ws.Storage,
 		"schedule":      ws.Schedule,
 		"podIP":         podIP,
 		"nodeName":      nodeName,
@@ -185,6 +214,8 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		"teams":         nonNil(teams),
 		"teamMembers":   teamMembers,
 		"access":        accessInfo,
+		"environment":   environment,
+		"quota":         quotaInfo,
 	})
 }
 

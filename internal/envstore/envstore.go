@@ -53,10 +53,17 @@ type Entry struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// Source identifies the scope and target that supplied an effective value.
+type Source struct {
+	Scope  Scope  `json:"scope"`
+	Target string `json:"target"`
+}
+
 // Resolved is the effective environment for one workspace.
 type Resolved struct {
 	Values  map[string]string
 	Secrets map[string]bool
+	Sources map[string]Source
 }
 
 // Store manages scoped environment variables and resolves them for a
@@ -297,7 +304,11 @@ func (p *PostgresStore) Resolve(ctx context.Context, owner string, teams []strin
 }
 
 func (p *PostgresStore) merge(rows []row, template string, teams []string, owner, workspace string) (Resolved, error) {
-	resolved := Resolved{Values: map[string]string{}, Secrets: map[string]bool{}}
+	resolved := Resolved{
+		Values:  map[string]string{},
+		Secrets: map[string]bool{},
+		Sources: map[string]Source{},
+	}
 	apply := func(item row) error {
 		value := item.value
 		if item.secret {
@@ -312,6 +323,7 @@ func (p *PostgresStore) merge(rows []row, template string, teams []string, owner
 		}
 		resolved.Values[item.name] = value
 		resolved.Secrets[item.name] = item.secret
+		resolved.Sources[item.name] = Source{Scope: item.scope, Target: item.target}
 		return nil
 	}
 

@@ -163,6 +163,8 @@ const els = {
   detailStatus: document.getElementById("detail-status"),
   detailActions: document.getElementById("detail-actions"),
   detailList: document.getElementById("detail-list"),
+  detailEnvironmentBody: document.getElementById("detail-environment-body"),
+  detailQuotaBody: document.getElementById("detail-quota-body"),
   detailLogsBody: document.getElementById("detail-logs-body"),
   detailLogsRefresh: document.getElementById("detail-logs-refresh"),
   detailManifests: document.getElementById("detail-manifests"),
@@ -201,6 +203,7 @@ const els = {
   manageWorkspaces: document.getElementById("manage-workspaces"),
   manageVolumes: document.getElementById("manage-volumes"),
   manageMonitoring: document.getElementById("manage-monitoring"),
+  manageMenu: document.getElementById("manage-menu"),
   manageConnections: document.getElementById("manage-connections"),
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
@@ -1303,6 +1306,7 @@ async function loadMe() {
       els.userRole.textContent = "auditor";
     }
     els.manageAudit.hidden = !me.canViewAudit;
+    syncManageMenu();
   } catch {
     // The server redirects unauthenticated page loads to the login page.
   }
@@ -1338,5 +1342,18 @@ function showView(name) {
     if (button === active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   }
+  if (els.manageMenu) {
+    els.manageMenu.classList.toggle("active", Boolean(active && els.manageMenu.contains(active)));
+    els.manageMenu.open = false;
+  }
+  syncManageMenu();
   window.scrollTo({ top: 0 });
+}
+
+function syncManageMenu() {
+  if (!els.manageMenu) return;
+  for (const section of els.manageMenu.querySelectorAll("[data-nav-section]")) {
+    const visible = [...section.querySelectorAll("button")].some((button) => !button.hidden);
+    section.hidden = !visible;
+  }
 }

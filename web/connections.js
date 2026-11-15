@@ -7,11 +7,13 @@ async function loadExternalAuth(ids = "") {
     state.externalAuth = Array.isArray(data.providers) ? data.providers : [];
     state.externalAuthEnabled = Boolean(data.enabled);
     els.manageConnections.hidden = !state.externalAuthEnabled;
+    if (typeof syncManageMenu === "function") syncManageMenu();
     return state.externalAuth;
   } catch {
     state.externalAuth = [];
     state.externalAuthEnabled = false;
     els.manageConnections.hidden = true;
+    if (typeof syncManageMenu === "function") syncManageMenu();
     return [];
   }
 }

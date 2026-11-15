@@ -63,13 +63,27 @@
       <div class="topbar-actions">
         <button id="manage-workspaces" class="button ghost small active" type="button"><svg class="icon"><use href="#icon-grid"></use></svg>Workspaces</button>
         <button id="manage-volumes" class="button ghost small" type="button"><svg class="icon"><use href="#icon-database"></use></svg>Volumes</button>
-        <button id="manage-monitoring" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-activity"></use></svg>Monitoring</button>
-        <button id="manage-connections" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-link"></use></svg>Connections</button>
-        <button id="manage-users" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Users</button>
-        <button id="manage-teams" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Teams</button>
-        <button id="manage-templates" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-layers"></use></svg>Templates</button>
-        <button id="manage-env" class="button ghost small" type="button"><svg class="icon"><use href="#icon-lock"></use></svg>Environment</button>
-        <button id="manage-audit" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-shield"></use></svg>Audit</button>
+        <details id="manage-menu" class="nav-menu">
+          <summary class="button ghost small nav-menu-toggle"><svg class="icon"><use href="#icon-layers"></use></svg><span>Manage</span></summary>
+          <div id="manage-menu-panel" class="nav-menu-panel">
+            <div class="nav-menu-section" data-nav-section>
+              <span class="nav-menu-label">Workspace</span>
+              <button id="manage-connections" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-link"></use></svg>Connections</button>
+              <button id="manage-env" class="button ghost small" type="button"><svg class="icon"><use href="#icon-lock"></use></svg>Environment</button>
+            </div>
+            <div class="nav-menu-section" data-nav-section>
+              <span class="nav-menu-label">Administration</span>
+              <button id="manage-users" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Users</button>
+              <button id="manage-teams" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Teams</button>
+              <button id="manage-templates" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-layers"></use></svg>Templates</button>
+              <button id="manage-audit" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-shield"></use></svg>Audit</button>
+            </div>
+            <div class="nav-menu-section" data-nav-section>
+              <span class="nav-menu-label">Observability</span>
+              <button id="manage-monitoring" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-activity"></use></svg>Monitoring</button>
+            </div>
+          </div>
+        </details>
         <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
           <svg class="icon"><use href="#icon-refresh"></use></svg>
         </button>
@@ -852,7 +866,7 @@
         <span class="detail-mark"><svg class="icon"><use href="#icon-box"></use></svg></span>
         <div class="detail-heading">
           <h1 id="detail-title">Workspace details</h1>
-          <p id="detail-subtitle">Ports, metadata, rendered manifests, and startup logs for this workspace.</p>
+          <p id="detail-subtitle">Ports, metadata, environment, quota, rendered manifests, and startup logs for this workspace.</p>
         </div>
         <div id="detail-actions" class="detail-actions"></div>
       </div>
@@ -884,6 +898,24 @@
           </div>
         </header>
         <dl id="detail-list" class="detail-list"></dl>
+      </section>
+      <section id="detail-environment" class="detail-panel workspace-environment">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Environment</h3>
+            <p>Effective variables grouped by the scope that wins: workspace > user > team > template. Secret values stay hidden.</p>
+          </div>
+        </header>
+        <div id="detail-environment-body" class="env-detail-list"></div>
+      </section>
+      <section id="detail-quota" class="detail-panel workspace-quota">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Quota</h3>
+            <p>Effective limits for the workspace owner, where each limit comes from, and current usage.</p>
+          </div>
+        </header>
+        <div id="detail-quota-body" class="workspace-quota-body"></div>
       </section>
       <section id="detail-monitoring" class="detail-panel workspace-monitoring" hidden>
         <header class="workspace-logs-header">

@@ -8,24 +8,49 @@ const envState = {
 };
 
 function envDefaultTarget(scope) {
-  if (scope === "user") return state.me.email || state.me.username || "";
+  if (scope === "user") return state.me ? (state.me.email || state.me.username || "") : "";
   if (scope === "team") return state.teams[0]?.name || "";
   if (scope === "template") return state.templates.find((item) => item.canManage)?.name || state.templates[0]?.name || "";
   if (scope === "workspace") return state.workspaces[0]?.name || "";
   return "";
 }
 
+function envIsAdmin() {
+  return Boolean(state.me && state.me.isAdmin);
+}
+
+function envManageableTemplates() {
+  return state.templates.filter((template) => template.canManage);
+}
+
 function envTargetValues(scope) {
-  if (scope === "team") return state.teams.map((team) => team.name);
-  if (scope === "template") return state.templates.map((template) => template.name);
+  if (scope === "team") return envIsAdmin() ? state.teams.map((team) => team.name) : [];
+  if (scope === "template") return envManageableTemplates().map((template) => template.name);
   if (scope === "workspace") return state.workspaces.map((workspace) => workspace.name);
   if (scope === "user") {
+    const own = state.me ? (state.me.email || state.me.username) : "";
+    if (!envIsAdmin()) return own ? [own] : [];
     const values = state.directory.users.slice();
-    const own = state.me.email || state.me.username;
     if (own && !values.some((value) => value.toLowerCase() === own.toLowerCase())) values.unshift(own);
     return values;
   }
   return [];
+}
+
+function syncEnvironmentScopes() {
+  const allowed = {
+    user: true,
+    team: envIsAdmin(),
+    template: envManageableTemplates().length > 0,
+    workspace: state.workspaces.length > 0,
+  };
+  for (const option of els.envScope.options) {
+    const enabled = Boolean(allowed[option.value]);
+    option.disabled = !enabled;
+    option.hidden = !enabled;
+  }
+  if (!allowed[envState.scope]) envState.scope = "user";
+  els.envScope.value = envState.scope;
 }
 
 function syncEnvironmentTargets() {
@@ -46,6 +71,7 @@ function syncEnvironmentTargets() {
   if (!envState.target) envState.target = envDefaultTarget(scope);
   els.envTarget.value = envState.target;
   els.envTarget.placeholder = scope === "user" ? "email or username" : `Select a ${scope}`;
+  els.envTarget.readOnly = scope === "user" && !envIsAdmin();
 }
 
 function resetEnvironmentForm() {
@@ -195,16 +221,18 @@ async function openEnvironment() {
   try {
     await Promise.all([
       state.templates.length ? Promise.resolve() : loadTemplates(),
-      state.teams.length ? Promise.resolve() : refreshTeams(),
+      !envIsAdmin() || state.teams.length ? Promise.resolve() : refreshTeams().catch(() => {
+        state.teams = [];
+      }),
       state.directory.users.length ? Promise.resolve() : loadDirectory(),
       state.workspaces.length ? Promise.resolve() : load(),
     ]);
     envState.scope = "user";
     envState.target = envDefaultTarget("user");
-    els.envScope.value = envState.scope;
     resetEnvironmentForm();
     els.envName.readOnly = false;
     els.envSecret.disabled = false;
+    syncEnvironmentScopes();
     syncEnvironmentTargets();
     renderEnvironment();
     showView("environment");

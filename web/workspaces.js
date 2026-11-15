@@ -767,6 +767,10 @@ async function showDetails(workspace) {
   state.manifestTab = "pod";
   renderDetailHeader(workspace);
   els.detailList.replaceChildren();
+  els.detailEnvironmentBody.replaceChildren();
+  setDetailEnvironmentMessage("Loading environment...");
+  els.detailQuotaBody.replaceChildren();
+  setDetailQuotaMessage("Loading quota...");
   els.detailLogsBody.replaceChildren();
   els.detailManifests.hidden = !(state.me && state.me.isAdmin);
   if (!els.detailManifests.hidden) setManifestsMessage("Loading manifests...");
@@ -805,7 +809,7 @@ function renderDetailHeader(workspace) {
   if (workspace.owner) bits.push(workspace.owner);
   els.detailSubtitle.textContent = bits.length
     ? bits.join(" · ")
-    : "Ports, metadata, rendered manifests, and startup logs for this workspace.";
+    : "Ports, metadata, environment, quota, rendered manifests, and startup logs for this workspace.";
 
   const phase = workspace.phase || "Unknown";
   els.detailStatus.replaceChildren();
@@ -1279,8 +1283,170 @@ function renderDetails(ws) {
     }
     els.detailList.append(detailRow("Teams", teamsEl));
   }
+  renderDetailEnvironment(ws.environment);
+  renderDetailQuota(ws.quota);
   renderAccessPanel(ws);
   renderScheduleForm(ws.schedule);
+}
+
+function setDetailEnvironmentMessage(message) {
+  els.detailEnvironmentBody.replaceChildren();
+  const note = document.createElement("p");
+  note.className = "hint";
+  note.textContent = message;
+  els.detailEnvironmentBody.append(note);
+}
+
+function environmentSourceLabel(source) {
+  const target = source && source.target ? source.target : "";
+  switch (source && source.scope) {
+    case "template":
+      return target ? `Template · ${target}` : "Template";
+    case "team":
+      return target ? `Team · ${target}` : "Team";
+    case "user":
+      return target ? `User · ${target}` : "User";
+    case "workspace":
+      return target ? `Workspace · ${target}` : "Workspace";
+    default:
+      return "Unknown";
+  }
+}
+
+function renderDetailEnvironment(items) {
+  if (!Array.isArray(items)) {
+    setDetailEnvironmentMessage("Environment information is not available.");
+    return;
+  }
+  if (!items.length) {
+    setDetailEnvironmentMessage("No managed environment variables for this workspace.");
+    return;
+  }
+  const groups = new Map();
+  for (const item of items) {
+    const source = item.source || {};
+    const key = `${source.scope || "unknown"}\u0000${source.target || ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, { scope: source.scope || "unknown", target: source.target || "", items: [] });
+    }
+    groups.get(key).items.push(item);
+  }
+  const order = { workspace: 0, user: 1, team: 2, template: 3 };
+  const sorted = [...groups.values()].sort((a, b) => {
+    const left = order[a.scope] ?? 9;
+    const right = order[b.scope] ?? 9;
+    if (left !== right) return left - right;
+    return a.target.localeCompare(b.target);
+  });
+  const list = document.createElement("div");
+  list.className = "env-tree";
+  for (const group of sorted) {
+    const section = document.createElement("details");
+    section.className = "env-source-group";
+    section.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = "env-source-summary";
+    const source = document.createElement("span");
+    source.className = `env-source ${group.scope}`;
+    source.textContent = environmentSourceLabel(group);
+    const note = document.createElement("span");
+    note.className = "env-source-note";
+    note.textContent = environmentSourceNote(group.scope);
+    const count = document.createElement("span");
+    count.className = "env-source-count";
+    count.textContent = `${group.items.length} variable${group.items.length === 1 ? "" : "s"}`;
+    summary.append(source, note, count);
+
+    const rows = document.createElement("div");
+    rows.className = "env-detail-rows";
+    for (const item of group.items) {
+      const row = document.createElement("div");
+      row.className = "env-detail-row";
+
+      const name = document.createElement("code");
+      name.className = "env-name";
+      name.textContent = item.name || "";
+
+      const value = document.createElement("span");
+      value.className = item.secret ? "env-value secret" : "env-value";
+      value.textContent = item.secret ? "Secret value hidden" : (item.value || "(empty)");
+
+      row.append(name, value);
+      rows.append(row);
+    }
+    section.append(summary, rows);
+    list.append(section);
+  }
+  els.detailEnvironmentBody.replaceChildren(list);
+}
+
+function environmentSourceNote(scope) {
+  switch (scope) {
+    case "workspace":
+      return "Highest precedence";
+    case "user":
+      return "Overrides teams and template";
+    case "team":
+      return "Overrides template";
+    case "template":
+      return "Template defaults";
+    default:
+      return "";
+  }
+}
+
+function setDetailQuotaMessage(message) {
+  els.detailQuotaBody.replaceChildren();
+  const note = document.createElement("p");
+  note.className = "hint";
+  note.textContent = message;
+  els.detailQuotaBody.append(note);
+}
+
+function detailQuotaSourceLabel(source, hasLimit) {
+  if (!source || !source.scope || source.scope === "none") return hasLimit ? "Source unavailable" : "No limit";
+  const target = source.target ? ` · ${source.target}` : "";
+  if (source.scope === "user") return `User override${target}`;
+  if (source.scope === "team") return `Team${target}`;
+  return `${source.scope}${target}`;
+}
+
+function renderDetailQuota(quota) {
+  if (!quota || !quota.effective) {
+    setDetailQuotaMessage("Quota information is not available.");
+    return;
+  }
+  const effective = quota.effective || {};
+  const usage = quota.usage || {};
+  const workspace = quota.workspace || {};
+  const sources = quota.sources || {};
+  const body = document.createElement("div");
+  body.className = "workspace-quota-content";
+
+  const note = document.createElement("p");
+  note.className = "hint workspace-quota-note";
+  const owner = quota.owner || "this owner";
+  note.textContent = `Usage covers every workspace owned by ${owner}. This workspace requests ${workspace.cpu || "no CPU"} CPU, ${workspace.memory || "no memory"} memory, and ${workspace.storage || "no storage"} storage.`;
+
+  const grid = document.createElement("div");
+  grid.className = "quota-meter-grid workspace-quota-grid";
+  const metrics = [
+    ["Workspaces", usage.workspaces ?? 0, effective.maxWorkspaces, "workspaces", sources.maxWorkspaces],
+    ["CPU", usage.cpu || "0", effective.cpu, "cpu", sources.cpu],
+    ["Memory", usage.memory || "0", effective.memory, "memory", sources.memory],
+    ["Storage", usage.storage || "0", effective.storage, "storage", sources.storage],
+  ];
+  for (const [label, used, limit, kind, source] of metrics) {
+    const card = quotaMeterCard(label, used, limit, kind);
+    const sourceNode = document.createElement("div");
+    sourceNode.className = "quota-source";
+    sourceNode.textContent = detailQuotaSourceLabel(source, limit !== undefined && limit !== null && String(limit).trim() !== "");
+    card.append(sourceNode);
+    grid.append(card);
+  }
+  body.append(note, grid);
+  els.detailQuotaBody.replaceChildren(body);
 }
 
 function renderScheduleForm(schedule) {
