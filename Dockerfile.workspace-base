@@ -23,7 +23,8 @@ COPY --from=build /poddy /usr/local/bin/poddy
 COPY scripts/poddy-ssh-start /usr/local/bin/poddy-ssh-start
 COPY scripts/poddy-git-askpass /usr/local/bin/poddy-git-askpass
 COPY scripts/poddy-external-auth /usr/local/bin/poddy-external-auth
-RUN chmod 0755 /usr/local/bin/poddy /usr/local/bin/poddy-agent /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth
+COPY scripts/poddy-dotfiles /usr/local/bin/poddy-dotfiles
+RUN chmod 0755 /usr/local/bin/poddy /usr/local/bin/poddy-agent /usr/local/bin/poddy-ssh-start /usr/local/bin/poddy-git-askpass /usr/local/bin/poddy-external-auth /usr/local/bin/poddy-dotfiles
 
 WORKDIR /home/dev
 EXPOSE 22

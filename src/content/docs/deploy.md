@@ -53,6 +53,23 @@ Registry overrides are separate:
 - **Helm chart**: install from your OCI mirror or from the source path
   `deploy/helm/poddy` instead of `oci://ghcr.io/slimaineb/charts/poddy`.
 
+### Optional dotfiles fallback
+
+Users can configure their own dotfiles repository in **Account → Dotfiles**.
+To provide a default for everyone, set a Git repository and branch:
+
+```yaml
+dotfiles:
+  url: https://github.com/example/dotfiles.git
+  branch: main
+```
+
+The portal injects these as `PODDY_DOTFILES_URL` and
+`PODDY_DOTFILES_BRANCH`; the CLI flags `--dotfiles-url` and
+`--dotfiles-branch` are also available. A user setting takes precedence. The
+repository is copied into `/home/dev` at workspace start, skipping `.git`,
+`.ssh`, and `authorized_keys`.
+
 ### 2. Prepare secrets
 
 **Access token** (shared secret for the web UI):
@@ -251,7 +268,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
 - **HA**: portal replicas are stateless except for the OIDC session key, the external-auth/share encryption key, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
-For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for RBAC, OIDC users, external auth tokens, share links, workspace access, quotas, and environment variables; it is also a metadata mirror and audit read path for workspaces and templates. Kubernetes remains the runtime source of truth for workspaces and templates.
+For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for RBAC, OIDC users, external auth tokens, share links, workspace access, quotas, environment variables, and dotfiles; it is also a metadata mirror and audit read path for workspaces and templates. Kubernetes remains the runtime source of truth for workspaces and templates.
 
 ### HA state matrix
 
@@ -268,6 +285,7 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 | External auth tokens | PostgreSQL `external_auth_tokens` | yes; requires a stable encryption key |
 | Workspace share links | PostgreSQL `share_links` | yes; requires a stable encryption key |
 | Environment variables and secrets | PostgreSQL `env_vars`; per-workspace Secret | yes; requires a stable encryption key for secrets |
+| Dotfiles settings | PostgreSQL `dotfiles` | yes |
 | OIDC sessions | Signed cookie | yes when every replica uses the same `PODDY_OIDC_SESSION_KEY` |
 | Desktop tickets | Signed ticket | yes when every replica uses the same stable key |
 | Region tunnels | Hub process memory | no; keep the hub at one replica or use sticky routing |

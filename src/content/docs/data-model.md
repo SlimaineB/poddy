@@ -6,7 +6,8 @@ description: "Kubernetes objects and PostgreSQL tables that store workspace stat
 The portal reads and writes Kubernetes objects in the workspace namespace for
 workspace runtime state. PostgreSQL is the control plane and is configured with
 `PODDY_DATABASE_URL`. It is authoritative for RBAC, OIDC users, external auth
-tokens, share links, access state, quotas, and environment variables. The
+tokens, share links, access state, quotas, environment variables, and dotfiles
+preferences. The
 `poddy-rbac` and `poddy-users` ConfigMaps are materialized mirrors. Templates
 and workspaces remain Kubernetes-first and are mirrored for audit and recovery.
 Region managers use the hub instead of a local database. See
@@ -30,6 +31,7 @@ Region managers use the hub instead of a local database. See
 | External auth tokens (migration source) | Secret | `poddy-external-auth` | encrypted token document |
 | PostgreSQL control plane | PostgreSQL | `poddy` schema | `migrations/*.sql` |
 | Environment variables and secrets | PostgreSQL; per-workspace Secret | `env_vars`; `pd-env-<workspace>` | encrypted values |
+| Dotfiles | PostgreSQL | `dotfiles` | per-user repository URL and branch |
 
 The portal's Kubernetes Role is scoped to this namespace. It needs access to
 pods, exec, port-forward, PVCs, ConfigMaps, and Secrets.
@@ -189,7 +191,7 @@ refreshed tokens through environment variables declared by the template.
 PostgreSQL stores RBAC (`rbac_documents`), OIDC users (`users`), encrypted
 external auth tokens (`external_auth_tokens`), workspace share links
 (`share_links`), access state, quotas, environment variables (`env_vars`),
-templates, workspace metadata, and audit events. The portal writes RBAC and users to
+dotfiles (`dotfiles`), templates, workspace metadata, and audit events. The portal writes RBAC and users to
 PostgreSQL, then reconciles `poddy-rbac` and `poddy-users` as best-effort
 ConfigMap mirrors. External auth and share writes go only to PostgreSQL after
 the first import; their old Secrets are migration sources and are no longer

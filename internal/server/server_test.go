@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"poddy/internal/auth"
+	"poddy/internal/dotfiles"
 	"poddy/internal/k8s"
 	"poddy/internal/quota"
 	"poddy/internal/templates"
@@ -32,10 +33,11 @@ func newTestServer(token string) *Server {
 			Templates:       catalog,
 			DefaultTemplate: "base",
 		},
-		WebFS:  web.FS,
-		Token:  token,
-		Access: k8s.NewMemoryAccessStore(),
-		Quota:  quota.NewMemory(),
+		WebFS:    web.FS,
+		Token:    token,
+		Access:   k8s.NewMemoryAccessStore(),
+		Quota:    quota.NewMemory(),
+		Dotfiles: dotfiles.NewMemory(),
 	}
 }
 

@@ -385,7 +385,8 @@
       </div>
       <span id="users-count" class="count"></span>
     </header>
-    <div class="search-box">
+    <div id="users-summary" class="directory-summary"></div>
+    <div class="search-box directory-search">
       <svg class="icon"><use href="#icon-search"></use></svg>
       <input id="users-search" type="search" placeholder="Search users or groups" autocomplete="off">
     </div>
@@ -422,18 +423,27 @@
       </section>
       <form id="team-form" class="panel team-form">
         <div class="panel-header"><h2 id="team-form-title">New team</h2></div>
-        <div class="field">
-          <label for="team-name">Team name</label>
-          <input id="team-name" name="name" placeholder="backend" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" autocomplete="off" spellcheck="false">
-          <p class="hint">Letters, numbers, dots, dashes, and underscores.</p>
-        </div>
-        <div class="field">
-          <label for="team-members">Members</label>
-          <div id="team-members" class="entry-list"></div>
-          <p class="hint">Add known users from the list or type an email, <code>user:</code> or <code>group:</code> entry.</p>
-        </div>
-        <div class="field">
-          <label>Quota defaults</label>
+        <section class="form-section">
+          <div class="form-section-header">
+            <h3>Team details</h3>
+            <p>Name the group and add the people it should contain.</p>
+          </div>
+          <div class="field">
+            <label for="team-name">Team name</label>
+            <input id="team-name" name="name" placeholder="backend" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" autocomplete="off" spellcheck="false">
+            <p class="hint">Letters, numbers, dots, dashes, and underscores.</p>
+          </div>
+          <div class="field">
+            <label for="team-members">Members</label>
+            <div id="team-members" class="entry-list"></div>
+            <p class="hint">Add known users from the list or type an email, <code>user:</code> or <code>group:</code> entry.</p>
+          </div>
+        </section>
+        <section class="form-section quota-form-section">
+          <div class="form-section-header">
+            <h3>Default quota</h3>
+            <p>Applied to members unless a user override is set.</p>
+          </div>
           <div class="quota-grid">
             <label class="quota-field">
               <span>Max workspaces</span>
@@ -452,8 +462,12 @@
               <input id="team-quota-storage" type="text" placeholder="e.g. 50Gi" autocomplete="off" spellcheck="false">
             </label>
           </div>
-          <p id="team-quota-hint" class="hint">Applies to team members unless a user override is set. Leave a field empty for unlimited.</p>
-        </div>
+          <div class="quota-preview-wrap">
+            <span class="quota-preview-label">Effective default</span>
+            <div id="team-quota-preview" class="quota-preview"></div>
+          </div>
+          <p id="team-quota-hint" class="hint">Leave a field empty for unlimited.</p>
+        </section>
         <div class="form-actions">
           <button id="team-save" class="button primary" type="submit">Save team</button>
         </div>
@@ -625,6 +639,28 @@
         <p class="hint">New keys are available immediately, including for running workspaces. Removing a key revokes it from all your workspaces.</p>
       </form>
     </div>
+    <form id="dotfiles-form" class="panel account-dotfiles">
+      <div class="panel-header">
+        <h2>Dotfiles</h2>
+        <span id="dotfiles-source" class="count"></span>
+      </div>
+      <div class="dotfiles-fields">
+        <div class="field">
+          <label for="dotfiles-url">Git repository</label>
+          <input id="dotfiles-url" name="url" type="text" placeholder="https://github.com/you/dotfiles.git" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="dotfiles-branch">Branch</label>
+          <input id="dotfiles-branch" name="branch" type="text" value="main" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <p id="dotfiles-hint" class="hint">Your repository is cloned when a workspace starts and its top-level files are copied into <code>/home/dev</code>. <code>.ssh</code> is never overwritten. Restart a running workspace to apply changes.</p>
+      <div id="dotfiles-error" class="form-error" role="alert" hidden></div>
+      <div class="form-actions">
+        <button id="dotfiles-clear" class="button ghost" type="button" hidden>Use global default</button>
+        <button id="dotfiles-save" class="button primary" type="submit">Save dotfiles</button>
+      </div>
+    </form>
   </section>
 
   <section id="connections-view" class="page" hidden>
@@ -1020,47 +1056,59 @@
     </footer>
   </dialog>
 
-  <dialog id="user-quota-dialog" class="dialog dialog-small">
+  <dialog id="user-quota-dialog" class="dialog dialog-small quota-dialog">
     <form id="user-quota-form">
       <header class="dialog-header">
-        <div>
-          <h2>User quota</h2>
-          <p id="user-quota-identity"></p>
+        <div class="quota-dialog-title">
+          <span id="user-quota-avatar" class="directory-avatar quota-avatar">?</span>
+          <div>
+            <h2>User quota</h2>
+            <p id="user-quota-identity"></p>
+          </div>
         </div>
         <button class="icon-button" type="button" data-close aria-label="Close">
           <svg class="icon"><use href="#icon-x"></use></svg>
         </button>
       </header>
       <div class="dialog-body">
-        <div class="quota-grid">
-          <label class="quota-field">
-            <span>Max workspaces</span>
-            <input id="user-quota-workspaces" type="number" min="0" step="1" placeholder="Inherit" inputmode="numeric">
-          </label>
-          <label class="quota-field">
-            <span>CPU</span>
-            <input id="user-quota-cpu" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="quota-field">
-            <span>Memory</span>
-            <input id="user-quota-memory" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="quota-field">
-            <span>Storage</span>
-            <input id="user-quota-storage" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
-          </label>
-        </div>
-        <p class="hint">Empty fields inherit the most permissive quota from the user's teams. Clearing every field removes the override.</p>
-        <div id="user-quota-status" class="quota-status" hidden>
-          <div class="quota-status-row">
-            <span>Effective limit</span>
-            <span id="user-quota-effective"></span>
+        <section class="quota-dialog-section">
+          <div class="quota-section-head">
+            <div>
+              <h3>Override limits</h3>
+              <p>Leave a field empty to inherit the team default.</p>
+            </div>
+            <span id="user-quota-mode" class="badge neutral">Inherited</span>
           </div>
-          <div class="quota-status-row">
-            <span>Current usage</span>
-            <span id="user-quota-usage"></span>
+          <div class="quota-grid">
+            <label class="quota-field">
+              <span>Max workspaces</span>
+              <input id="user-quota-workspaces" type="number" min="0" step="1" placeholder="Inherit" inputmode="numeric">
+            </label>
+            <label class="quota-field">
+              <span>CPU</span>
+              <input id="user-quota-cpu" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="quota-field">
+              <span>Memory</span>
+              <input id="user-quota-memory" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="quota-field">
+              <span>Storage</span>
+              <input id="user-quota-storage" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+            </label>
           </div>
-        </div>
+          <p class="hint">Empty fields inherit the most permissive quota from the user's teams. Clearing every field removes the override.</p>
+        </section>
+        <section id="user-quota-status" class="quota-status" hidden>
+          <div class="quota-section-head">
+            <div>
+              <h3>Effective quota</h3>
+              <p>Current usage against the resolved limits.</p>
+            </div>
+            <span class="badge neutral">Live</span>
+          </div>
+          <div id="user-quota-meters" class="quota-meter-grid"></div>
+        </section>
         <p id="user-quota-error" class="form-error" hidden></p>
       </div>
       <footer class="dialog-footer">
@@ -1083,6 +1131,7 @@
   <script src="/static/environment.js"></script>
   <script src="/static/connections.js"></script>
   <script src="/static/sshkeys.js"></script>
+  <script src="/static/dotfiles.js"></script>
   <script src="/static/volumes.js"></script>
   <script src="/static/audit.js"></script>
   <script src="/static/vendor/cytoscape.min.js"></script>

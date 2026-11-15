@@ -59,6 +59,9 @@ type Config struct {
 	DatabaseAutoMigrate    bool
 	DatabaseConnectTimeout time.Duration
 
+	DotfilesURL    string
+	DotfilesBranch string
+
 	SSHEnabled           bool
 	SSHAddr              string
 	SSHHostKey           string
@@ -145,6 +148,9 @@ func Load(args []string) (Config, error) {
 		DatabaseAutoMigrate:    envBool("PODDY_DATABASE_AUTO_MIGRATE", true),
 		DatabaseConnectTimeout: envDuration("PODDY_DATABASE_CONNECT_TIMEOUT", 30*time.Second),
 
+		DotfilesURL:    os.Getenv("PODDY_DOTFILES_URL"),
+		DotfilesBranch: os.Getenv("PODDY_DOTFILES_BRANCH"),
+
 		SSHEnabled:           envBool("PODDY_SSH_ENABLED", true),
 		SSHAddr:              env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
 		SSHHostKey:           os.Getenv("PODDY_SSH_HOST_KEY"),
@@ -225,6 +231,8 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.DatabaseURL, "database-url", cfg.DatabaseURL, "PostgreSQL control-plane URL; required unless region mode uses a hub")
 	fs.BoolVar(&cfg.DatabaseAutoMigrate, "database-auto-migrate", cfg.DatabaseAutoMigrate, "apply embedded PostgreSQL migrations on startup")
 	fs.DurationVar(&cfg.DatabaseConnectTimeout, "database-connect-timeout", cfg.DatabaseConnectTimeout, "how long to retry PostgreSQL before startup fails")
+	fs.StringVar(&cfg.DotfilesURL, "dotfiles-url", cfg.DotfilesURL, "portal-wide fallback dotfiles Git repository")
+	fs.StringVar(&cfg.DotfilesBranch, "dotfiles-branch", cfg.DotfilesBranch, "portal-wide fallback dotfiles branch (default main)")
 	fs.BoolVar(&cfg.SSHEnabled, "ssh-enabled", cfg.SSHEnabled, "show SSH/VS Code connection options in the UI")
 	fs.StringVar(&cfg.SSHAddr, "ssh-addr", cfg.SSHAddr, "SSH bastion listen address, empty disables the local bastion")
 	fs.StringVar(&cfg.SSHHostKey, "ssh-host-key", cfg.SSHHostKey, "SSH bastion host key path")

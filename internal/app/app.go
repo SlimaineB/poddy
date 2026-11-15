@@ -25,6 +25,7 @@ import (
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
 	"poddy/internal/config"
+	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
 	"poddy/internal/extension"
 	"poddy/internal/externalauth"
@@ -55,6 +56,10 @@ func Run(ctx context.Context, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	globalDotfiles, err := dotfiles.Normalize(dotfiles.Config{URL: cfg.DotfilesURL, Branch: cfg.DotfilesBranch})
+	if err != nil {
+		return fmt.Errorf("dotfiles: %w", err)
 	}
 	if cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
 		return fmt.Errorf("workspace agent: -agent-url or -agent-addr is required when -ssh-require-agent=true")
@@ -95,6 +100,7 @@ func Run(ctx context.Context, args []string) error {
 	var hubClient *region.Client
 	var accessStore access.Store
 	var quotaStore quota.Store
+	var dotfilesStore dotfiles.Store
 	if cfg.RegionMode && cfg.RegionHubURL != "" {
 		hubClient = region.NewClient(region.Config{Name: cfg.RegionName, URL: cfg.RegionHubURL, Key: cfg.RegionKey})
 		accessStore = accessremote.New(hubClient, regionIdentity)
@@ -107,6 +113,7 @@ func Run(ctx context.Context, args []string) error {
 		}
 		accessStore = pg.Access(cfg.Namespace)
 		quotaStore = pg.Quota(cfg.Namespace)
+		dotfilesStore = pg.DotfilesStore(cfg.Namespace)
 	}
 
 	client, restConfig, err := k8s.New(cfg.Kubeconfig, cfg.Context, cfg.K8sQPS, cfg.K8sBurst)
@@ -216,6 +223,12 @@ func Run(ctx context.Context, args []string) error {
 		}
 		manager.ExternalAuthToken = externalAuth.SignWorkspace
 	}
+	if dotfilesStore != nil {
+		manager.Dotfiles = func(ctx context.Context, owner string) (dotfiles.Config, error) {
+			resolved, _, err := dotfiles.Effective(ctx, dotfilesStore, owner, globalDotfiles)
+			return resolved, err
+		}
+	}
 	if environmentStore != nil {
 		manager.Environment = func(ctx context.Context, owner, template, workspace string) (map[string]string, map[string]bool, error) {
 			resolved, err := envstore.ResolveForOwner(ctx, environmentStore, rbacStore, userStore, owner, template, workspace)
@@ -262,6 +275,9 @@ func Run(ctx context.Context, args []string) error {
 				return token.(string), nil
 			}
 			return "", nil
+		}
+		manager.Dotfiles = func(ctx context.Context, owner string) (dotfiles.Config, error) {
+			return hubClient.FetchDotfiles(ctx, region.DotfilesRequest{Owner: owner}, regionIdentity)
 		}
 	}
 
@@ -449,6 +465,8 @@ func Run(ctx context.Context, args []string) error {
 		Users:             userStore,
 		Shares:            shareStore,
 		Environment:       environmentStore,
+		Dotfiles:          dotfilesStore,
+		GlobalDotfiles:    globalDotfiles,
 		Metadata:          metadataStore,
 		Access:            accessStore,
 		Quota:             quotaStore,

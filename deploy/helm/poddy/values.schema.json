@@ -460,6 +460,18 @@
         }
       }
     },
+    "dotfiles": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "workspace": {
       "type": "object",
       "properties": {

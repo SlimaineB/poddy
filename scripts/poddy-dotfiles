@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+url=${PODDY_DOTFILES_URL:-}
+[ -n "$url" ] || exit 0
+branch=${PODDY_DOTFILES_BRANCH:-main}
+[ -n "$branch" ] || branch=main
+home=/home/dev
+log=/tmp/poddy-dotfiles.log
+
+tmp=$(mktemp -d /tmp/poddy-dotfiles.XXXXXX)
+trap 'rm -rf "$tmp"' EXIT INT TERM HUP
+export GIT_TERMINAL_PROMPT=0
+
+if ! timeout 90 git clone --depth 1 --single-branch --branch "$branch" -- "$url" "$tmp/repo" >"$log" 2>&1; then
+  echo "poddy-dotfiles: could not clone $url ($branch); see $log" >&2
+  exit 0
+fi
+
+repo="$tmp/repo"
+for source in "$repo"/* "$repo"/.[!.]* "$repo"/..?*; do
+  [ -e "$source" ] || [ -L "$source" ] || continue
+  name=${source##*/}
+  case "$name" in
+    .git|.ssh|authorized_keys) continue ;;
+  esac
+  target="$home/$name"
+  if [ -d "$source" ] && [ ! -L "$source" ]; then
+    mkdir -p "$target"
+    cp -a "$source/." "$target/"
+  else
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      rm -rf "$target"
+    fi
+    cp -a "$source" "$target"
+  fi
+  chown -R dev:dev "$target" 2>/dev/null || true
+done
+
+echo "poddy-dotfiles: applied $url ($branch)"

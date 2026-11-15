@@ -236,12 +236,13 @@ the control plane:
 - **External auth tokens** are AES-GCM encrypted in PostgreSQL; `poddy-external-auth` is a migration source.
 - **Share links** are hashed and encrypted in PostgreSQL; `poddy-shares` is a migration source.
 - **Environment variables** live in PostgreSQL; secret values are AES-GCM encrypted and injected through a per-workspace Kubernetes Secret.
+- **Dotfiles** preferences live in PostgreSQL and are injected into workspaces at create/start.
 - **Persistent data** lives in one PVC per persistent workspace.
 
 PostgreSQL stores RBAC, OIDC users, external auth tokens, share links,
 team/user quotas, access state, templates, workspaces, environment variables,
-and audit events. The portal syncs templates and workspaces as a mirror while
-Kubernetes remains their runtime source. The portal syncs metadata at startup
+dotfiles, and audit events. The portal syncs templates and workspaces as a
+mirror while Kubernetes remains their runtime source. The portal syncs metadata at startup
 and after writes; the bastion writes `ssh.connect` audit events. PVC contents are
 not stored in PostgreSQL. Use volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)

@@ -27,6 +27,54 @@ function renderTeamsPagination() {
     refreshTeams({ paginated: true, page }).then(renderTeamsPagination);
   });
 }
+function memberInitials(entry) {
+  const raw = String(entry || "").trim();
+  if (raw.toLowerCase().startsWith("group:")) return "#";
+  const clean = raw.replace(/^(user|email):/i, "").trim();
+  if (!clean) return "?";
+  const parts = clean.split(/[\s._@-]+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function renderTeamMembers(team) {
+  const wrap = document.createElement("div");
+  wrap.className = "team-card-members";
+  const members = Array.isArray(team.members) ? team.members : [];
+  if (!members.length) {
+    const count = Number(team.memberCount) || 0;
+    const empty = document.createElement("span");
+    empty.className = "team-member-empty";
+    empty.textContent = count
+      ? `${count} member${count === 1 ? "" : "s"} · names visible to admins`
+      : "No members yet.";
+    wrap.append(empty);
+    return wrap;
+  }
+
+  const stack = document.createElement("span");
+  stack.className = "team-avatar-stack";
+  for (const member of members.slice(0, 4)) {
+    const avatar = document.createElement("span");
+    avatar.className = "team-avatar";
+    if (String(member).toLowerCase().startsWith("group:")) avatar.classList.add("group");
+    avatar.textContent = memberInitials(member);
+    avatar.title = member;
+    stack.append(avatar);
+  }
+  if (members.length > 4) {
+    const more = document.createElement("span");
+    more.className = "team-avatar more";
+    more.textContent = `+${members.length - 4}`;
+    stack.append(more);
+  }
+  const names = document.createElement("span");
+  names.className = "team-member-names";
+  names.textContent = members.slice(0, 3).join(", ") + (members.length > 3 ? ` +${members.length - 3} more` : "");
+  wrap.append(stack, names);
+  return wrap;
+}
+
 function renderTeams() {
   const total = state.teamPages ? state.teamTotal : state.teams.length;
   els.teamsCount.textContent = `${total} team${total === 1 ? "" : "s"}`;
@@ -37,21 +85,27 @@ function renderTeams() {
   }
   for (const team of state.teams) {
     const item = document.createElement("div");
-    item.className = "team-item";
+    item.className = "team-item team-card";
+
+    const head = document.createElement("div");
+    head.className = "team-card-head";
+    const mark = document.createElement("span");
+    mark.className = "team-mark";
+    mark.textContent = memberInitials(team.name);
+
     const info = document.createElement("div");
+    info.className = "team-card-info";
+    const titleRow = document.createElement("div");
+    titleRow.className = "team-card-title";
     const name = document.createElement("h3");
     name.textContent = team.name;
-    const count = document.createElement("p");
-    const members = team.memberCount || 0;
+    const members = Number(team.memberCount) || 0;
+    const count = document.createElement("span");
+    count.className = "badge neutral";
     count.textContent = `${members} member${members === 1 ? "" : "s"}`;
-    info.append(name, count);
-    const quota = quotaSummary(team.quota);
-    if (quota) {
-      const quotaLine = document.createElement("p");
-      quotaLine.className = "quota-summary";
-      quotaLine.textContent = `Quota: ${quota}`;
-      info.append(quotaLine);
-    }
+    titleRow.append(name, count);
+    info.append(titleRow, renderTeamMembers(team));
+
     const actions = document.createElement("div");
     actions.className = "team-actions";
     const edit = document.createElement("button");
@@ -65,7 +119,16 @@ function renderTeams() {
     del.textContent = "Delete";
     del.addEventListener("click", () => deleteTeam(team));
     actions.append(edit, del);
-    item.append(info, actions);
+    head.append(mark, info, actions);
+
+    const quota = document.createElement("div");
+    quota.className = "team-card-quota";
+    const label = document.createElement("span");
+    label.className = "team-card-quota-label";
+    label.textContent = "Default quota";
+    quota.append(label, quotaChips(team.quota, "No limit"));
+
+    item.append(head, quota);
     els.teamsList.append(item);
   }
 }
@@ -89,7 +152,6 @@ function editTeam(team) {
   setTeamQuotaEnabled(state.me.isAdmin);
   els.teamSave.textContent = "Save team";
   els.teamForm.scrollIntoView({ behavior: "smooth", block: "start" });
-  entryLists.teamMembers.focus();
 }
 function newTeam() {
   state.editingTeam = null;

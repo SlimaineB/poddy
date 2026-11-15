@@ -55,8 +55,43 @@ function renderUsers() {
   const totalUsers = state.userPages ? state.userTotal : users.length;
   const totalGroups = state.groupPages ? state.groupTotal : groups.length;
   els.usersCount.textContent = `${totalUsers} user${totalUsers === 1 ? "" : "s"} · ${totalGroups} group${totalGroups === 1 ? "" : "s"}`;
+  renderDirectorySummary(totalUsers, totalGroups);
   renderDirectoryList(els.usersList, users, memberships.users, "user", query);
   renderDirectoryList(els.groupsList, groups, memberships.groups, "group", query);
+}
+
+function renderDirectorySummary(totalUsers, totalGroups) {
+  if (!els.usersSummary) return;
+  const cards = [
+    ["user", "Users", totalUsers, "known identities"],
+    ["users", "Groups", totalGroups, "identity groups"],
+    ["grid", "Teams", state.teams.length, "membership groups"],
+  ];
+  if (state.me.isAdmin) {
+    cards.push(["shield", "Quota overrides", state.userQuotas.length, "user-specific limits"]);
+  }
+  els.usersSummary.replaceChildren();
+  for (const [iconName, label, value, note] of cards) {
+    const card = document.createElement("div");
+    card.className = "directory-stat";
+    const mark = document.createElement("span");
+    mark.className = "directory-stat-icon";
+    mark.innerHTML = icon(iconName);
+    const body = document.createElement("span");
+    body.className = "directory-stat-body";
+    const labelNode = document.createElement("span");
+    labelNode.className = "directory-stat-label";
+    labelNode.textContent = label;
+    const valueNode = document.createElement("strong");
+    valueNode.className = "directory-stat-value";
+    valueNode.textContent = String(value);
+    const noteNode = document.createElement("span");
+    noteNode.className = "directory-stat-note";
+    noteNode.textContent = note;
+    body.append(labelNode, valueNode, noteNode);
+    card.append(mark, body);
+    els.usersSummary.append(card);
+  }
 }
 function renderUsersPagination() {
   renderPagination(els.usersPagination, {
@@ -99,22 +134,27 @@ function renderDirectoryList(container, values, memberships, kind, query) {
     item.className = "user-item";
     const avatar = document.createElement("span");
     avatar.className = "directory-avatar";
-    avatar.textContent = kind === "group" ? "#" : value.slice(0, 1).toUpperCase();
+    avatar.textContent = kind === "group" ? "#" : value.replace(/^(user|email):/i, "").trim().slice(0, 1).toUpperCase();
     const main = document.createElement("span");
     main.className = "directory-main";
+
+    const nameRow = document.createElement("span");
+    nameRow.className = "directory-name-row";
     const name = document.createElement("span");
     name.className = "directory-name";
     name.textContent = value;
-    const meta = document.createElement("span");
-    meta.className = "directory-meta";
-    const teams = memberships.get(value.toLowerCase()) || [];
-    const quotaEntry = kind === "user" && state.me.isAdmin ? userQuotaEntry(value) : null;
+    nameRow.append(name);
     if (kind === "group") {
       const badge = document.createElement("span");
       badge.className = "badge neutral";
       badge.textContent = "group";
-      meta.append(badge);
+      nameRow.append(badge);
     }
+
+    const meta = document.createElement("span");
+    meta.className = "directory-meta";
+    const teams = memberships.get(value.toLowerCase()) || [];
+    const quotaEntry = kind === "user" && state.me.isAdmin ? userQuotaEntry(value) : null;
     if (teams.length) {
       for (const team of teams) {
         const badge = document.createElement("span");
@@ -125,32 +165,40 @@ function renderDirectoryList(container, values, memberships, kind, query) {
     } else {
       const none = document.createElement("span");
       none.textContent = state.me.isAdmin
-        ? (kind === "group" ? "No team uses this group." : "Not in a team.")
+        ? (kind === "group" ? "Not used by a team." : "Not in a team.")
         : "Team memberships are visible to admins.";
       meta.append(none);
     }
+
+    main.append(nameRow, meta);
+
     const inherited = kind === "user" && !quotaEntry ? inheritedQuotaTeams(teams) : [];
-    if (quotaEntry) {
-      const summary = quotaSummary(quotaEntry.quota);
-      if (summary) {
-        const quota = document.createElement("span");
-        quota.className = "directory-quota";
-        quota.textContent = `Quota: ${summary}`;
-        meta.append(quota);
-      }
-    } else if (inherited.length) {
+    if (kind === "user" && state.me.isAdmin) {
       const quota = document.createElement("span");
       quota.className = "directory-quota";
-      quota.textContent = `Quota: inherits ${inherited.join(", ")}`;
-      meta.append(quota);
+      const label = document.createElement("span");
+      label.className = `directory-quota-label ${quotaEntry ? "override" : inherited.length ? "inherited" : "unlimited"}`;
+      const detail = document.createElement("span");
+      if (quotaEntry) {
+        label.textContent = "Override";
+        detail.textContent = quotaSummary(quotaEntry.quota) || "Custom limits";
+      } else if (inherited.length) {
+        label.textContent = "Inherited";
+        detail.textContent = `From ${inherited.join(", ")}`;
+      } else {
+        label.textContent = "No quota";
+      }
+      quota.append(label);
+      if (detail.textContent) quota.append(detail);
+      main.append(quota);
     }
-    main.append(name, meta);
+
     item.append(avatar, main);
     if (kind === "user" && state.me.isAdmin) {
       const quota = document.createElement("button");
       quota.type = "button";
       quota.className = "button ghost small quota-button";
-      quota.textContent = quotaEntry ? "Edit quota" : inherited.length ? "Override quota" : "Set quota";
+      quota.innerHTML = `${icon("shield")}${quotaEntry ? "Edit quota" : inherited.length ? "Override" : "Set quota"}`;
       quota.addEventListener("click", () => openUserQuota(value, quotaEntry));
       item.append(quota);
     }

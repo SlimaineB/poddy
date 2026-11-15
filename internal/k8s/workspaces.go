@@ -152,6 +152,7 @@ type Manager struct {
 	ExternalAuth        ExternalAuthFunc
 	ExternalAuthToken   WorkspaceTokenFunc
 	Environment         EnvironmentFunc
+	Dotfiles            DotfilesFunc
 	AgentURL            string
 	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
@@ -658,6 +659,10 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 	if err := m.applyAgentEnv(pod, req.Name, req.Owner); err != nil {
 		cleanup()
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
+	}
+	if err := m.applyDotfiles(ctx, pod, req.Owner); err != nil {
+		cleanup()
+		return Workspace{}, err
 	}
 	if resolved.apps != nil {
 		if pod.Annotations == nil {

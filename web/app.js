@@ -197,6 +197,8 @@ els.envSecret.addEventListener("change", () => {
 els.envRefresh.addEventListener("click", loadEnvironment);
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
+for (const input of Object.values(quotaInputs("team"))) input.addEventListener("input", renderTeamQuotaPreview);
+for (const input of Object.values(quotaInputs("user"))) input.addEventListener("input", updateUserQuotaPreview);
 els.quotaForm.addEventListener("submit", saveUserQuota);
 if (els.quotaClear) els.quotaClear.addEventListener("click", clearUserQuota);
 els.usersBack.addEventListener("click", () => showView("workspaces"));

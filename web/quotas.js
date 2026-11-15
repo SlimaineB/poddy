@@ -41,6 +41,7 @@ function setQuotaInputs(scope, quota) {
   inputs.cpu.value = quota?.cpu || "";
   inputs.memory.value = quota?.memory || "";
   inputs.storage.value = quota?.storage || "";
+  if (scope === "team") renderTeamQuotaPreview();
 }
 
 function setQuotaDisabled(scope, disabled) {
@@ -57,6 +58,174 @@ function quotaSummary(quota) {
   if (quota.memory) parts.push(`${quota.memory} memory`);
   if (quota.storage) parts.push(`${quota.storage} storage`);
   return parts.join(" · ");
+}
+
+function hasQuotaValues(scope) {
+  return Object.values(quotaInputs(scope)).some((input) => input.value.trim() !== "");
+}
+
+function previewQuota(scope) {
+  const inputs = quotaInputs(scope);
+  const quota = {};
+  let invalid = false;
+  const workspaces = inputs.workspaces.value.trim();
+  if (workspaces) {
+    const value = Number(workspaces);
+    if (Number.isInteger(value) && value >= 0) quota.maxWorkspaces = value;
+    else invalid = true;
+  }
+  for (const key of ["cpu", "memory", "storage"]) {
+    const value = inputs[key].value.trim();
+    if (value) quota[key] = value;
+  }
+  return { quota, invalid };
+}
+
+function quotaChip(label, value) {
+  const chip = document.createElement("span");
+  chip.className = "quota-chip";
+  const labelNode = document.createElement("span");
+  labelNode.className = "quota-chip-label";
+  labelNode.textContent = label;
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = value;
+  chip.append(labelNode, valueNode);
+  return chip;
+}
+
+function quotaChips(quota, emptyLabel = "Unlimited") {
+  const wrap = document.createElement("div");
+  wrap.className = "quota-chips";
+  const values = [];
+  if (quota?.maxWorkspaces !== undefined && quota?.maxWorkspaces !== null) {
+    values.push(["Workspaces", String(quota.maxWorkspaces)]);
+  }
+  if (quota?.cpu) values.push(["CPU", String(quota.cpu)]);
+  if (quota?.memory) values.push(["Memory", String(quota.memory)]);
+  if (quota?.storage) values.push(["Storage", String(quota.storage)]);
+  if (!values.length) {
+    const empty = document.createElement("span");
+    empty.className = "quota-chip empty";
+    empty.textContent = emptyLabel;
+    wrap.append(empty);
+    return wrap;
+  }
+  for (const [label, value] of values) wrap.append(quotaChip(label, value));
+  return wrap;
+}
+
+function parseQuotaQuantity(value, kind) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (kind === "workspaces") {
+    const number = Number(text);
+    return Number.isFinite(number) ? number : null;
+  }
+  const match = text.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([a-zA-Z]*)$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return null;
+  const binary = { Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3, Ti: 1024 ** 4, Pi: 1024 ** 5, Ei: 1024 ** 6 };
+  const decimal = { "": 1, n: 1e-9, u: 1e-6, m: 1e-3, k: 1e3, K: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, E: 1e18 };
+  const suffix = match[2];
+  const factor = suffix in binary ? binary[suffix] : decimal[suffix];
+  return factor === undefined ? null : amount * factor;
+}
+
+function quotaMeterCard(label, used, limit, kind) {
+  const card = document.createElement("div");
+  card.className = "quota-meter";
+  const usedText = String(used ?? "").trim() || "0";
+  const hasLimit = limit !== undefined && limit !== null && String(limit).trim() !== "";
+  const limitText = hasLimit ? String(limit) : "Unlimited";
+  const usedValue = parseQuotaQuantity(usedText, kind);
+  const limitValue = hasLimit ? parseQuotaQuantity(limitText, kind) : null;
+  let percent = null;
+  if (limitValue !== null && usedValue !== null) {
+    if (limitValue > 0) percent = Math.max(0, Math.round((usedValue / limitValue) * 100));
+    else percent = usedValue > 0 ? 100 : 0;
+  }
+
+  const head = document.createElement("div");
+  head.className = "quota-meter-head";
+  const title = document.createElement("span");
+  title.textContent = label;
+  const status = document.createElement("span");
+  status.className = "quota-meter-percent";
+  status.textContent = hasLimit ? (percent === null ? "—" : `${percent}%`) : "No limit";
+  head.append(title, status);
+
+  const track = document.createElement("div");
+  track.className = "quota-meter-track";
+  const fill = document.createElement("span");
+  if (hasLimit) {
+    fill.style.width = `${Math.min(100, percent ?? 0)}%`;
+    if (percent !== null && percent >= 100) card.classList.add("danger");
+    else if (percent !== null && percent >= 80) card.classList.add("warning");
+  } else {
+    track.classList.add("unlimited");
+    fill.style.width = "0%";
+  }
+  track.append(fill);
+
+  const foot = document.createElement("div");
+  foot.className = "quota-meter-foot";
+  const usedNode = document.createElement("span");
+  usedNode.textContent = `${usedText} used`;
+  const limitNode = document.createElement("span");
+  limitNode.textContent = hasLimit ? `${limitText} limit` : "No limit";
+  foot.append(usedNode, limitNode);
+
+  card.append(head, track, foot);
+  return card;
+}
+
+function renderUserQuotaMeters() {
+  if (!els.quotaMeters) return;
+  const details = state.quotaDetails;
+  if (!details) {
+    els.quotaMeters.replaceChildren();
+    return;
+  }
+  const override = previewQuota("user").quota;
+  const effective = { ...(details.effective || {}) };
+  for (const key of ["maxWorkspaces", "cpu", "memory", "storage"]) {
+    if (override[key] !== undefined) effective[key] = override[key];
+  }
+  const usage = details.usage || {};
+  const metrics = [
+    ["Workspaces", usage.workspaces ?? 0, effective.maxWorkspaces, "workspaces"],
+    ["CPU", usage.cpu || "0", effective.cpu, "cpu"],
+    ["Memory", usage.memory || "0", effective.memory, "memory"],
+    ["Storage", usage.storage || "0", effective.storage, "storage"],
+  ];
+  els.quotaMeters.replaceChildren(...metrics.map(([label, used, limit, kind]) => quotaMeterCard(label, used, limit, kind)));
+}
+
+function updateUserQuotaMode() {
+  if (!els.quotaMode) return;
+  const override = hasQuotaValues("user");
+  els.quotaMode.textContent = override ? "Override" : "Inherited";
+  els.quotaMode.className = `badge ${override ? "quota-override" : "neutral"}`;
+}
+
+function updateUserQuotaPreview() {
+  updateUserQuotaMode();
+  renderUserQuotaMeters();
+}
+
+function renderTeamQuotaPreview() {
+  if (!els.teamQuotaPreview) return;
+  const preview = previewQuota("team");
+  els.teamQuotaPreview.replaceChildren();
+  if (preview.invalid) {
+    const invalid = document.createElement("span");
+    invalid.className = "quota-chip invalid";
+    invalid.textContent = "Workspaces must be a whole number";
+    els.teamQuotaPreview.append(invalid);
+    return;
+  }
+  els.teamQuotaPreview.append(quotaChips(preview.quota, "No limits"));
 }
 
 function quotaIdentityUser(value) {
@@ -95,10 +264,14 @@ function openUserQuota(user, entry) {
   if (!els.quotaDialog) return;
   state.quotaUser = user;
   state.quotaIdentity = entry?.identity || user;
+  state.quotaDetails = null;
   els.quotaIdentity.textContent = `Override for ${user}.`;
+  if (els.quotaAvatar) els.quotaAvatar.textContent = String(user).replace(/^(user|email):/i, "").trim().slice(0, 1).toUpperCase() || "?";
   setQuotaInputs("user", entry?.quota || null);
+  updateUserQuotaMode();
   setFormError(els.quotaError, "");
   if (els.quotaStatus) els.quotaStatus.hidden = true;
+  if (els.quotaMeters) els.quotaMeters.replaceChildren();
   if (els.quotaClear) els.quotaClear.hidden = !entry;
   els.quotaDialog.showModal();
   els.quotaWorkspaces.focus();
@@ -131,14 +304,17 @@ async function loadCreateQuota() {
   }
 }
 
-async function loadUserQuotaDetails(identity) {  if (!els.quotaStatus) return;
+async function loadUserQuotaDetails(identity) {
+  if (!els.quotaStatus) return;
   try {
     const data = await api(`/api/user-quotas/${encodeURIComponent(identity)}`);
     if (state.quotaUser !== identity) return;
-    els.quotaEffective.textContent = quotaSummary(data.effective) || "Unlimited";
-    els.quotaUsage.textContent = usageSummary(data.usage) || "No workspaces";
+    state.quotaDetails = data;
+    renderUserQuotaMeters();
+    updateUserQuotaMode();
     els.quotaStatus.hidden = false;
   } catch {
+    state.quotaDetails = null;
     if (els.quotaStatus) els.quotaStatus.hidden = true;
   }
 }

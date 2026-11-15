@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"poddy/internal/dotfiles"
 	"poddy/internal/k8s"
 	"poddy/internal/templates"
 )
@@ -278,6 +279,21 @@ func (c *Client) FetchEnvironment(ctx context.Context, req EnvironmentRequest, i
 	var out EnvironmentResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/internal/region/environment", identity, req, &out)
 	return out, err
+}
+
+type DotfilesRequest struct {
+	Owner string `json:"owner"`
+}
+
+func (c *Client) FetchDotfiles(ctx context.Context, req DotfilesRequest, identity Identity) (dotfiles.Config, error) {
+	var out struct {
+		URL    string `json:"url"`
+		Branch string `json:"branch"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/api/internal/region/dotfiles", identity, req, &out); err != nil {
+		return dotfiles.Config{}, err
+	}
+	return dotfiles.Config{URL: out.URL, Branch: out.Branch}, nil
 }
 
 // DeleteEnvironment removes the environment rows for a workspace. Region

@@ -191,6 +191,9 @@ func (m *Manager) startStatefulSet(ctx context.Context, sts *appsv1.StatefulSet)
 	if err := m.applyAgentEnv(pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
+	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {
+		return Workspace{}, err
+	}
 
 	updated, err := m.mutateStatefulSet(ctx, name, func(sts *appsv1.StatefulSet) error {
 		if statefulSetReplicas(sts) > 0 {
@@ -251,6 +254,9 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 	}
 	if err := m.applyAgentEnv(pod, state.Name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
+	}
+	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {
+		return Workspace{}, err
 	}
 	if err := m.ensureGoverningService(ctx); err != nil {
 		return Workspace{}, err
@@ -325,6 +331,9 @@ func (m *Manager) restart(ctx context.Context, name string) (Workspace, error) {
 	}
 	if err := m.applyAgentEnv(pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
+	}
+	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {
+		return Workspace{}, err
 	}
 
 	updated, err := m.mutateStatefulSet(ctx, name, func(sts *appsv1.StatefulSet) error {

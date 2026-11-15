@@ -202,6 +202,28 @@ defaults.
 See [External authentication](external-auth.md) for provider setup and
 [SSH access](ssh.md) for certificates and the agent path.
 
+## Dotfiles
+
+You can keep your shell, editor, and Git configuration in a dotfiles
+repository. Open **Account → Dotfiles**, enter an HTTPS, SSH, or
+`git@host:path` clone URL, choose a branch, and save. Poddy clones the
+repository when a workspace starts and copies its top-level entries into
+`/home/dev`. The branch defaults to `main`.
+
+The copy skips `.git`, `.ssh`, and `authorized_keys`. Existing files are
+overwritten on every workspace start, so edit and commit them in the repository
+instead of editing only the workspace copy. Restart a running workspace to
+apply a new repository or branch. Portal administrators can set a fallback
+repository with `dotfiles.url` and `dotfiles.branch` in the Helm chart, or with
+`PODDY_DOTFILES_URL` and `PODDY_DOTFILES_BRANCH`; a personal setting takes
+precedence. Clear your setting to return to the fallback.
+
+Only use repositories you trust: their files become part of your home
+environment. A failed clone is logged to `/tmp/poddy-dotfiles.log` and does not
+block SSH access. Private repositories can use the workspace's existing
+[external-auth](external-auth.md) Git credentials when the template requires
+that provider.
+
 ## Environment variables and secrets
 
 Workspace **environment** values are managed from the details dialog. Use them

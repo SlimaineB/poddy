@@ -10,6 +10,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/backup"
+	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
 	"poddy/internal/extension"
 	"poddy/internal/externalauth"
@@ -65,11 +66,14 @@ type Server struct {
 	Users       userstore.Directory
 	Shares      ShareStore
 	Environment envstore.Store
+	Dotfiles    dotfiles.Store
 	Metadata    metadata.Store
 	Access      k8s.AccessStore
 	Quota       quota.Store
 	Metrics     *metrics.Metrics
 	Backups     *backup.Store
+
+	GlobalDotfiles dotfiles.Config
 
 	ExternalAuth             *externalauth.Manager
 	ExternalAuthURL          string
@@ -95,6 +99,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/ssh-keys", s.listSSHKeys)
 	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
 	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)
+	mux.HandleFunc("GET /api/me/dotfiles", s.myDotfiles)
+	mux.HandleFunc("PUT /api/me/dotfiles", s.setMyDotfiles)
+	mux.HandleFunc("DELETE /api/me/dotfiles", s.deleteMyDotfiles)
 	mux.HandleFunc("POST /api/me/ssh-certificate", s.issueSSHCertificate)
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/audit", s.auditLog)
@@ -112,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}/git-askpass", s.workspaceGitAskpass)
 	mux.HandleFunc("PUT /api/internal/ssh-keys/{owner}", s.regionReplaceSSHKeys)
 	mux.HandleFunc("GET /api/internal/region/tunnel", s.regionTunnel)
+	mux.HandleFunc("POST /api/internal/region/dotfiles", s.regionDotfiles)
 	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)
 	mux.HandleFunc("GET /api/internal/region/access", s.regionAccessState)
 	mux.HandleFunc("POST /api/internal/region/access/{workspace}/request", s.regionAccessRequest)

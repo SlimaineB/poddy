@@ -100,6 +100,8 @@ name (without the leading `v`) is used.
 | `ssh.ca.key` | `""` | Inline CA private key (PEM). Empty generates and preserves a random key. |
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
+| `dotfiles.url` | `""` | Portal-wide fallback dotfiles repository for users without a personal setting. |
+| `dotfiles.branch` | `""` | Fallback branch. Empty uses `main`. |
 | `workspace.storageClass` | `""` | Default StorageClass for workspace home PVCs when the template leaves it empty. |
 | `workspace.imageRegistry` | `""` | Global fallback registry prefix for workspace and sidecar images. Path prefixes such as `mirror.example.com/cache` are supported and applied once. |
 | `workspace.imageRegistryMap` | `{}` | Per-host registry mirrors. Keys are source hosts (`ghcr.io`, `docker.io`, `localhost:5000`) or `*`; values are target prefixes. Exact host wins, then `*`, then `imageRegistry`. An empty value leaves that host untouched. |

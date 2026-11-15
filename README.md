@@ -24,7 +24,7 @@ poddy gives every developer a persistent Linux workspace on Kubernetes. They ope
 |------------|---------------|
 | **Web portal** | Create, stop, start, restart, inspect, and delete workspaces. Search, pagination, topology, and a world map for multi-region deployments. |
 | **Real terminals and IDEs** | Browser terminal, VS Code Web, VS Code/Cursor Remote-SSH, JetBrains Gateway, JupyterLab, and manual SSH. |
-| **Persistent homes** | PVC per workspace, ephemeral storage when you do not need persistence, and backup/restore to S3-compatible storage. |
+| **Persistent homes** | PVC per workspace, ephemeral storage when you do not need persistence, per-user dotfiles, and backup/restore to S3-compatible storage. |
 | **Templates** | Reusable workspace definitions with images, CPU/memory/storage parameters, sidecars, environment variables, links, and external-auth requirements. |
 | **Team access** | OIDC/SSO or a shared token, global admins, read-only auditors, template owners, teams, per-template access, workspace ownership, and quotas. |
 | **External auth** | Connect GitHub, GitLab, Gitea, Azure DevOps, Bitbucket, or generic OAuth2 accounts. Refreshed tokens are injected into workspaces and used by Git automatically. |

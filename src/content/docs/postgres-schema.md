@@ -7,8 +7,8 @@ description: "Understand the PostgreSQL control-plane schema, migrations, audit 
 The portal and bastion require PostgreSQL 13+. Set `PODDY_DATABASE_URL` or
 Helm `database.url` / `database.existingSecret`. PostgreSQL is the
 authoritative store for RBAC, OIDC users, encrypted external auth tokens,
-workspace share links, workspace access, quotas, and environment
-variables/secrets. The portal keeps `poddy-rbac` and `poddy-users`
+workspace share links, workspace access, quotas, environment
+variables/secrets, and dotfiles settings. The portal keeps `poddy-rbac` and `poddy-users`
 ConfigMaps as materialized mirrors and writes an append-only audit trail.
 Kubernetes remains the runtime source of truth for workspaces and
 templates.
@@ -162,6 +162,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | `rbac_documents` | Authoritative RBAC YAML/JSON document per namespace. |
 | `share_links` | Workspace share links with hashed lookup tokens and encrypted raw tokens. |
 | `env_vars` | Template, team, user, and workspace environment variables; secrets are AES-GCM encrypted. |
+| `dotfiles` | Per-user dotfiles repository URL and branch applied at workspace startup. |
 | `metadata_imports` | One-time Kubernetes Secret import markers for external auth tokens and shares. |
 | `audit_events` | Append-only control-plane audit trail. |
 | `schema_migrations` | Applied migration versions. |
@@ -177,6 +178,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | `poddy-external-auth` Secret | `external_auth_tokens` | Migration source only after PostgreSQL is enabled |
 | `poddy-shares` Secret | `share_links` | Migration source only after PostgreSQL is enabled |
 | Environment UI | `env_vars`; per-workspace `pd-env-<workspace>` Secret | PostgreSQL authoritative; Secret is runtime input |
+| Dotfiles UI | `dotfiles`; workspace environment `PODDY_DOTFILES_*` | PostgreSQL authoritative; injected at create/start |
 | Audit stream | `audit_events` | Written by portal and bastion |
 
 Workspace access state (`access_requests`, `access_grants`, `access_presence`)
@@ -319,8 +321,8 @@ For production, also enable:
 ## Current behavior and next steps
 
 1. **PostgreSQL control plane (available now).** RBAC, OIDC users, external
-   auth tokens, share links, access state, quotas, and environment variables
-   live in PostgreSQL. The `poddy-rbac` and `poddy-users` ConfigMaps are
+   auth tokens, share links, access state, quotas, environment variables, and
+   dotfiles settings live in PostgreSQL. The `poddy-rbac` and `poddy-users` ConfigMaps are
    reconciled mirrors; templates and workspaces remain Kubernetes-first and are
    mirrored for audit and recovery.
 2. **Legacy import (available now).** Existing Kubernetes RBAC, user, share,

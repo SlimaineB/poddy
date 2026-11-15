@@ -25,6 +25,12 @@ for file in .bashrc .profile .bash_logout; do
 done
 chown dev:dev /home/dev/.bashrc /home/dev/.profile /home/dev/.bash_logout 2>/dev/null || true
 
+# Apply the user's dotfiles repository before sshd starts. The helper skips
+# .ssh, never blocks SSH on a failed clone, and keeps /home/dev owned by dev.
+if [ -n "${PODDY_DOTFILES_URL:-}" ] && [ -x /usr/local/bin/poddy-dotfiles ]; then
+  /usr/local/bin/poddy-dotfiles || echo "poddy-dotfiles failed; continuing without dotfiles" >&2
+fi
+
 # The portal mounts an authoritative authorized_keys Secret at
 # /etc/poddy/ssh/authorized_keys. sshd StrictModes rejects the Secret volume
 # directory (kubelet may create it group/world writable), so copy the file into

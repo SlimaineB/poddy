@@ -71,6 +71,13 @@ async function openSSHKeys() {
     toast(err.message || "Failed to load SSH keys.");
     return;
   }
+  try {
+    await loadDotfiles();
+  } catch (err) {
+    state.dotfiles = {};
+    renderDotfiles();
+    setFormError(els.dotfilesError, err.message || "Failed to load dotfiles.");
+  }
   showView("ssh-keys");
 }
 

@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"poddy/internal/access"
+	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
@@ -60,7 +61,8 @@ func (p *Postgres) PGFirstReady(ctx context.Context) bool {
 			AND to_regclass('poddy.access_requests') IS NOT NULL
 			AND to_regclass('poddy.access_grants') IS NOT NULL
 			AND to_regclass('poddy.access_presence') IS NOT NULL
-			AND to_regclass('poddy.env_vars') IS NOT NULL`,
+			AND to_regclass('poddy.env_vars') IS NOT NULL
+			AND to_regclass('poddy.dotfiles') IS NOT NULL`,
 	).Scan(&ready)
 	return err == nil && ready
 }
@@ -90,6 +92,11 @@ func (p *Postgres) ShareStore(namespace, secret string, mirror *k8s.ShareStore) 
 // EnvStore returns a PostgreSQL-backed scoped environment store.
 func (p *Postgres) EnvStore(namespace, secret string) *envstore.PostgresStore {
 	return envstore.NewPostgres(p.pool, namespace, secret)
+}
+
+// DotfilesStore returns a PostgreSQL-backed per-user dotfiles store.
+func (p *Postgres) DotfilesStore(namespace string) *dotfiles.Postgres {
+	return dotfiles.NewPostgres(p.pool, namespace)
 }
 
 // Open connects to PostgreSQL. An empty URL returns the disabled Nop backend.

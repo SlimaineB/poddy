@@ -169,6 +169,14 @@ workspaceState:
   configMapName: ""
 
 # Defaults applied to workspace pods. Template parameters still win.
+dotfiles:
+  # Portal-wide fallback Git repository for users who have not configured
+  # their own dotfiles. The repository is cloned at workspace startup and its
+  # top-level entries are copied into /home/dev; .ssh is never overwritten.
+  url: ""
+  # Branch for the fallback repository. Empty uses main.
+  branch: ""
+
 workspace:
   # Default StorageClass for workspace home volumes when the template leaves
   # its storageClass parameter empty. Empty uses the cluster default.
