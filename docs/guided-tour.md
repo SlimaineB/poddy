@@ -1,193 +1,145 @@
-# Guided tour
+# Product tour
 
-Welcome to poddy. Here is how everything fits together, without magic or hidden
-commands.
+poddy gives developers a real development machine on Kubernetes without making
+them learn Kubernetes. This page explains the mental model: what runs where,
+what users see, and what the platform team controls.
 
-## The principle
+## The problem poddy solves
 
-Poddy creates **Kubernetes workspaces** (isolated development machines) that
-users operate from a **web portal**. The user never needs `kubectl` or a
-kubeconfig. They create a workspace from the browser, then connect to it over
-SSH (VS Code, Cursor, PyCharm, terminal, or browser).
+A development workspace needs more than a container:
 
-## The three components
+- a home directory that survives restarts;
+- SSH or an IDE connection;
+- credentials for private Git repositories;
+- CPU, memory, and storage limits;
+- a way to stop idle environments;
+- access rules, audit, and quotas;
+- a repeatable image and configuration.
 
-| Component | Role | Where it runs |
-|-----------|------|---------------|
-| **Portal** | UI, create/stop/start workspaces, authentication, RBAC | Deployment `poddy` |
-| **SSH bastion** | SSH entry point (`:2222`), connects the user to the workspace via an agent | Deployment `poddy-bastion` |
-| **Workspace** | Development container (`ssh` on port 22, `/home/dev` volume) | Pod in the workspace namespace |
+Doing this by hand for every developer means maintaining kubeconfigs, SSH
+configs, namespaces, Secrets, PVCs, and a wiki that is always slightly out of
+date. poddy turns that into one portal and one template catalogue.
 
-The portal and bastion are built from the same image. They are **stateless** and
-sit behind a LoadBalancer or an Ingress.
+## The three planes
 
-## The user flow
+| Plane | Components | Responsibility |
+|-------|------------|----------------|
+| **Control plane** | Portal + PostgreSQL | Sign-in, RBAC, quotas, templates, workspace lifecycle, encrypted secrets, audit, and the UI/API. |
+| **Access plane** | SSH bastion + workspace agent | Stable SSH entry point, owner checks, port forwarding, terminal, and IDE proxying. |
+| **Runtime plane** | Workspace StatefulSet + Pod + PVC | The developer's Linux environment, home directory, tools, and sidecars. |
 
-```
-Browser ─────────► Portal ──► Kubernetes API (creates the workspace StatefulSet)
-                    │
-                    └── signed-in user (OIDC or shared token)
+```text
+Browser ──────────► Portal ──────────► Kubernetes API
+                       │                 (StatefulSets, Pods, PVCs)
+                       │
+                       └── PostgreSQL (control plane)
 
-IDE / SSH ───────► Bastion ──► Agent sidecar in the workspace ──► sshd (:22)
-```
-
-When you click **VS Code**, the portal generates a two-minute signed ticket, the
-Poddy extension enrolls your machine, writes your `~/.ssh/config`, and opens the
-editor. You never touch an SSH key by hand.
-
-## Authentication: OIDC (recommended) or shared token
-
-**OIDC** is the recommended mode for a team. Connect your identity provider
-(Keycloak, Okta, Entra ID, Google, Dex for demos…). Users sign in with their
-work account. No shared token circulates in the browser.
-
-**Shared token** is a single password for the portal. Handy for automation or
-testing, but not recommended for multi-user production.
-
-Configure OIDC in production:
-```yaml
-oidc:
-  enabled: true
-  existingSecret: poddy-oidc
-  issuer: https://sso.example.com/realms/dev
-  clientId: poddy
-  redirectUrl: https://poddy.example.com/oidc/callback
-  scopes: "openid,profile,email,groups"
-  allowedGroups: ["devs"]
+VS Code / Cursor / PyCharm / ssh ──► Bastion ──► workspace agent ──► sshd (:22)
 ```
 
-The secret `poddy-oidc` contains `oidc-client-id`, `oidc-client-secret`, and
-`oidc-session-key`.
+The portal and bastion are built from the same image but run as separate
+Deployments. That lets HTTP/API traffic and SSH traffic scale independently.
 
-## PostgreSQL: required
+## A day in the life
 
-PostgreSQL is the **control plane**. Kubernetes remains the runtime source of
-truth for workspaces, templates, and stopped specs.
+1. **Sign in.** The user opens the portal. With OIDC, they use their company
+   identity. With a shared token, they use one operator token.
+2. **Pick a template.** The template defines the image, resources, storage,
+   sidecars, ports, links, and any required external accounts.
+3. **Create a workspace.** The portal renders the template, checks access and
+   quotas, creates the StatefulSet and PVC, and records the owner.
+4. **Wait for Running.** The workspace starts `sshd`, the poddy agent, and any
+   IDE sidecars. Startup logs are available in the workspace details dialog.
+5. **Work.** The user opens the browser terminal, VS Code Web, Remote-SSH,
+   JetBrains Gateway, JupyterLab, or a previewed port.
+6. **Stop when idle.** The pod scales to zero, the PVC stays. Start it later and
+   the home directory is still there.
+7. **Delete when done.** The workspace and its runtime objects are removed. The
+   volume can be backed up first if configured.
 
-PostgreSQL stores:
-- RBAC, OIDC users, quotas, and workspace access,
-- encrypted external-auth tokens, share links, and environment secrets,
-- a queryable audit log,
-- metadata mirrors for disaster recovery.
+## Concepts
 
-Configure it:
-```yaml
-database:
-  existingSecret: poddy-database
-  urlKey: database-url
-  autoMigrate: true
-```
+| Concept | Meaning |
+|---------|---------|
+| **Workspace** | A developer environment backed by a StatefulSet, a Pod, and optionally a PVC. Owned by the user who created it. |
+| **Template** | A YAML definition of the workspace image, parameters, pod overlay, links, and external-auth requirements. |
+| **Region** | A Kubernetes cluster managed by a region manager. The central hub routes workspace operations through outbound tunnels. |
+| **Provider** | An OAuth2 provider configured for workspace credentials, such as GitHub, GitLab, Gitea, or Azure DevOps. |
+| **Connection** | A user's stored token for one provider. Workspaces can require a connection before they start. |
+| **Team** | A named group of identities that can be assigned to templates and carry quota defaults. |
+| **Quota** | A per-user cap on workspaces, CPU, memory, and storage. Team quotas are defaults; user overrides win field by field. |
+| **Share link** | A signed link that exposes a workspace port internally or publicly. |
+| **Audit event** | An append-only record of a sensitive action, such as workspace creation, terminal use, or access changes. |
 
-The secret `poddy-database` contains `database-url`. Region managers use the hub
-instead of a local database.
+## What the platform team controls
 
-## Install in production (without the headache)
+- **Images.** Use the published base, Go, Node.js, and Python images or build
+  your own from `poddy-workspace-base`.
+- **Templates.** Define what a workspace looks like without changing portal code.
+- **Identity.** OIDC/SSO groups and users, or a shared token for a deliberate
+  single-operator deployment.
+- **Access.** Global admins, auditors, template owners, teams, and per-template
+  users/teams.
+- **Quotas.** Workspaces, CPU, memory, and storage per user, with team defaults.
+- **Storage.** StorageClass, ephemeral vs persistent homes, and S3 backups.
+- **Network.** Ingress, TLS, LoadBalancer or NodePort SSH, registry mirrors, and
+  port sharing policy.
+- **Observability.** Prometheus metrics, logs, and the PostgreSQL audit trail.
 
-1. **Prerequisites**: a Kubernetes cluster (k3s, EKS…), PostgreSQL 13+, Helm
-   3.13+, a default StorageClass for workspace PVCs, and an Ingress controller
-   for HTTPS.
-2. **Create the portal and database secrets**:
-   ```bash
-   kubectl create secret generic poddy-auth \
-     --from-literal=token="$(openssl rand -hex 32)" \
-     -n poddy-system
+## What users control
 
-   kubectl create secret generic poddy-database \
-     --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require' \
-     -n poddy-system
-   ```
-3. **Configure OIDC** (recommended):
-   ```bash
-   kubectl create secret generic poddy-oidc \
-     --from-literal=oidc-client-id=poddy \
-     --from-literal=oidc-client-secret="..." \
-     --from-literal=oidc-session-key="$(openssl rand -hex 32)" \
-     -n poddy-system
-   ```
-4. **Install the chart** (published on GHCR, no repo checkout required):
-   ```bash
-   helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-     -n poddy-system --create-namespace --version 0.1.8 -f values.yaml
-   ```
-5. **Install the templates** (separate release; required for the default templates):
-   ```bash
-   helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-     -n poddy-workspaces --version 0.1.8 -f templates-values.yaml
-   ```
+- Which template to use and the allowed parameters.
+- Their workspace lifecycle: stop, start, restart, delete.
+- Their SSH keys and connected external accounts.
+- Their own environment variables, workspace values, and share links.
+- Their workspace ports and previews.
 
-Minimal `values.yaml`:
-```yaml
-image:
-  repository: ghcr.io/slimaineb/poddy
-  tag: "latest"
+## Design principles
 
-auth:
-  existingSecret: poddy-auth
-  tokenAdmin: false
+### Kubernetes is the runtime source of truth
 
-database:
-  existingSecret: poddy-database
-  urlKey: database-url
-  autoMigrate: true
+Workspaces are StatefulSets, Pods, and PVCs. poddy does not hide them behind a
+proprietary runtime. Platform teams can inspect, back up, and govern them with
+normal Kubernetes tools.
 
-oidc:
-  enabled: true
-  existingSecret: poddy-oidc
-  issuer: https://sso.example.com/realms/dev
-  clientId: poddy
-  redirectUrl: https://poddy.example.com/oidc/callback
-  scopes: "openid,profile,email,groups"
+### PostgreSQL is the control-plane source of truth
 
-ssh:
-  enabled: true
-  publicHost: ssh.dev.example.com
-  publicPort: 2222
+Users, RBAC, quotas, access grants, encrypted tokens and secrets, shares, and
+audit events live in PostgreSQL. Kubernetes ConfigMaps are mirrors and migration
+inputs, not the authority.
 
-bastion:
-  enabled: true
-  replicaCount: 1
+### Credentials stay short-lived
 
-workspaceNamespace: poddy-workspaces
-createWorkspaceNamespace: true
+Workspaces receive short-lived workspace tokens and refreshed external-auth
+tokens. Users do not receive cluster credentials. SSH is owner-scoped and the
+bastion re-checks ownership on every connection.
 
-ingress:
-  enabled: true
-  className: nginx
-  hosts:
-    - host: poddy.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: poddy-tls
-      hosts:
-        - poddy.example.com
-```
+### Templates are explicit, not magic
 
-## After installation
+A template is a small YAML overlay. The portal fills in safe defaults for SSH,
+the home volume, security context, and the workspace container. Anything the
+template declares wins, and the merge rules are documented.
 
-1. Open the portal (`https://poddy.example.com`), sign in.
-2. Go to **SSH keys**, add your public key.
-3. Create a workspace (**Base**, **Go**, **Node.js**, or **Python**).
-4. Once in **Running**, click **VS Code** (or your IDE of choice).
-5. Your workspaces stop and start automatically with the **auto-stop schedule**
-   you configured.
+### No hidden SaaS dependency
 
-## What not to do in production
+poddy is MIT licensed and runs in your cluster. The only external services are
+the ones you choose: your identity provider, PostgreSQL, an S3 bucket, and your
+image registry.
 
-- Do not use the shared token for the whole team (use OIDC).
-- Do not expose the metrics port (`9090`) publicly.
-- Do not rely on the ephemeral host key if you run multiple bastion replicas
-  (use `ssh.existingHostKeySecret`).
-- Do not delete the workspace namespace with `helm uninstall` if you want to
-  keep the data (`createWorkspaceNamespace: false` + create the namespace by
-  hand).
+## What poddy deliberately does not do
 
-## Go further
+- It is not a multi-tenant SaaS control plane for untrusted customers. Use
+  separate clusters or namespaces plus admission policies for hard isolation.
+- It is not a Kubernetes abstraction that hides the workload objects. Workspaces
+  remain inspectable StatefulSets and PVCs.
+- It does not replace your image registry, identity provider, database, or
+  object storage.
+- It does not automatically fail over a running workspace between regions.
 
-- [Kubernetes deployment](deploy.md): TLS, LoadBalancer, multi-region, scaling.
-- [OIDC / SSO](oidc.md): provider configuration, groups, sessions.
-- [RBAC and ownership](rbac.md): admins, teams, template access.
-- [Workspace templates](templates.md): add your own workspace image.
-- [Volumes and backups](volumes.md): S3, backup/restore workspaces.
-- [Architecture](architecture.md): request flow and components.
+## Next steps
+
+- [Quick start](getting-started.md): install it and create a workspace.
+- [Workspaces](workspaces.md): the day-to-day user guide.
+- [Templates](templates.md): define your own workspace types.
+- [Architecture](architecture.md): request flows and internals.
+- [Operations](operations.md): run it after the first install.

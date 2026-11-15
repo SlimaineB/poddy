@@ -41,20 +41,24 @@ theme:
 
 nav:
   - Overview: index.md
-  - Guided tour: guided-tour.md
-  - Getting started: getting-started.md
-  - Deployment:
-      - Kubernetes (Helm): deploy.md
-      - Regions: regions.md
-      - Amazon EKS (ALB + EFS): eks.md
+  - Get started:
+      - Quick start: getting-started.md
+      - Product tour: guided-tour.md
+      - Full demo: demo.md
       - Local k3s test: k3s-test.md
-  - Workspaces:
+  - Guides:
+      - Workspaces: workspaces.md
       - Templates: templates.md
       - Environment variables: environment.md
       - Volumes and backups: volumes.md
       - External authentication: external-auth.md
-      - Links: links.md
-  - Access and security:
+      - Links and sharing: links.md
+  - Deploy:
+      - Kubernetes (Helm): deploy.md
+      - Operations: operations.md
+      - Regions: regions.md
+      - Amazon EKS (ALB + EFS): eks.md
+  - Security:
       - OIDC / SSO: oidc.md
       - Okta SSO: okta.md
       - RBAC and ownership: rbac.md
@@ -65,6 +69,8 @@ nav:
       - Data model: data-model.md
       - PostgreSQL control plane: postgres-schema.md
       - Development: development.md
+  - Help:
+      - Troubleshooting: troubleshooting.md
 
 plugins:
   - search
