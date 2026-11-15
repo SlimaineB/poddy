@@ -4,7 +4,8 @@
 #   - AWS Load Balancer Controller installed with IRSA.
 #   - EFS CSI driver installed with IRSA.
 #   - ACM certificate for poddy.example.com.
-#   - Secrets poddy-auth, poddy-oidc, poddy-host-key, and poddy-ssh-keys.
+#   - Secrets poddy-auth, poddy-oidc, poddy-database, poddy-host-key, and
+#     poddy-ssh-keys.
 #   - Namespace poddy-workspaces already exists.
 #
 # See docs/eks.md for the full walkthrough.
@@ -90,8 +91,8 @@ ingress:
   # ALB terminates TLS with the ACM certificate above. Leave this empty.
   tls: []
 
-# Optional PostgreSQL metadata mirror and audit log.
-# database:
-#   existingSecret: poddy-database
-#   urlKey: database-url
-#   autoMigrate: true
+# Required PostgreSQL control plane.
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true

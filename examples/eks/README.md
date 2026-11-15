@@ -4,7 +4,7 @@ This directory contains a production-oriented EKS example:
 
 | File | Purpose |
 |------|---------|
-| `values.yaml` | Helm values for ALB Ingress, NLB SSH, Okta OIDC, EBS storage, and two replicas. |
+| `values.yaml` | Helm values for ALB Ingress, NLB SSH, Okta OIDC, PostgreSQL, EBS storage, and two replicas. |
 | `ebs-storageclass.yaml` | EBS CSI `gp3` StorageClass for per-workspace home volumes. |
 | `efs-storageclass.yaml` | EFS CSI dynamic-provisioning StorageClass. |
 | `shared-efs-pvc.yaml` | Shared `ReadWriteMany` PVC named `poddy-shared-efs`. |

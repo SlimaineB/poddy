@@ -15,7 +15,9 @@ user's workspace interactively requires the owner's approval. See
 
 ## Where roles live
 
-The portal reads the `poddy-rbac` ConfigMap in the workspace namespace (same namespace as workspaces). The key is `rbac.yaml`:
+PostgreSQL `rbac_documents` is authoritative. The portal also renders the
+`poddy-rbac` ConfigMap in the workspace namespace as a mirror; the key is
+`rbac.yaml` and it is useful for inspection, seeding, and recovery:
 
 ```yaml
 admins:
@@ -43,9 +45,9 @@ templates:
       - backend
 ```
 
-Change the ConfigMap name with `-rbac-configmap` / `PODDY_RBAC_CONFIGMAP`. A missing ConfigMap is valid: no admins, no teams, and all templates are public.
+Change the mirror name with `-rbac-configmap` / `PODDY_RBAC_CONFIGMAP`. A missing mirror is valid: no admins, no teams, and all templates are public until PostgreSQL has data.
 
-The portal writes this document through the UI/API. You can also edit it with `kubectl`; changes apply on the next request. The portal's Role needs `get/list/watch/create/update/patch` on `configmaps` (the Helm chart and `deploy/poddy.yaml` include it).
+The portal writes RBAC through the UI/API to PostgreSQL and reconciles the ConfigMap mirror. Editing the mirror with `kubectl` does not change the authoritative document after the initial import; use the API. The portal's Role needs `get/list/watch/create/update/patch` on `configmaps` for templates, the mirror, and stopped specs.
 
 ## Identity matching
 

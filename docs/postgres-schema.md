@@ -204,8 +204,8 @@ PostgreSQL-first stores reconcile as follows:
 
 ## Audit read API and UI
 
-When PostgreSQL is configured, admins and identities listed in `rbac.auditors`
-can read the audit trail from the **Audit** page or directly:
+Admins and identities listed in `rbac.auditors` can read the audit trail from
+the **Audit** page or directly:
 
 ```http
 GET /api/audit?outcome=denied&action=workspace.create&since=2026-01-01&page=1&per_page=50

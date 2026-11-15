@@ -53,7 +53,10 @@ function resetEnvironmentForm() {
   els.envName.value = "";
   els.envValue.value = "";
   els.envSecret.checked = false;
+  els.envSecret.disabled = false;
+  els.envName.readOnly = false;
   els.envValue.type = "text";
+  els.envValue.placeholder = "";
   els.envSave.textContent = "Add variable";
   els.envCancel.hidden = true;
   els.envFormError.hidden = true;
@@ -191,9 +194,10 @@ async function deleteEnvironment(item) {
 async function openEnvironment() {
   try {
     await Promise.all([
-      state.templates.length ? Promise.resolve() : loadTemplates({ paginated: true, page: 1 }),
+      state.templates.length ? Promise.resolve() : loadTemplates(),
       state.teams.length ? Promise.resolve() : refreshTeams(),
       state.directory.users.length ? Promise.resolve() : loadDirectory(),
+      state.workspaces.length ? Promise.resolve() : load(),
     ]);
     envState.scope = "user";
     envState.target = envDefaultTarget("user");

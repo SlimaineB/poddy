@@ -13,6 +13,7 @@ You need:
 - Docker
 - `kubectl`
 - A running Kubernetes or k3s cluster
+- PostgreSQL 13+ reachable from the portal
 
 ## Build and run the portal
 
@@ -24,6 +25,7 @@ The local binary runs the portal and the SSH bastion in one process:
 
 ```bash
 export KUBE_CONTEXT="$(kubectl config current-context)"
+export PODDY_DATABASE_URL='postgres://poddy:poddy@127.0.0.1:5432/poddy?sslmode=disable'
 
 ./poddy \
   -context "$KUBE_CONTEXT" \

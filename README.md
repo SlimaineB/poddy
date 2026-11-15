@@ -9,7 +9,7 @@ Browser-accessible Kubernetes development workspaces with an SSH bastion. Open V
 - **Web portal**: Create, stop, start, restart, delete, and list workspaces; workspace details with startup logs and admin Pod/PVC manifests; browser terminal (`xterm.js`); a searchable, paginated topology view grouping users, their workspaces, and attached PVC/PV storage; a world map view plotting each region with workspace/user counts and pan/zoom.
 - **Auto-stop schedules**: Give a workspace a timezone and daily start/stop times. poddy stops it outside the active window and starts it again only when the schedule stopped it, so a manual stop stays stopped.
 - **Authentication**: OIDC / SSO (authorization code + PKCE) with group/user allowlists, or a shared access token for simple setups and API automation.
-- **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in a ConfigMap.
+- **RBAC and quotas**: global admins, read-only auditors, template owners, teams, and per-template user/team access. Workspaces are owned by their creator; admins see everything, users see their own. Users, teams, templates, and the audit trail each have a dedicated page. Team quotas provide per-user defaults for workspaces, CPU, memory, and storage, with field-by-field user overrides; access and quota data are stored in PostgreSQL, with RBAC mirrored to a ConfigMap.
 - **Extensible templates**: YAML templates are partial pod overlays with parameters and images; poddy merges them over sensible defaults. Templates are not embedded in the portal: the default `base`, `go`, `node`, and `python` templates ship in the separate `poddy-templates` Helm chart, and you can add your own via `-templates-dir`, that chart, or labeled ConfigMaps. The portal hot-reloads templates without restarting, and keeps multiple versions for one-label rollback.
 - **External auth**: connect GitHub/GitLab/Gitea/Azure DevOps/Bitbucket OAuth2 accounts and inject refreshed tokens into workspaces. Templates declare required providers; the portal handles refresh, Git askpass, and per-user connections.
 - **Environment variables and secrets**: set values per template, team, user, or workspace with `workspace > user > team > template` precedence. Secret values are AES-GCM encrypted in PostgreSQL and injected through a per-workspace Kubernetes Secret. See [Environment variables](docs/environment.md).
@@ -259,6 +259,7 @@ See [docs/templates.md](docs/templates.md) for:
     ├── regions.md
     ├── k3s-test.md
     ├── templates.md
+    ├── environment.md
     ├── external-auth.md
     ├── links.md
     ├── oidc.md

@@ -125,7 +125,8 @@ kubectl create namespace poddy-system
 kubectl create namespace poddy-workspaces
 ```
 
-Create the portal token, SSH host key, and authorized keys:
+Create the portal token, SSH host key, authorized keys, and PostgreSQL
+connection Secret:
 
 ```bash
 kubectl -n poddy-system create secret generic poddy-auth \
@@ -138,6 +139,9 @@ kubectl -n poddy-system create secret generic poddy-host-key \
 # Each key comment binds it to an owner: alice@example.com, user:alice, or admin.
 kubectl -n poddy-system create secret generic poddy-ssh-keys \
   --from-file=authorized_keys=authorized_keys
+
+kubectl -n poddy-system create secret generic poddy-database \
+  --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require'
 ```
 
 Create the Okta OIDC Secret. See [Okta SSO](okta.md) for the Okta application

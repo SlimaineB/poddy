@@ -63,7 +63,7 @@ nav:
   - Reference:
       - Architecture: architecture.md
       - Data model: data-model.md
-      - PostgreSQL metadata: postgres-schema.md
+      - PostgreSQL control plane: postgres-schema.md
       - Development: development.md
 
 plugins:

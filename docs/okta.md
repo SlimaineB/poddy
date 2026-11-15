@@ -79,9 +79,28 @@ The chart reads these keys by default:
 
 The session key must be stable when running more than one portal replica.
 
-## 4. Helm values
+## 4. Create the PostgreSQL Secret
+
+PostgreSQL is the required control plane:
+
+```bash
+kubectl -n poddy-system create secret generic poddy-database \
+  --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require'
+```
+
+## 5. Helm values
 
 ```yaml
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
+
+ssh:
+  enabled: true
+  publicHost: ssh.poddy.example.com
+  publicPort: 2222
+
 oidc:
   enabled: true
   issuer: https://dev-123456.okta.com/oauth2/default
@@ -107,7 +126,7 @@ any authenticated Okta user. These lists only gate sign-in; RBAC still controls
 admins, template owners, teams, and workspace ownership. See
 [RBAC and ownership](rbac.md).
 
-## 5. Install or upgrade
+## 6. Install or upgrade
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
@@ -118,7 +137,7 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
 If the chart is private, run `helm registry login ghcr.io` first. From a source
 checkout, replace the OCI reference with `deploy/helm/poddy`.
 
-## 6. Verify
+## 7. Verify
 
 1. Open `https://poddy.example.com` and click **Continue with SSO**.
 2. Sign in with an assigned Okta user.

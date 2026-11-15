@@ -142,7 +142,7 @@ name (without the leading `v`) is used.
 | `externalAuth.redirectBase` | `""` | Public base URL for OAuth callbacks. |
 | `externalAuth.key` | `""` | Token encryption/workspace signing key. Required for HA. |
 | `externalAuth.existingSecret` | `""` | Secret containing `externalAuth.keyKey` and provider secrets. |
-| `externalAuth.tokenSecretName` | `""` (`<fullname>-external-auth`) | Secret for encrypted per-user tokens. |
+| `externalAuth.tokenSecretName` | `""` (`<fullname>-external-auth`) | Legacy Secret imported into PostgreSQL once; not updated after import. |
 | `externalAuth.providers` | `[]` | OAuth2 provider list. |
 | `database.url` | `""` | PostgreSQL connection string. Required unless `regionManager.enabled=true`. |
 | `database.existingSecret` | `""` | Existing Secret with the connection string. Set either `url` or this. |
@@ -282,11 +282,11 @@ Create the Secret (or put `key`/`clientSecret` in values for a quick test; the c
 kubectl create secret generic poddy-external-auth-config   --from-literal=external-auth-key="$(openssl rand -hex 32)"   --from-literal=provider-github-client-secret=...   --from-literal=provider-gitlab-client-secret=...   -n poddy-system
 ```
 
-The portal stores per-user tokens in a separate Secret, `externalAuth.tokenSecretName` (default `<fullname>-external-auth`). The chart grants `get/list/watch/create/update/patch` on Secrets. `externalAuth.key`/`existingSecret` is required when `replicaCount > 1`.
+Per-user tokens are stored AES-GCM encrypted in PostgreSQL. The legacy `externalAuth.tokenSecretName` Secret (default `<fullname>-external-auth`) is imported once when the table is empty. The chart grants `get/list/watch/create/update/patch` on Secrets for SSH keys, environment secrets, and the legacy import. `externalAuth.key`/`existingSecret` is required when `replicaCount > 1`.
 
 Register `https://poddy.example.com/external-auth/<id>/callback` with each provider. See [docs/external-auth.md](../../../docs/external-auth.md) for provider defaults, template `externalAuth:` declarations, workspace env vars, and troubleshooting.
 
-## PostgreSQL metadata and audit
+## PostgreSQL control plane and audit
 
 PostgreSQL is required for the portal and bastion. It is the control plane for
 RBAC, users, quotas, access, shares, tokens, environment variables/secrets, and

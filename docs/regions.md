@@ -226,9 +226,17 @@ does not specify a region.
 Hub values:
 
 ```yaml
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
+
 regionsExistingSecret: poddy-regions
 regionsKey: regions.yaml
 ```
+
+The hub needs PostgreSQL; create `poddy-database` in the hub namespace. Region
+managers do not need database credentials and use the hub control plane.
 
 If the hub also hosts local workspaces (no regions), add the same
 `rbac.extraRules` shown in the region values so schedules can update Pod

@@ -158,7 +158,7 @@ The portal reads the username, email and groups from the ID token. If a claim is
 - For `replicaCount > 1`, set a stable 32-byte key (or `oidc.existingSecret`). The chart fails if neither is set.
 - Default session lifetime is 12h; sign-out clears the cookie.
 - Token auth remains available when `auth.token` is set. To require SSO only, leave `auth.token` empty and do not set `PODDY_TOKEN`.
-- RBAC reads and writes the same ConfigMap from every replica. Writes are serialized within a replica and retried on conflicts; avoid simultaneous RBAC edits from multiple replicas.
+- RBAC is authoritative in PostgreSQL and shared by every replica; the `poddy-rbac` ConfigMap is a materialized mirror.
 
 ## Issuer, discovery, authorization, and callback URLs
 

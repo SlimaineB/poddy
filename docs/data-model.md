@@ -105,7 +105,7 @@ mechanism. See [Workspace templates](templates.md) for the full contract.
 
 ## RBAC
 
-The `poddy-rbac` ConfigMap stores `rbac.yaml`:
+The `poddy-rbac` ConfigMap mirrors `rbac.yaml` from PostgreSQL:
 
 ```yaml
 admins:

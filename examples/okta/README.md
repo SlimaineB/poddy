@@ -6,6 +6,7 @@
 - `groups` claim from the ID token;
 - an existing Kubernetes Secret for the client ID, client secret, and session
   key;
+- a required PostgreSQL connection Secret for the control plane;
 - an optional `allowedGroups` sign-in allowlist.
 
 See [`docs/okta.md`](../../docs/okta.md) for the full walkthrough: Okta

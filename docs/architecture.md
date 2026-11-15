@@ -88,14 +88,18 @@ internal region-authenticated endpoint.
    the name with the authenticated username when authentication is enabled.
 3. It renders the template's `pod.yaml` with the chosen parameters and computes
    the requested CPU, memory, and storage.
-4. It resolves the user's effective quota from the RBAC ConfigMap and checks
-   projected usage across all of the user's workspaces. A violation returns
-   `409` before any Kubernetes object is created.
-5. It creates the pod and, when requested, a PVC in the workspace namespace.
-6. The owner is written to the `poddy.io/owner` annotation.
-7. If PostgreSQL is enabled, the portal mirrors the workspace snapshot and
-   records a `workspace.create` audit event.
-8. The portal watches pods and reports their phase to the UI.
+4. It resolves the user's effective quota from PostgreSQL and checks projected
+   usage across all of the user's workspaces. A violation returns `409` before
+   any Kubernetes object is created.
+5. It resolves environment variables for the owner, template, teams, and
+   workspace. Secrets are written to the per-workspace `pd-env-<workspace>`
+   Secret; plain values go on the container.
+6. It creates the StatefulSet and, when requested, a PVC in the workspace
+   namespace.
+7. The owner is written to the `poddy.io/owner` annotation.
+8. The portal mirrors the workspace snapshot and records a `workspace.create`
+   audit event in PostgreSQL.
+9. The portal watches pods and reports their phase to the UI.
 
 ### SSH access
 
@@ -156,7 +160,7 @@ locally, so direct region creates bypass quota checks.
 2. The portal checks authentication and workspace ownership.
 3. It uses the Kubernetes exec API to start a shell in the workspace pod.
 4. Terminal I/O is streamed through the WebSocket.
-5. If PostgreSQL is enabled, the portal records `workspace.terminal.open`.
+5. The portal records `workspace.terminal.open` in PostgreSQL.
 
 ### SSH and desktop IDEs
 
@@ -170,7 +174,7 @@ locally, so direct region creates bypass quota checks.
 4. It port-forwards to the pod's port 22 through the Kubernetes API. Workspace
    pods receive their owner's keys through a read-only Secret mounted at
    `/etc/poddy/ssh/authorized_keys`.
-5. If PostgreSQL is enabled, the bastion records `ssh.connect`.
+5. The bastion records `ssh.connect` in PostgreSQL.
 6. VS Code, Cursor, and PyCharm through JetBrains Gateway connect through `ProxyCommand` using the same bastion.
 
 ### Browser VS Code

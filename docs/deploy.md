@@ -255,8 +255,8 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 | Workspace StatefulSets, Pods and PVCs | Kubernetes | yes |
 | Workspace pod template and schedule state | StatefulSet `poddy-<workspace>` | yes, through the API and retry-on-conflict |
 | Legacy stopped workspace specs | ConfigMap `poddy-state` | migrated at startup |
-| RBAC, teams, template ownership | PostgreSQL `rbac_documents`; ConfigMap `poddy-rbac` mirror | yes; PostgreSQL is authoritative when configured |
-| OIDC users | PostgreSQL `users`; ConfigMap `poddy-users` mirror | yes; PostgreSQL is authoritative when configured |
+| RBAC, teams, template ownership | PostgreSQL `rbac_documents`; ConfigMap `poddy-rbac` mirror | yes; PostgreSQL is authoritative |
+| OIDC users | PostgreSQL `users`; ConfigMap `poddy-users` mirror | yes; PostgreSQL is authoritative |
 | Templates | Labeled ConfigMaps | yes |
 | Access requests, grants, presence | PostgreSQL (`access_*`) | yes |
 | User and team quotas | PostgreSQL (`user_quotas`, `team_quotas`) | yes |

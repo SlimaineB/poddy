@@ -5,6 +5,12 @@
 #     --from-literal=oidc-client-id="$OKTA_CLIENT_ID" \
 #     --from-literal=oidc-client-secret="$OKTA_CLIENT_SECRET" \
 #     --from-literal=oidc-session-key="$(openssl rand -hex 32)"
+#   kubectl -n poddy-system create secret generic poddy-database \
+#     --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require'
+database:
+  existingSecret: poddy-database
+  urlKey: database-url
+  autoMigrate: true
 oidc:
   enabled: true
   # Custom authorization server:
@@ -23,3 +29,8 @@ oidc:
   emailClaim: email
   groupsClaim: groups
   sessionTtl: 12h
+
+ssh:
+  enabled: true
+  publicHost: ssh.poddy.example.com
+  publicPort: 2222
