@@ -32,6 +32,8 @@ async function init() {
     openVolumes();
   } else if (initialView === "audit") {
     await openAudit();
+  } else if (initialView === "monitoring" && typeof openMonitoring === "function") {
+    await openMonitoring();
   }
 }
 
@@ -57,6 +59,8 @@ els.refresh.addEventListener("click", async () => {
   try {
     if (els.auditView && !els.auditView.hidden) {
       await loadAudit({ silent: true });
+    } else if (els.monitoringView && !els.monitoringView.hidden && typeof loadMonitoring === "function") {
+      await loadMonitoring({ silent: true });
     } else if (els.volumesView && !els.volumesView.hidden) {
       await loadVolumes({ silent: true });
     } else {

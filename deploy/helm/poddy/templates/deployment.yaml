@@ -157,6 +157,29 @@ spec:
               value: {{ .Values.workspace.imageRegistryMap | toJson | quote }}
             - name: PODDY_WORKSPACE_IMAGE_PULL_SECRETS
               value: {{ join "," .Values.workspace.imagePullSecrets | quote }}
+            - name: PODDY_MONITORING_ENABLED
+              value: {{ .Values.monitoring.enabled | quote }}
+            - name: PODDY_MONITORING_LIVE
+              value: {{ .Values.monitoring.live | quote }}
+            - name: PODDY_MONITORING_HISTORY
+              value: {{ .Values.monitoring.history | quote }}
+            - name: PODDY_MONITORING_GLOBAL
+              value: {{ .Values.monitoring.global | quote }}
+            - name: PODDY_MONITORING_COSTS
+              value: {{ .Values.monitoring.costs.enabled | quote }}
+            - name: PODDY_MONITORING_COSTS_FOR_USERS
+              value: {{ .Values.monitoring.costs.visibleToUsers | quote }}
+            {{- with .Values.monitoring.prometheus.url }}
+            - name: PODDY_PROMETHEUS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.monitoring.prometheus.existingSecret }}
+            - name: PODDY_PROMETHEUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.monitoring.prometheus.tokenKey }}
+            {{- end }}
             {{- with .Values.dotfiles.url }}
             - name: PODDY_DOTFILES_URL
               value: {{ . | quote }}

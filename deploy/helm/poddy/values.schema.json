@@ -609,6 +609,49 @@
         }
       }
     },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "boolean"
+        },
+        "global": {
+          "type": "boolean"
+        },
+        "costs": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "visibleToUsers": {
+              "type": "boolean"
+            }
+          }
+        },
+        "prometheus": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "tokenKey": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
     "regions": {
       "type": "array",
       "items": {

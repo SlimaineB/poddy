@@ -163,6 +163,15 @@ name (without the leading `v`) is used.
 | `http.service.type` | `ClusterIP` | HTTP Service type. |
 | `http.service.port` | `80` | HTTP Service port. |
 | `http.service.nodePort` | `0` | Optional fixed HTTP NodePort. |
+| `monitoring.enabled` | `true` | Master switch for in-product workspace monitoring APIs and UI. |
+| `monitoring.live` | `true` | Live CPU/memory from metrics-server in workspace details. |
+| `monitoring.history` | `true` | Historical charts from Prometheus. Requires `monitoring.prometheus.url`. |
+| `monitoring.global` | `true` | Admin-only portal-wide monitoring view. |
+| `monitoring.costs.enabled` | `false` | Enable FinOps cost data. |
+| `monitoring.costs.visibleToUsers` | `false` | Show cost data to workspace owners instead of admins only. |
+| `monitoring.prometheus.url` | `""` | Prometheus base URL. Empty disables history. |
+| `monitoring.prometheus.existingSecret` | `""` | Existing Secret containing a Prometheus bearer token. |
+| `monitoring.prometheus.tokenKey` | `token` | Key in the Prometheus token Secret. |
 | `metrics.enabled` | `true` | Expose Prometheus metrics on a dedicated listener and ClusterIP Service. |
 | `metrics.service.port` | `9090` | Metrics listener and Service port. |
 | `metrics.service.annotations` | `{}` | Annotations for the metrics Service. |

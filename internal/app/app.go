@@ -33,6 +33,7 @@ import (
 	"poddy/internal/local"
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
+	"poddy/internal/monitoring"
 	"poddy/internal/quota"
 	quotaremote "poddy/internal/quota/remote"
 	"poddy/internal/rbac"
@@ -458,19 +459,47 @@ func Run(ctx context.Context, args []string) error {
 		log.Printf("volume backups enabled (S3 bucket %s)", cfg.BackupS3Bucket)
 	}
 
+	var liveMetrics *monitoring.Provider
+	if cfg.MonitoringEnabled && cfg.MonitoringLive {
+		liveMetrics, err = monitoring.NewProvider(restConfig, cfg.Namespace, 0)
+		if err != nil {
+			log.Printf("workspace live metrics disabled: %v", err)
+			liveMetrics = nil
+		}
+	}
+	var prometheusClient *monitoring.PrometheusClient
+	if cfg.MonitoringEnabled && cfg.MonitoringHistory && strings.TrimSpace(cfg.PrometheusURL) != "" {
+		prometheusClient, err = monitoring.NewPrometheusClient(cfg.PrometheusURL, cfg.PrometheusToken)
+		if err != nil {
+			return fmt.Errorf("Prometheus monitoring: %w", err)
+		}
+	} else if cfg.MonitoringEnabled && cfg.MonitoringHistory {
+		log.Printf("Prometheus monitoring history disabled: PODDY_PROMETHEUS_URL is empty")
+	}
+
 	srv := &server.Server{
-		Workspaces:        manager,
-		Backups:           backups,
-		RBAC:              rbacStore,
-		Users:             userStore,
-		Shares:            shareStore,
-		Environment:       environmentStore,
-		Dotfiles:          dotfilesStore,
-		GlobalDotfiles:    globalDotfiles,
-		Metadata:          metadataStore,
-		Access:            accessStore,
-		Quota:             quotaStore,
-		Metrics:           appMetrics,
+		Workspaces:     manager,
+		Backups:        backups,
+		RBAC:           rbacStore,
+		Users:          userStore,
+		Shares:         shareStore,
+		Environment:    environmentStore,
+		Dotfiles:       dotfilesStore,
+		GlobalDotfiles: globalDotfiles,
+		Metadata:       metadataStore,
+		Access:         accessStore,
+		Quota:          quotaStore,
+		Metrics:        appMetrics,
+		LiveMetrics:    liveMetrics,
+		Prometheus:     prometheusClient,
+		Monitoring: server.MonitoringConfig{
+			Enabled:       cfg.MonitoringEnabled,
+			Live:          cfg.MonitoringLive,
+			History:       cfg.MonitoringHistory,
+			Global:        cfg.MonitoringGlobal,
+			Costs:         cfg.MonitoringCosts,
+			CostsForUsers: cfg.MonitoringCostsForUsers,
+		},
 		WebFS:             web.FS,
 		Token:             cfg.Token,
 		TokenAdmin:        cfg.TokenAdmin,

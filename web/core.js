@@ -200,6 +200,7 @@ const els = {
   detailAccess: document.getElementById("detail-access"),
   manageWorkspaces: document.getElementById("manage-workspaces"),
   manageVolumes: document.getElementById("manage-volumes"),
+  manageMonitoring: document.getElementById("manage-monitoring"),
   manageConnections: document.getElementById("manage-connections"),
   manageUsers: document.getElementById("manage-users"),
   manageTeams: document.getElementById("manage-teams"),
@@ -240,6 +241,23 @@ const els = {
   auditListWrap: document.getElementById("audit-list-wrap"),
   auditList: document.getElementById("audit-list"),
   auditPagination: document.getElementById("audit-pagination"),
+  monitoringView: document.getElementById("monitoring-view"),
+  monitoringBack: document.getElementById("monitoring-back"),
+  monitoringRefresh: document.getElementById("monitoring-refresh"),
+  monitoringUpdated: document.getElementById("monitoring-updated"),
+  monitoringSummary: document.getElementById("monitoring-summary"),
+  monitoringRange: document.getElementById("monitoring-range"),
+  monitoringSource: document.getElementById("monitoring-source"),
+  monitoringCharts: document.getElementById("monitoring-charts"),
+  monitoringLoading: document.getElementById("monitoring-loading"),
+  monitoringEmpty: document.getElementById("monitoring-empty"),
+  monitoringListWrap: document.getElementById("monitoring-list-wrap"),
+  monitoringList: document.getElementById("monitoring-list"),
+  detailMonitoring: document.getElementById("detail-monitoring"),
+  detailMonitoringNote: document.getElementById("detail-monitoring-note"),
+  detailMonitoringBody: document.getElementById("detail-monitoring-body"),
+  detailMonitoringRange: document.getElementById("detail-monitoring-range"),
+  detailMonitoringRefresh: document.getElementById("detail-monitoring-refresh"),
   volumesView: document.getElementById("volumes-view"),
   volumesBack: document.getElementById("volumes-back"),
   volumesRefresh: document.getElementById("volumes-refresh"),
@@ -560,6 +578,7 @@ function renderConfig() {
   renderRegionOptions();
   renderRegionFilter();
   renderVSCodeExtension();
+  if (typeof renderMonitoringConfig === "function") renderMonitoringConfig();
   if (!state.config.ssh) return;
   els.sshEndpoint.hidden = false;
   const regions = configuredRegions();
@@ -1292,6 +1311,7 @@ function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
   els.workspaceDetailView.hidden = name !== "workspace-detail";
   els.volumesView.hidden = name !== "volumes";
+  els.monitoringView.hidden = name !== "monitoring";
   els.topologyView.hidden = name !== "topology";
   els.mapView.hidden = name !== "map";
   els.connectionsView.hidden = name !== "connections";
@@ -1304,6 +1324,7 @@ function showView(name) {
   els.auditView.hidden = name !== "audit";
   const active = name === "workspaces" || name === "workspace-detail" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "volumes" ? els.manageVolumes
+    : name === "monitoring" ? els.manageMonitoring
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
     : name === "teams" ? els.manageTeams
@@ -1311,7 +1332,7 @@ function showView(name) {
     : name === "environment" ? els.manageEnv
     : name === "audit" ? els.manageAudit
     : null;
-  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageEnv, els.manageAudit]) {
+  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageMonitoring, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageEnv, els.manageAudit]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

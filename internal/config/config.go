@@ -15,6 +15,14 @@ import (
 type Config struct {
 	Addr                      string
 	MetricsAddr               string
+	MonitoringEnabled         bool
+	MonitoringLive            bool
+	MonitoringHistory         bool
+	MonitoringGlobal          bool
+	MonitoringCosts           bool
+	MonitoringCostsForUsers   bool
+	PrometheusURL             string
+	PrometheusToken           string
 	Namespace                 string
 	RBACConfigMap             string
 	StateConfigMap            string
@@ -106,6 +114,14 @@ func Load(args []string) (Config, error) {
 	cfg := Config{
 		Addr:                      env("PODDY_ADDR", ":8090"),
 		MetricsAddr:               os.Getenv("PODDY_METRICS_ADDR"),
+		MonitoringEnabled:         envBool("PODDY_MONITORING_ENABLED", true),
+		MonitoringLive:            envBool("PODDY_MONITORING_LIVE", true),
+		MonitoringHistory:         envBool("PODDY_MONITORING_HISTORY", true),
+		MonitoringGlobal:          envBool("PODDY_MONITORING_GLOBAL", true),
+		MonitoringCosts:           envBool("PODDY_MONITORING_COSTS", false),
+		MonitoringCostsForUsers:   envBool("PODDY_MONITORING_COSTS_FOR_USERS", false),
+		PrometheusURL:             os.Getenv("PODDY_PROMETHEUS_URL"),
+		PrometheusToken:           os.Getenv("PODDY_PROMETHEUS_TOKEN"),
 		Namespace:                 env("PODDY_NAMESPACE", "default"),
 		RBACConfigMap:             env("PODDY_RBAC_CONFIGMAP", "poddy-rbac"),
 		StateConfigMap:            env("PODDY_STATE_CONFIGMAP", "poddy-state"),
@@ -193,6 +209,14 @@ func Load(args []string) (Config, error) {
 	fs := flag.NewFlagSet("poddy", flag.ContinueOnError)
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "listen address")
 	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", cfg.MetricsAddr, "Prometheus metrics listen address (empty disables metrics)")
+	fs.BoolVar(&cfg.MonitoringEnabled, "monitoring-enabled", cfg.MonitoringEnabled, "enable workspace monitoring APIs and UI")
+	fs.BoolVar(&cfg.MonitoringLive, "monitoring-live", cfg.MonitoringLive, "enable live CPU and memory metrics from metrics-server")
+	fs.BoolVar(&cfg.MonitoringHistory, "monitoring-history", cfg.MonitoringHistory, "enable Prometheus history queries")
+	fs.BoolVar(&cfg.MonitoringGlobal, "monitoring-global", cfg.MonitoringGlobal, "enable the portal-wide admin monitoring view")
+	fs.BoolVar(&cfg.MonitoringCosts, "monitoring-costs", cfg.MonitoringCosts, "enable FinOps cost data")
+	fs.BoolVar(&cfg.MonitoringCostsForUsers, "monitoring-costs-for-users", cfg.MonitoringCostsForUsers, "show cost data to workspace owners instead of admins only")
+	fs.StringVar(&cfg.PrometheusURL, "prometheus-url", cfg.PrometheusURL, "Prometheus base URL for monitoring history (empty disables history)")
+	fs.StringVar(&cfg.PrometheusToken, "prometheus-token", cfg.PrometheusToken, "bearer token used to query Prometheus")
 	fs.StringVar(&cfg.Namespace, "namespace", cfg.Namespace, "workspace namespace")
 	fs.StringVar(&cfg.RBACConfigMap, "rbac-configmap", cfg.RBACConfigMap, "ConfigMap storing admins and template access")
 	fs.StringVar(&cfg.StateConfigMap, "state-configmap", cfg.StateConfigMap, "legacy ConfigMap storing stopped workspace specs (migration only)")

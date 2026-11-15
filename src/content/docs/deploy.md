@@ -533,6 +533,62 @@ The metrics listener has no authentication and must not be exposed publicly.
 Keep the metrics Service `ClusterIP` and restrict access with a NetworkPolicy or
 your monitoring stack's scrape configuration.
 
+## Workspace monitoring
+
+Poddy can show live and historical resource usage in the portal. This is
+separate from the portal's own `/metrics` listener:
+
+- **Live usage** comes from `metrics-server` and is available in each workspace
+  detail panel: current CPU, memory, declared requests/limits, container
+  state, restarts, and OOM kills.
+- **History** comes from Prometheus and powers the 1h/6h/24h charts (CPU,
+  memory, block-device IOPS and throughput, network throughput/errors/drops,
+  CPU throttling, restarts). Workspace and global history
+  use fixed server-side queries; the browser never sends arbitrary PromQL.
+- **Global overview** is an admin-only page with live totals, per-workspace
+  rows, and portal-wide historical charts. Multi-region hubs aggregate region
+  overviews and merge region histories.
+
+Every surface has an independent switch:
+
+| Flag | Environment | Helm value | Default |
+|------|-------------|------------|---------|
+| Master switch | `PODDY_MONITORING_ENABLED` | `monitoring.enabled` | `true` |
+| Live metrics | `PODDY_MONITORING_LIVE` | `monitoring.live` | `true` |
+| Prometheus history | `PODDY_MONITORING_HISTORY` | `monitoring.history` | `true` |
+| Admin global view | `PODDY_MONITORING_GLOBAL` | `monitoring.global` | `true` |
+| FinOps cost data | `PODDY_MONITORING_COSTS` | `monitoring.costs.enabled` | `false` |
+| Costs visible to users | `PODDY_MONITORING_COSTS_FOR_USERS` | `monitoring.costs.visibleToUsers` | `false` |
+
+Prometheus is configured with `PODDY_PROMETHEUS_URL` (or
+`monitoring.prometheus.url`) and an optional bearer token from
+`monitoring.prometheus.existingSecret`. History is disabled automatically when
+the URL is empty. Cost flags are reserved for FinOps: cost data is admin-only
+unless `visibleToUsers` is explicitly enabled.
+
+```yaml
+monitoring:
+  enabled: true
+  live: true
+  history: true
+  global: true
+  prometheus:
+    url: http://prometheus-operated.monitoring.svc:9090
+    existingSecret: poddy-prometheus
+    tokenKey: token
+```
+
+The chart grants `get`/`list` on `metrics.k8s.io` pods. History requires the
+usual cAdvisor and kube-state-metrics series (`container_*`,
+`kube_pod_container_status_restarts_total`, and `kubelet_volume_stats_*` for
+disk). Global history is restricted to workspace pods (`poddy-*-0`); it does
+not include portal or bastion pods. Prometheus is queried directly by the
+portal, so it must be reachable from the portal pods.
+
+Users see their own workspace monitoring in the detail panel. Admins can open
+**Monitoring** in the top bar. The API enforces ownership/admin checks; hiding a
+button in the UI is not the security boundary.
+
 ## SSH bastion configuration
 
 | Value | Description |

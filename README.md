@@ -30,7 +30,7 @@ poddy gives every developer a persistent Linux workspace on Kubernetes. They ope
 | **External auth** | Connect GitHub, GitLab, Gitea, Azure DevOps, Bitbucket, or generic OAuth2 accounts. Refreshed tokens are injected into workspaces and used by Git automatically. |
 | **Secrets** | Encrypted environment variables and secrets at template, team, user, and workspace scope. |
 | **Multi-region** | One central hub and isolated region managers connected by outbound tunnels. No VPN peering or hub-to-region inbound access. |
-| **Observability** | Prometheus metrics, structured logs, and a PostgreSQL-backed audit trail. |
+| **Observability** | Live CPU/memory, Prometheus history, admin monitoring overview, structured logs, and a PostgreSQL-backed audit trail. |
 | **Kubernetes-native operations** | Helm charts, least-privilege ServiceAccounts, PDBs, topology spread, registry mirrors, and no cluster credentials for users. |
 
 ## Works with your workflow

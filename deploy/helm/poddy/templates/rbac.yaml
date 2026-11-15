@@ -15,6 +15,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Live CPU and memory usage from metrics-server.
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
   # Startup logs shown in the workspace details dialog.
   - apiGroups: [""]
     resources: ["pods/log"]

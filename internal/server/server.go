@@ -18,6 +18,7 @@ import (
 	"poddy/internal/local"
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
+	"poddy/internal/monitoring"
 	"poddy/internal/quota"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
@@ -73,6 +74,10 @@ type Server struct {
 	Metrics     *metrics.Metrics
 	Backups     *backup.Store
 
+	LiveMetrics *monitoring.Provider
+	Prometheus  *monitoring.PrometheusClient
+	Monitoring  MonitoringConfig
+
 	GlobalDotfiles dotfiles.Config
 
 	ExternalAuth             *externalauth.Manager
@@ -104,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/dotfiles", s.deleteMyDotfiles)
 	mux.HandleFunc("POST /api/me/ssh-certificate", s.issueSSHCertificate)
 	mux.HandleFunc("GET /api/config", s.config)
+	mux.HandleFunc("GET /api/monitoring/overview", s.monitoringOverview)
+	mux.HandleFunc("GET /api/monitoring/history", s.monitoringHistory)
 	mux.HandleFunc("GET /api/audit", s.auditLog)
 	mux.HandleFunc("GET /api/regions", s.regionSummaries)
 	mux.HandleFunc("GET /api/templates", s.templates)
@@ -158,6 +165,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces", s.list)
 	mux.HandleFunc("GET /api/topology", s.topology)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
+	mux.HandleFunc("GET /api/workspaces/{name}/metrics", s.workspaceMetrics)
+	mux.HandleFunc("GET /api/workspaces/{name}/metrics/history", s.workspaceMetricsHistory)
 	mux.HandleFunc("GET /api/workspaces/{name}/ports", s.workspacePorts)
 	mux.HandleFunc("PUT /api/workspaces/{name}/ports/{port}/share", s.workspaceShare)
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}", s.workspacePortRedirect)
@@ -223,6 +232,14 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"regionMode":        s.RegionMode,
 		"regionName":        s.RegionName,
 		"regions":           regions,
+		"monitoring": map[string]any{
+			"enabled":       s.Monitoring.Enabled,
+			"live":          s.Monitoring.Live,
+			"history":       s.Monitoring.History && s.Prometheus != nil,
+			"global":        s.Monitoring.Global,
+			"costs":         s.Monitoring.Costs,
+			"costsForUsers": s.Monitoring.CostsForUsers,
+		},
 	})
 }
 

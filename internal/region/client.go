@@ -18,6 +18,7 @@ import (
 
 	"poddy/internal/dotfiles"
 	"poddy/internal/k8s"
+	"poddy/internal/monitoring"
 	"poddy/internal/templates"
 )
 
@@ -185,6 +186,38 @@ func (c *Client) Details(ctx context.Context, name string, identity Identity) (m
 	}
 	out["region"] = c.cfg.Name
 	out["regionDisplayName"] = c.cfg.DisplayName
+	return out, nil
+}
+
+func (c *Client) MonitoringOverview(ctx context.Context, identity Identity) (monitoring.Overview, error) {
+	var out monitoring.Overview
+	if err := c.doJSON(ctx, http.MethodGet, "/api/monitoring/overview", identity, nil, &out); err != nil {
+		return monitoring.Overview{}, err
+	}
+	for i := range out.Workspaces {
+		if out.Workspaces[i].Region == "" {
+			out.Workspaces[i].Region = c.cfg.Name
+		}
+	}
+	return out, nil
+}
+
+func (c *Client) MonitoringHistory(ctx context.Context, rangeValue, stepValue string, identity Identity) (monitoring.History, error) {
+	values := url.Values{}
+	if rangeValue != "" {
+		values.Set("range", rangeValue)
+	}
+	if stepValue != "" {
+		values.Set("step", stepValue)
+	}
+	path := "/api/monitoring/history"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out monitoring.History
+	if err := c.doJSON(ctx, http.MethodGet, path, identity, nil, &out); err != nil {
+		return monitoring.History{}, err
+	}
 	return out, nil
 }
 

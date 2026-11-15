@@ -772,6 +772,7 @@ async function showDetails(workspace) {
   if (!els.detailManifests.hidden) setManifestsMessage("Loading manifests...");
   els.detailPortsBody.replaceChildren();
   els.detailPortInput.value = "";
+  if (typeof resetWorkspaceMonitoring === "function") resetWorkspaceMonitoring();
 
   const loading = document.createElement("div");
   loading.className = "loading-small";
@@ -785,6 +786,7 @@ async function showDetails(workspace) {
 }
 
 function closeWorkspaceDetail() {
+  if (typeof stopWorkspaceMonitoring === "function") stopWorkspaceMonitoring();
   state.detailWorkspace = null;
   state.detailRequest += 1;
   state.manifests = null;
@@ -803,7 +805,7 @@ function renderDetailHeader(workspace) {
   if (workspace.owner) bits.push(workspace.owner);
   els.detailSubtitle.textContent = bits.length
     ? bits.join(" · ")
-    : "Metadata, ports, rendered manifests, and startup logs for this workspace.";
+    : "Ports, metadata, rendered manifests, and startup logs for this workspace.";
 
   const phase = workspace.phase || "Unknown";
   els.detailStatus.replaceChildren();
@@ -838,6 +840,7 @@ async function refreshDetails() {
     loadPorts(workspace, portsRequest, els.detailPortsBody, () => state.detailPortsRequest),
   ];
   if (state.me && state.me.isAdmin) jobs.push(loadManifests(workspace, request));
+  if (typeof loadWorkspaceMonitoring === "function") jobs.push(loadWorkspaceMonitoring(workspace, { silent: true }));
   await Promise.all(jobs);
   if (request === state.detailRequest) {
     els.detailLogsRefresh.disabled = false;

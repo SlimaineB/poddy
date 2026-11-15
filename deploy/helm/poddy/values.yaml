@@ -402,6 +402,30 @@ metrics:
     relabelings: []
     metricRelabelings: []
 
+# In-product monitoring. Every surface is independent so an installation can
+# expose live usage, Prometheus history, the admin overview, or none of them.
+monitoring:
+  # Master switch for workspace and portal monitoring APIs and UI.
+  enabled: true
+  # Live CPU/memory from metrics-server in workspace details.
+  live: true
+  # Historical charts queried from Prometheus. Requires monitoring.prometheus.url.
+  history: true
+  # Admin-only portal-wide monitoring view.
+  global: true
+  # FinOps is disabled by default. Cost data is never shown to regular users
+  # unless visibleToUsers is explicitly enabled.
+  costs:
+    enabled: false
+    visibleToUsers: false
+  prometheus:
+    # In-cluster Prometheus base URL, for example
+    # http://prometheus-operated.monitoring.svc:9090
+    url: ""
+    # Existing Secret in the release namespace containing a bearer token.
+    existingSecret: ""
+    tokenKey: token
+
 portal:
   addr: ":8080"
 

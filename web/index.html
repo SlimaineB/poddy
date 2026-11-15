@@ -63,6 +63,7 @@
       <div class="topbar-actions">
         <button id="manage-workspaces" class="button ghost small active" type="button"><svg class="icon"><use href="#icon-grid"></use></svg>Workspaces</button>
         <button id="manage-volumes" class="button ghost small" type="button"><svg class="icon"><use href="#icon-database"></use></svg>Volumes</button>
+        <button id="manage-monitoring" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-activity"></use></svg>Monitoring</button>
         <button id="manage-connections" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-link"></use></svg>Connections</button>
         <button id="manage-users" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Users</button>
         <button id="manage-teams" class="button ghost small" type="button" hidden><svg class="icon"><use href="#icon-users"></use></svg>Teams</button>
@@ -607,6 +608,63 @@
     <div id="audit-pagination" class="pagination" hidden></div>
   </section>
 
+  <section id="monitoring-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="monitoring-back" class="button ghost small" type="button">← Workspaces</button>
+        <h1>Monitoring</h1>
+        <p>Live resource usage and historical trends across workspaces.</p>
+      </div>
+      <div class="view-actions">
+        <span id="monitoring-updated" class="count"></span>
+        <button id="monitoring-refresh" class="button ghost small" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <section id="monitoring-summary" class="monitoring-kpis"></section>
+
+    <div class="monitoring-toolbar">
+      <div class="view-toggle" id="monitoring-range" role="group" aria-label="History range">
+        <button class="button ghost small active" type="button" data-monitoring-range="1h" aria-pressed="true">1h</button>
+        <button class="button ghost small" type="button" data-monitoring-range="6h" aria-pressed="false">6h</button>
+        <button class="button ghost small" type="button" data-monitoring-range="24h" aria-pressed="false">24h</button>
+      </div>
+      <span id="monitoring-source" class="hint"></span>
+    </div>
+
+    <section id="monitoring-charts" class="monitoring-charts"></section>
+
+    <section id="monitoring-loading" class="loading" hidden>
+      <span class="spinner"></span>
+      <span>Loading monitoring data</span>
+    </section>
+
+    <section id="monitoring-empty" class="empty" hidden>
+      <span class="empty-icon"><svg class="icon"><use href="#icon-activity"></use></svg></span>
+      <h2>No monitoring data</h2>
+      <p>No workspaces are reporting live metrics yet.</p>
+    </section>
+
+    <div id="monitoring-list-wrap" class="workspace-list-wrap" hidden>
+      <table class="workspace-table monitoring-table">
+        <thead>
+          <tr>
+            <th>Workspace</th>
+            <th>Status</th>
+            <th>Region</th>
+            <th>CPU</th>
+            <th>Memory</th>
+            <th>Requests</th>
+            <th>Restarts</th>
+            <th>Updated</th>
+            <th class="workspace-table-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="monitoring-list"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="ssh-keys-view" class="page" hidden>
     <header class="view-header">
       <div>
@@ -794,21 +852,12 @@
         <span class="detail-mark"><svg class="icon"><use href="#icon-box"></use></svg></span>
         <div class="detail-heading">
           <h1 id="detail-title">Workspace details</h1>
-          <p id="detail-subtitle">Metadata, ports, rendered manifests, and startup logs for this workspace.</p>
+          <p id="detail-subtitle">Ports, metadata, rendered manifests, and startup logs for this workspace.</p>
         </div>
         <div id="detail-actions" class="detail-actions"></div>
       </div>
     </header>
     <div class="detail-body">
-      <section class="detail-panel detail-overview">
-        <header class="workspace-logs-header">
-          <div>
-            <h3>Overview</h3>
-            <p>Live metadata and storage for this workspace.</p>
-          </div>
-        </header>
-        <dl id="detail-list" class="detail-list"></dl>
-      </section>
       <section class="detail-panel workspace-ports">
         <header class="workspace-logs-header">
           <div>
@@ -826,6 +875,32 @@
           <button class="button primary small" type="submit">Ouvrir</button>
         </form>
         <p class="hint">Apps bound to 127.0.0.1 work. Absolute asset URLs may need a base path. Internal share links require a portal login; public links do not.</p>
+      </section>
+      <section class="detail-panel detail-overview">
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Overview</h3>
+            <p>Live metadata and storage for this workspace.</p>
+          </div>
+        </header>
+        <dl id="detail-list" class="detail-list"></dl>
+      </section>
+      <section id="detail-monitoring" class="detail-panel workspace-monitoring" hidden>
+        <header class="workspace-logs-header">
+          <div>
+            <h3>Monitoring</h3>
+            <p id="detail-monitoring-note">Live usage, peaks, and historical trends for this workspace.</p>
+          </div>
+          <div class="monitoring-actions">
+            <select id="detail-monitoring-range" class="monitoring-range-select" aria-label="History range">
+              <option value="1h">1h</option>
+              <option value="6h">6h</option>
+              <option value="24h">24h</option>
+            </select>
+            <button id="detail-monitoring-refresh" class="button ghost small" type="button">Refresh</button>
+          </div>
+        </header>
+        <div id="detail-monitoring-body" class="monitoring-body"></div>
       </section>
       <section class="detail-panel">
         <header class="workspace-logs-header">
@@ -1125,6 +1200,7 @@
   <script src="/static/ides.js"></script>
   <script src="/static/quotas.js"></script>
   <script src="/static/workspaces.js"></script>
+  <script src="/static/monitoring.js"></script>
   <script src="/static/templates.js"></script>
   <script src="/static/teams.js"></script>
   <script src="/static/users.js"></script>

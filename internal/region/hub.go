@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"poddy/internal/k8s"
+	"poddy/internal/monitoring"
 )
 
 type Hub struct {
@@ -409,6 +410,93 @@ func (h *Hub) Create(ctx context.Context, regionName string, req k8s.CreateReque
 		h.rememberWorkspace(req.Name, cfg.Name)
 	}
 	return created, err
+}
+
+func (h *Hub) MonitoringOverview(ctx context.Context, identity Identity) (monitoring.Overview, []error) {
+	if h == nil {
+		return monitoring.Overview{Workspaces: []monitoring.WorkspaceOverview{}}, nil
+	}
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		combined monitoring.Overview
+		problems []error
+	)
+	combined.Workspaces = []monitoring.WorkspaceOverview{}
+	for _, cfg := range h.Configs() {
+		client := h.clients[cfg.Name]
+		if client == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(cfg Config, client *Client) {
+			defer wg.Done()
+			overview, err := client.MonitoringOverview(ctx, identity)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+				return
+			}
+			combined.Workspaces = append(combined.Workspaces, overview.Workspaces...)
+			combined.Usage.Add(overview.Usage)
+			combined.Requests.Add(overview.Requests)
+			combined.Limits.Add(overview.Limits)
+			if overview.Available {
+				combined.Available = true
+				combined.Source = overview.Source
+				if overview.ObservedAt != nil && (combined.ObservedAt == nil || overview.ObservedAt.After(*combined.ObservedAt)) {
+					combined.ObservedAt = overview.ObservedAt
+				}
+			}
+			if combined.Reason == "" {
+				combined.Reason = overview.Reason
+			}
+		}(cfg, client)
+	}
+	wg.Wait()
+	sort.Slice(combined.Workspaces, func(i, j int) bool {
+		if combined.Workspaces[i].Region == combined.Workspaces[j].Region {
+			return combined.Workspaces[i].Name < combined.Workspaces[j].Name
+		}
+		return combined.Workspaces[i].Region < combined.Workspaces[j].Region
+	})
+	if len(problems) > 0 && !combined.Available {
+		combined.Reason = "one or more regions are unavailable"
+	}
+	return combined, problems
+}
+
+func (h *Hub) MonitoringHistory(ctx context.Context, identity Identity, rangeValue, stepValue string) (monitoring.History, []error) {
+	if h == nil {
+		return monitoring.History{}, nil
+	}
+	var (
+		mu        sync.Mutex
+		wg        sync.WaitGroup
+		histories []monitoring.History
+		problems  []error
+	)
+	for _, cfg := range h.Configs() {
+		client := h.clients[cfg.Name]
+		if client == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(cfg Config, client *Client) {
+			defer wg.Done()
+			history, err := client.MonitoringHistory(ctx, rangeValue, stepValue, identity)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+				return
+			}
+			histories = append(histories, history)
+		}(cfg, client)
+	}
+	wg.Wait()
+	return monitoring.MergeHistories(histories), problems
 }
 
 func (h *Hub) Topology(ctx context.Context, identity Identity) (Topology, []error) {

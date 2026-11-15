@@ -210,6 +210,35 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 	return m.listAPI(ctx)
 }
 
+// PodWorkspaceName returns the workspace label of a workspace pod. Legacy pods
+// and StatefulSet pods use different names, so monitoring must map by label.
+func PodWorkspaceName(pod *corev1.Pod) string {
+	if pod == nil {
+		return ""
+	}
+	return pod.Labels[labelWorkspace]
+}
+
+// ListPods returns the cached workspace pods. Monitoring uses it to build a
+// portal-wide snapshot without issuing one pod read per workspace.
+func (m *Manager) ListPods(ctx context.Context) ([]*corev1.Pod, error) {
+	selector := klabels.SelectorFromSet(klabels.Set{labelName: AppName})
+	if m.informersSynced.Load() {
+		return m.podLister.Pods(m.Namespace).List(selector)
+	}
+	list, err := m.Client.CoreV1().Pods(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelName + "=" + AppName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*corev1.Pod, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, &list.Items[i])
+	}
+	return out, nil
+}
+
 func (m *Manager) listCached() ([]Workspace, error) {
 	selector := klabels.SelectorFromSet(klabels.Set{labelName: AppName})
 	statefulSets, err := m.stsLister.StatefulSets(m.Namespace).List(selector)

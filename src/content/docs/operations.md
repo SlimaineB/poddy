@@ -218,6 +218,14 @@ Suggested alerts:
 - region tunnel disconnected for more than 5 minutes;
 - certificate or token expiration approaching.
 
+In-product monitoring is separate from the `/metrics` listener. If enabled, the
+portal reads live usage from `metrics-server` and history from Prometheus. Check
+`GET /api/config` (`monitoring.history` is false when Prometheus is not
+configured) and the workspace **Monitoring** panel. Common failures are missing
+`metrics.k8s.io` RBAC, an unreachable Prometheus URL, or Prometheus without the
+cAdvisor/kube-state-metrics series. Global history only queries workspace pods
+matching `poddy-*-0`.
+
 Also log:
 
 - portal and bastion JSON logs;
