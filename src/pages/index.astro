@@ -1,0 +1,447 @@
+---
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import Icon from '../components/Icon.astro';
+import '../styles/landing.css';
+
+const base = import.meta.env.BASE_URL;
+const docs = `${base}getting-started/`;
+const site = 'https://slimaineb.github.io/poddy/';
+
+const features = [
+  {
+    icon: 'rocket',
+    title: 'Workspaces in minutes',
+    text: 'Pick a template, choose resources, and get a running environment. No ticket, no YAML hand-holding, no waiting for the platform team.',
+  },
+  {
+    icon: 'hard-drive',
+    title: 'A home that survives',
+    text: 'Every workspace gets a persistent volume. Stop it overnight, restart it next week, and your code, caches, and shell history are still there.',
+  },
+  {
+    icon: 'code',
+    title: 'Any IDE, one click',
+    text: 'Open VS Code, Cursor, JetBrains Gateways, or JupyterLab in the browser. Or connect over SSH and use the editor already on your laptop.',
+  },
+  {
+    icon: 'key',
+    title: 'SSO without a sidecar',
+    text: 'Bring your own OIDC provider, map groups to teams, and let poddy handle sessions, ownership, and approvals. No shared kubeconfig.',
+  },
+  {
+    icon: 'cpu',
+    title: 'Quotas with guardrails',
+    text: 'Set CPU, memory, storage, and workspace limits per team or per user. Developers get freedom inside the boundary you define.',
+  },
+  {
+    icon: 'refresh',
+    title: 'Resilient by design',
+    text: 'Workspaces are Kubernetes StatefulSets. Pods reschedule, volumes reattach, and backups stream to S3-compatible storage when you need them.',
+  },
+];
+
+const security = [
+  {
+    icon: 'shield',
+    title: 'OIDC and group mapping',
+    text: 'Authenticate through Okta, Entra ID, Keycloak, or any OIDC provider. Map identity groups to poddy teams and quotas.',
+  },
+  {
+    icon: 'lock',
+    title: 'Least-privilege by default',
+    text: 'The portal uses a namespace-scoped role. Workspaces are isolated, and access is checked on every request.',
+  },
+  {
+    icon: 'users',
+    title: 'Ownership and approvals',
+    text: 'Every workspace has an owner. Admins and auditors get the visibility they need without sharing cluster credentials.',
+  },
+  {
+    icon: 'database',
+    title: 'A real control plane',
+    text: 'Users, RBAC, quotas, audit events, shares, and environment secrets live in PostgreSQL, not in a pile of ConfigMaps.',
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>poddy — self-service Kubernetes development workspaces</title>
+    <meta
+      name="description"
+      content="poddy gives every developer an isolated Kubernetes workspace with a persistent home directory, their favourite IDE, SSO, quotas, and backups. Self-service for them. Guardrails for you."
+    />
+    <meta name="theme-color" content="#07070c" />
+    <link rel="canonical" href={site} />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="poddy — self-service Kubernetes development workspaces" />
+    <meta
+      property="og:description"
+      content="Isolated Kubernetes workspaces with persistent homes, one-click IDEs, SSO, quotas, and backups."
+    />
+    <meta property="og:url" content={site} />
+    <meta property="og:image" content={`${site}og.png`} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="poddy — self-service Kubernetes development workspaces" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={`${site}og.png`} />
+    <script type="application/ld+json" set:html={JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'poddy',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Kubernetes',
+      description:
+        'Self-service Kubernetes development workspaces with persistent homes, one-click IDEs, SSO, quotas, and backups.',
+      url: site,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    })} />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <SiteHeader />
+
+    <main id="main">
+      <section class="hero">
+        <div class="shell hero-grid">
+          <div>
+            <div class="eyebrow reveal">
+              <span class="eyebrow-dot"></span>
+              Kubernetes workspaces, minus the platform ticket
+            </div>
+            <h1 class="reveal delay-1">
+              Your dev environment.<br />
+              <span class="gradient">One click away.</span>
+            </h1>
+            <p class="hero-lede reveal delay-2">
+              poddy gives every developer an isolated Kubernetes workspace with a persistent
+              home directory, their favourite IDE, and the exact tools their project needs.
+              Self-service for them. Guardrails for you.
+            </p>
+            <div class="hero-actions reveal delay-3">
+              <a class="button" href={docs}>
+                Start in minutes
+                <Icon name="arrow-right" size={17} />
+              </a>
+              <a class="button button-ghost" href="#how-it-works">
+                See how it works
+                <Icon name="chevron" size={16} />
+              </a>
+            </div>
+            <div class="hero-note reveal delay-3">
+              <span><Icon name="check" size={15} /> Open source</span>
+              <span><Icon name="check" size={15} /> Helm install</span>
+              <span><Icon name="check" size={15} /> No vendor lock-in</span>
+            </div>
+          </div>
+
+          <div class="hero-visual reveal delay-2">
+            <div class="browser">
+              <div class="browser-bar">
+                <div class="browser-dots"><i></i><i></i><i></i></div>
+                <div class="browser-address">
+                  <Icon name="lock" size={10} />
+                  poddy.example.com
+                </div>
+              </div>
+              <img
+                src={`${base}portal-workspaces.webp`}
+                width="1920"
+                height="984"
+                alt="poddy portal showing running workspaces, owners, templates, and resource usage"
+                loading="eager"
+                fetchpriority="high"
+              />
+            </div>
+            <div class="float-card one">
+              <span class="float-icon"><Icon name="zap" size={15} /></span>
+              <span>
+                <strong>Workspace ready</strong>
+                <small>in 12 seconds</small>
+              </span>
+            </div>
+            <div class="float-card two">
+              <span class="float-icon"><Icon name="hard-drive" size={15} /></span>
+              <span>
+                <strong>/home/dev persisted</strong>
+                <small>restart-safe</small>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="trust-strip">
+        <div class="shell trust-inner">
+          <span class="trust-label">Built on</span>
+          <div class="trust-list">
+            <span><Icon name="kubernetes" size={15} /> Kubernetes</span>
+            <span><Icon name="database" size={15} /> PostgreSQL</span>
+            <span><Icon name="boxes" size={15} /> Helm</span>
+            <span><Icon name="key" size={15} /> OIDC</span>
+            <span><Icon name="cloud" size={15} /> S3-compatible storage</span>
+          </div>
+        </div>
+      </div>
+
+      <section class="section" id="product">
+        <div class="shell">
+          <div class="section-head">
+            <div class="section-kicker">The product</div>
+            <h2>Everything a dev workspace needs. Nothing your cluster can't handle.</h2>
+            <p class="section-lede">
+              poddy is not a hosted IDE or another abstraction layer over Kubernetes. It is the
+              self-service layer your platform team would have built: browser portal, API, SSH
+              bastion, and workspace lifecycle, running inside your own cluster.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            {features.map((feature) => (
+              <article class="feature-card">
+                <div class="icon-tile"><Icon name={feature.icon} size={20} /></div>
+                <h3>{feature.title}</h3>
+                <p>{feature.text}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="how-it-works">
+        <div class="shell split">
+          <div>
+            <div class="section-kicker">How it works</div>
+            <h2>A simple path from request to running code.</h2>
+            <p class="section-lede">
+              Developers only see workspaces, templates, and their IDE. Under the hood, poddy
+              turns those actions into plain Kubernetes resources your platform team already
+              knows how to operate.
+            </p>
+            <ul class="check-list">
+              <li>
+                <Icon name="check-circle" size={19} />
+                <span><strong>Choose a template.</strong> Teams publish golden templates with the
+                right image, tools, CPU, memory, and storage.</span>
+              </li>
+              <li>
+                <Icon name="check-circle" size={19} />
+                <span><strong>Launch the workspace.</strong> poddy creates a StatefulSet, PVC, and
+                Services in your workspace namespace.</span>
+              </li>
+              <li>
+                <Icon name="check-circle" size={19} />
+                <span><strong>Open your editor.</strong> Use the browser IDE, a local editor through
+                SSH, or port-forward any service.</span>
+              </li>
+              <li>
+                <Icon name="check-circle" size={19} />
+                <span><strong>Stop and resume.</strong> Scale to zero when idle, keep the volume, and
+                come back to the same home directory.</span>
+              </li>
+            </ul>
+            <div class="ide-row">
+              <span class="chip"><Icon name="code" size={15} /> VS Code</span>
+              <span class="chip"><Icon name="code" size={15} /> Cursor</span>
+              <span class="chip"><Icon name="laptop" size={15} /> JetBrains</span>
+              <span class="chip"><Icon name="terminal" size={15} /> SSH</span>
+              <span class="chip"><Icon name="layout" size={15} /> JupyterLab</span>
+            </div>
+          </div>
+
+          <div class="workflow-shell">
+            <div class="workflow-lanes">
+              <div class="lane">
+                <div class="lane-label">Developer</div>
+                <div class="lane-item"><Icon name="layout" size={15} /> Workspace portal</div>
+                <div class="lane-item"><Icon name="terminal" size={15} /> SSH or CLI</div>
+                <div class="lane-item"><Icon name="code" size={15} /> Browser IDE</div>
+              </div>
+              <div class="lane poddy-lane">
+                <div class="lane-label">poddy</div>
+                <div class="lane-item"><Icon name="key" size={15} /> OIDC sessions</div>
+                <div class="lane-item"><Icon name="shield" size={15} /> RBAC + quotas</div>
+                <div class="lane-item"><Icon name="database" size={15} /> PostgreSQL</div>
+              </div>
+              <div class="lane">
+                <div class="lane-label">Kubernetes</div>
+                <div class="lane-item"><Icon name="boxes" size={15} /> StatefulSet</div>
+                <div class="lane-item"><Icon name="hard-drive" size={15} /> PersistentVolume</div>
+                <div class="lane-item"><Icon name="server" size={15} /> Services</div>
+              </div>
+            </div>
+            <div class="workflow-caption">
+              <span><i></i> Identity and policy</span>
+              <span><i></i> Workspace lifecycle</span>
+              <span><i></i> Compute and storage</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="security">
+        <div class="shell">
+          <div class="section-head">
+            <div class="section-kicker">Security</div>
+            <h2>Developer freedom without giving away the cluster.</h2>
+            <p class="section-lede">
+              poddy keeps credentials, policy, and workspace access inside the control plane.
+              Developers get the environment they need; your cluster keeps its boundaries.
+            </p>
+          </div>
+          <div class="security-grid">
+            {security.map((item) => (
+              <article class="security-item">
+                <div class="icon-tile"><Icon name={item.icon} size={18} /></div>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="quickstart">
+        <div class="shell quickstart">
+          <div>
+            <div class="section-kicker">Quick start</div>
+            <h2>Install it on the cluster you already have.</h2>
+            <p class="section-lede">
+              poddy ships as Helm charts for the portal and workspace templates. Point it at
+              PostgreSQL, set your hostname, and open the portal.
+            </p>
+            <div class="quickstart-steps">
+              <div class="quickstart-step"><span class="step-num">1</span> Install the portal chart</div>
+              <div class="quickstart-step"><span class="step-num">2</span> Add a workspace template</div>
+              <div class="quickstart-step"><span class="step-num">3</span> Sign in and launch a workspace</div>
+            </div>
+            <div class="hero-actions">
+              <a class="button" href={docs}>
+                Read the quick start
+                <Icon name="arrow-right" size={17} />
+              </a>
+              <a class="button button-ghost" href={`${base}deploy/`}>Deployment guide</a>
+            </div>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span><i class="dot"></i> terminal</span>
+              <span>helm</span>
+            </div>
+            <pre><code><span class="c"># portal</span>
+helm upgrade --install poddy \
+  oci://ghcr.io/slimaineb/charts/poddy \
+  --namespace poddy-system --create-namespace \
+  --set ingress.hosts[0].host=poddy.example.com \
+  --set-string database.url=<span class="v">"$PODDY_DATABASE_URL"</span>
+
+<span class="c"># a first workspace template</span>
+helm upgrade --install poddy-templates \
+  oci://ghcr.io/slimaineb/charts/poddy-templates \
+  --namespace poddy-system
+
+<span class="g"># open https://poddy.example.com</span></code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="shell split">
+          <div>
+            <div class="section-kicker">FAQ</div>
+            <h2>Questions platform teams ask first.</h2>
+            <p class="section-lede">
+              The short answers. The documentation covers the details, including OIDC, quotas,
+              templates, storage, and production operations.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-ghost" href={`${base}troubleshooting/`}>
+                Browse troubleshooting
+                <Icon name="arrow-right" size={16} />
+              </a>
+            </div>
+          </div>
+
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>
+                Does poddy replace Kubernetes?
+                <Icon name="chevron" size={17} />
+              </summary>
+              <p>
+                No. poddy runs on Kubernetes and turns workspaces into normal StatefulSets,
+                PVCs, and Services. Your platform team keeps using the cluster, policies, and
+                storage classes it already operates.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>
+                Can developers use their local editor?
+                <Icon name="chevron" size={17} />
+              </summary>
+              <p>
+                Yes. Connect through the SSH bastion, use a local VS Code or Cursor Remote-SSH
+                session, or use a JetBrains Gateway. Browser IDEs and a terminal are available
+                too, so nobody needs a local Kubernetes setup.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>
+                What happens when a workspace is stopped?
+                <Icon name="chevron" size={17} />
+              </summary>
+              <p>
+                The StatefulSet scales to zero and the home volume stays. Start it again and the
+                same pod template, volume, and home directory come back. Backups can stream a
+                stopped volume to S3-compatible storage.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>
+                Is there a hosted version?
+                <Icon name="chevron" size={17} />
+              </summary>
+              <p>
+                poddy is self-hosted. You install it in your own cluster with Helm, so source
+                code, volumes, and identity stay under your control. No vendor account is
+                required.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-tight">
+        <div class="shell">
+          <div class="cta-band">
+            <div>
+              <h2>Give your developers a workspace, not a ticket queue.</h2>
+              <p>
+                Install poddy on your cluster, publish a template, and let the first workspace
+                start itself.
+              </p>
+            </div>
+            <div class="cta-actions">
+              <a class="button" href={docs}>Get started</a>
+              <a class="button button-ghost" href="https://github.com/SlimaineB/poddy">
+                View on GitHub
+                <Icon name="arrow-up-right" size={16} />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <SiteFooter />
+  </body>
+</html>

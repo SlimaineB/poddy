@@ -1,0 +1,73 @@
+---
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import Icon from '../components/Icon.astro';
+import '../styles/landing.css';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page not found — poddy</title>
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#07070c" />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <style>
+      .not-found {
+        display: grid;
+        place-items: center;
+        min-height: 62vh;
+        padding: 80px 0;
+        text-align: center;
+      }
+      .not-found-code {
+        background: linear-gradient(105deg, #c4b5fd 5%, #818cf8 46%, #67e8f9 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        font-family: var(--mono);
+        font-size: clamp(4rem, 16vw, 9rem);
+        font-weight: 700;
+        letter-spacing: -0.08em;
+        line-height: 1;
+      }
+      .not-found h1 {
+        margin-top: 18px;
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+      }
+      .not-found p {
+        max-width: 520px;
+        margin: 16px auto 0;
+        color: var(--muted);
+      }
+      .not-found .hero-actions {
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <SiteHeader />
+    <main class="shell not-found">
+      <div>
+        <div class="not-found-code">404</div>
+        <h1>This workspace doesn't exist.</h1>
+        <p>
+          The page you were looking for may have moved, or the URL may be wrong. The docs are
+          the best place to get back on track.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href={`${base}getting-started/`}>
+            Go to the docs
+            <Icon name="arrow-right" size={17} />
+          </a>
+          <a class="button button-ghost" href={base}>Back home</a>
+        </div>
+      </div>
+    </main>
+    <SiteFooter />
+  </body>
+</html>

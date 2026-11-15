@@ -149,7 +149,7 @@ data:
 Poddy merges `pod.yaml` over its internal pod defaults (SSH, workspace volume,
 resources, security context, browser VS Code sidecar). A template can be as
 small as `apiVersion: v1`, `kind: Pod`, `spec: {}`, and can still override or
-add any field. See [docs/templates.md](../../../docs/templates.md) for the merge
+add any field. See [the template contract](https://slimaineb.github.io/poddy/templates/) for the merge
 rules.
 
 ```bash
@@ -185,7 +185,7 @@ Rules for multi-team setups:
   release instead of relying on the release namespace.
 - **Template content is cluster-privileged**: a template controls the pod spec.
   Protect the ConfigMap write path and enforce admission policies; see
-  [Security and trust](../../../docs/templates.md#security-and-trust).
+  [Security and trust](https://slimaineb.github.io/poddy/templates/#security-and-trust).
 
 Example team values (`builtins.enabled=false`):
 
@@ -213,4 +213,4 @@ templates:
 | `fullnameOverride` | `""` | Override the generated ConfigMap prefix. |
 | `templates` | `{}` | Map of template name to `{template, pod}` or `{active, versions}`. |
 
-See [docs/templates.md](../../../docs/templates.md) for the full template contract.
+See [the template contract](https://slimaineb.github.io/poddy/templates/) for the full template contract.

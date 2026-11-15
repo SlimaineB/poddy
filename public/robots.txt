@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://slimaineb.github.io/poddy/sitemap-index.xml

@@ -1,0 +1,265 @@
+---
+title: "RBAC: admins, auditors, owners, and teams"
+description: "Manage global admins, auditors, template owners, teams, workspace ownership, and access rules."
+---
+
+poddy uses a deliberately small RBAC model stored in PostgreSQL `rbac_documents`; the `poddy-rbac` ConfigMap is a materialized mirror. See [PostgreSQL schema](postgres-schema.md).
+
+- **Global admins** see and manage every workspace and template.
+- **Auditors** can read the PostgreSQL audit trail, but cannot change workspaces, templates, teams, or RBAC.
+- **Template owners** manage who can use their templates.
+- **Teams** are named groups of users that can be assigned to templates and carry optional quota defaults.
+- **Regular users** see their own workspaces and the templates assigned to them.
+- **Quotas** cap each user's total workspaces, CPU, memory, and storage. Team quotas provide defaults; user overrides win field by field.
+
+Global admins can inspect and manage every workspace, but entering another
+user's workspace interactively requires the owner's approval. See
+[Workspace presence and owner approval](workspace-access.md).
+
+## Where roles live
+
+PostgreSQL `rbac_documents` is authoritative. The portal also renders the
+`poddy-rbac` ConfigMap in the workspace namespace as a mirror; the key is
+`rbac.yaml` and it is useful for inspection, seeding, and recovery:
+
+```yaml
+admins:
+  - admin@example.com
+  - group:platform
+
+auditors:
+  - security@example.com
+
+teams:
+  backend:
+    members:
+      - alice@example.com
+      - user:bob
+      - group:backend-devs
+
+templates:
+  go:
+    owners:
+      - dev@example.com
+    users:
+      - alice@example.com
+      - group:contractors
+    teams:
+      - backend
+```
+
+Change the mirror name with `-rbac-configmap` / `PODDY_RBAC_CONFIGMAP`. A missing mirror is valid: no admins, no teams, and all templates are public until PostgreSQL has data.
+
+The portal writes RBAC through the UI/API to PostgreSQL and reconciles the ConfigMap mirror. Editing the mirror with `kubectl` does not change the authoritative document after the initial import; use the API. The portal's Role needs `get/list/watch/create/update/patch` on `configmaps` for templates, the mirror, and stopped specs.
+
+## Identity matching
+
+Every entry is matched against the signed-in identity (username, email, groups):
+
+| Entry | Matches |
+|-------|---------|
+| `alice@example.com` | username **or** email, case-insensitive |
+| `user:alice` | username only |
+| `email:alice@example.com` | email only |
+| `group:backend` | one of the identity's groups |
+| `*` | every authenticated user |
+
+Use `group:` for IdP groups, or plain email/username for small setups. Team membership uses the same matching rules.
+
+> `*` is powerful. `admins: ["*"]` makes everyone an admin; `owners: ["*"]` lets everyone manage a template. Use it only in `users` when you want a template with owners to remain public.
+
+## Template access
+
+A template with **no entry** under `templates` is **public**: every authenticated user can create workspaces from it.
+
+Once an entry exists, only these identities can use the template:
+
+- global admins;
+- the template `owners`;
+- identities in `users`;
+- members of the teams in `teams`.
+
+An entry with owners but no users/teams is restricted to the owners (and admins). To keep owners and also allow everyone, add `"*"` to `users`.
+
+Access changes do **not** delete existing workspaces. They only affect who can create new ones.
+
+### Who can edit access
+
+| Action | Global admin | Template owner |
+|--------|--------------|----------------|
+| See the template | yes | yes |
+| Create workspaces from it | yes | yes |
+| Edit `users` / `teams` | yes | yes |
+| Edit `owners` | yes | no (field read-only) |
+| Manage teams | yes | no |
+| List team names | yes | yes (for assignment) |
+| Read the audit trail | yes | no |
+
+An owner who clears `users` and `teams` keeps the template restricted to its owners, because the `owners` list is preserved. Only an admin can remove all owners and access lists, which deletes the entry and makes the template public again.
+
+The server rejects unknown team names when saving access.
+
+## Quotas
+
+Quotas are optional per-user budgets stored in the same `rbac.yaml` document.
+The portal checks them when a workspace is created. Usage includes every
+workspace owned by the user, running or stopped, plus the workspace being
+created. CPU, memory, and storage are summed from the rendered resource requests
+and PVC size.
+
+```yaml
+teams:
+  backend:
+    members:
+      - alice@example.com
+    quota:
+      maxWorkspaces: 5
+      cpu: "4"
+      memory: "8Gi"
+      storage: "50Gi"
+
+userQuotas:
+  alice@example.com:
+    maxWorkspaces: 2
+    cpu: "2"
+```
+
+Rules:
+
+- A team quota is the default for its members.
+- A user quota overrides the team value **field by field**. Fields omitted from
+  the user quota still inherit from teams.
+- If a user belongs to several teams with quotas, the portal takes the **most
+  permissive value per field**.
+- No team quota and no user override means unlimited. An empty field also means
+  unlimited for that dimension.
+- A user override wins even when it is lower than the team value.
+- Admins bypass quotas.
+- In multi-region deployments the central hub enforces the quota across all
+  regions. Region managers do not enforce quotas locally, so create workspaces
+  through the hub.
+- `maxWorkspaces` is a non-negative integer. CPU, memory, and storage are
+  non-negative Kubernetes quantities such as `500m`, `4`, `8Gi`, or `50Gi`.
+
+`userQuotas` keys may be a plain username/email, `user:<username>`, or
+`email:<email>`, matched case-insensitively. The wildcard `*` is not allowed as
+a user-quota key. Sending an empty quota removes the override.
+
+Admins manage quotas in the UI: **Teams** has quota fields on the team form, and
+**Users** has **Set quota** / **Edit quota** actions. Both write to PostgreSQL;
+the RBAC ConfigMap is a mirror.
+
+## Workspace ownership
+
+Each workspace gets an owner at creation:
+
+1. the OIDC email, if present;
+2. otherwise the username;
+3. otherwise the subject.
+
+The owner is stored in the pod annotation `poddy.io/owner` (not a label: emails are not valid label values).
+
+- Global admins see and manage every workspace.
+- Other users see only their own workspaces (list, delete, terminal, VS Code).
+- Template owners do **not** automatically see other users' workspaces. Only global admins do.
+- Workspaces created before this feature have no owner annotation. They remain visible to global admins only; non-admins will not see them, and only admin SSH keys can reach them.
+- SSH access follows the same owner. Self-service keys added from **SSH keys** are bound to the signed-in identity server-side. Administrator-managed keys are matched by comment: `alice@example.com` can only reach workspaces owned by `alice@example.com`; for non-email identities use `user:<identity>` (for example `user:token` for token auth). Admin keys (`admin` or `*`) can reach every workspace. This check is enforced by the bastion on every connection, not only by the UI.
+- In local editor mode, the portal marks the SSH keys it manages as admin keys. Cluster deployments run with `-editor=` and do not add local keys.
+
+Trusted local mode (no token, no OIDC) acts as a global admin. A shared token has the single identity `token` and is not a global admin unless `auth.tokenAdmin=true`.
+
+## UI
+
+- **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
+- **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The database is required outside region-manager mode, so the page is available to admins and auditors.
+- **Teams** (admins): dedicated page to create, edit members, set quota defaults, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
+- **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
+- **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
+- Workspace cards show the owner badge to global admins.
+- The topbar shows the current role (`admin`, `auditor`, `owner`, or nothing for a regular user).
+
+## API
+
+| Method & path | Who | Purpose |
+|---------------|-----|---------|
+| `GET /api/me` | authenticated | username, email, groups, method, `isAdmin`, `isAuditor`, `canViewAudit`, `ownedTemplates` |
+| `GET /api/audit` | admin or auditor | read audit events; supports `q`, `action`, `outcome`, `actor`, `workspace`, `since`, `until`, `page`, `per_page` |
+| `GET /api/templates` | authenticated | templates the user can use, with `canManage` / `owned` |
+| `GET /api/templates/{name}/access` | admin or owner | current owners/users/teams |
+| `PUT /api/templates/{name}/access` | admin or owner | body `{"owners":[],"users":[],"teams":[]}` |
+| `GET /api/users` | admin or template owner | known users and groups for the Users page and autocomplete |
+| `GET /api/teams` | admin or template owner | team names; members only for admins |
+| `PUT /api/teams/{name}` | admin | body `{"members":[],"quota":{"maxWorkspaces":5,"cpu":"4","memory":"8Gi","storage":"50Gi"}}`; omit `quota` to preserve, send `{}` to clear |
+| `DELETE /api/teams/{name}` | admin | delete and detach from templates |
+| `GET /api/user-quotas` | admin | list explicit user quota overrides |
+| `PUT /api/user-quotas/{identity}` | admin | set an override; `{}` or all-empty fields remove it |
+| `DELETE /api/user-quotas/{identity}` | admin | remove an override |
+| `GET /api/volumes` | authenticated | volumes, summary, and backup availability; filtered by ownership for non-admins |
+| `DELETE /api/volumes/{name}` | admin | delete an unassigned volume |
+| `GET/POST /api/volumes/{name}/backups` | owner or admin | list or create backups for a volume |
+| `DELETE /api/volumes/{name}/backups` | owner or admin | delete a backup object |
+| `POST /api/volumes/{name}/restore` | owner or admin | restore a backup into the source volume or, with `target`/`targetRegion`, another volume the caller can access |
+| `PUT /api/workspaces/{name}/ports/{port}/share` | owner or admin | set port sharing to `internal`, `public`, or `off` |
+
+`GET /api/workspaces` is filtered by ownership for non-admins. `POST /api/workspaces` checks template access, records the owner, and prefixes the workspace name with the authenticated username (for example, `alice-my-workspace`) so names are unique per user. The shared token gets a `token-` prefix; trusted local mode without authentication does not prefix. `DELETE /api/workspaces/{name}`, the terminal endpoint, and the local desktop IDE launch endpoints require ownership or admin.
+
+`GET /api/volumes` follows the same ownership model: admins see every volume,
+users see only volumes assigned to their own workspaces, and unassigned volumes
+are admin-only. Volume deletion is admin-only and restricted to unassigned
+volumes. Volume backup and restore endpoints are available to admins and to the
+owner of an assigned volume. Live backup is allowed with a consistency warning;
+restore requires the target workspace to be stopped. Copying a backup into
+another volume requires access to both the source and target volumes. See
+[Volumes and backups](volumes.md).
+
+## Helm
+
+```yaml
+rbac:
+  create: true
+  configMapName: ""        # default "<fullname>-rbac"
+  createConfigMap: true    # seed the ConfigMap on install
+  admins:
+    - admin@example.com
+  auditors:
+    - security@example.com
+  teams:
+    backend:
+      members:
+        - alice@example.com
+      quota:
+        maxWorkspaces: 5
+        cpu: "4"
+        memory: "8Gi"
+        storage: "50Gi"
+  userQuotas:
+    alice@example.com:
+      maxWorkspaces: 2
+      cpu: "2"
+  templates:
+    go:
+      owners:
+        - dev@example.com
+      users: []
+      teams:
+        - backend
+```
+
+The chart adds the ConfigMap permissions to the portal Role. `helm upgrade` re-applies the seed values; if admins have edited access in the UI, either set `rbac.createConfigMap: false` after the initial install or keep the values in sync. The portal's writes are lost only if a later `helm upgrade` overwrites the ConfigMap.
+
+## Local demo
+
+See [oidc.md](oidc.md#local-demo-with-dex) and the `deploy/dex` directory. The script seeds:
+
+- admins: `admin@example.com`, `ops@example.com`
+- teams: `backend` (`alice@example.com`, `bob@example.com`), `frontend` (`carol@example.com`)
+- template `go`: owner `dev@example.com`, direct user `dave@example.com`, no team yet
+
+Then sign in as `dev`, assign `backend` to `go`, and sign in as `alice` or `bob` to see it. `carol` and `erin` see only `base`.
+
+## Limits
+
+- One workspace namespace per portal; one RBAC document per portal.
+- Quotas are per user, with team defaults; there are no per-template quotas or shared workspaces between users. With PostgreSQL enabled, the portal records an audit trail for workspace, team, user-quota, template-access, external-auth, terminal/desktop IDE, audit-view, and SSH actions; see [PostgreSQL audit actions](postgres-schema.md#audit-actions).
+- Back up PostgreSQL. `rbac_documents` is authoritative and the `poddy-rbac` ConfigMap is a materialized mirror.
+- RBAC writes are serialized within a portal replica and retried on conflicts. PostgreSQL row locks serialize concurrent writes across replicas.

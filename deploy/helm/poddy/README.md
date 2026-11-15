@@ -219,7 +219,7 @@ data:
               value: development
 ```
 
-The portal watches these ConfigMaps in `workspaceNamespace` and reloads without restarting. `pod.yaml` is a partial overlay: poddy merges it over the internal pod defaults, so templates only declare what they customize. Keep several versions with `poddy.io/template-version` and mark exactly one `poddy.io/template-active=true`; rollback is a label change. See [templates.md](../../../docs/templates.md#versioning-and-rollback) for the full contract.
+The portal watches these ConfigMaps in `workspaceNamespace` and reloads without restarting. `pod.yaml` is a partial overlay: poddy merges it over the internal pod defaults, so templates only declare what they customize. Keep several versions with `poddy.io/template-version` and mark exactly one `poddy.io/template-active=true`; rollback is a label change. See [the template contract](https://slimaineb.github.io/poddy/templates/#versioning-and-rollback) for the full contract.
 
 ## OIDC / SSO
 
@@ -250,7 +250,7 @@ kubectl create secret generic poddy-oidc \
 
 Register `https://poddy.example.com/oidc/callback` as the provider redirect URI. `issuer` is the expected `iss` claim and is separate from the callback; use `discoveryUrl` or `authorizationUrl` when discovery or the browser authorization endpoint uses a different URL. The login page shows **Continue with SSO**; the shared token (if configured) remains available for API automation and is not a global admin unless `auth.tokenAdmin=true`.
 
-See [docs/oidc.md](../../../docs/oidc.md) for claims, groups, HA sessions, and troubleshooting. A local Dex demo is in [deploy/dex](../../../deploy/dex).
+See [OIDC](https://slimaineb.github.io/poddy/oidc/) for claims, groups, HA sessions, and troubleshooting. A local Dex demo is in [deploy/dex](../../../deploy/dex).
 
 ## External auth for workspaces
 
@@ -284,7 +284,7 @@ kubectl create secret generic poddy-external-auth-config   --from-literal=extern
 
 Per-user tokens are stored AES-GCM encrypted in PostgreSQL. The legacy `externalAuth.tokenSecretName` Secret (default `<fullname>-external-auth`) is imported once when the table is empty. The chart grants `get/list/watch/create/update/patch` on Secrets for SSH keys, environment secrets, and the legacy import. `externalAuth.key`/`existingSecret` is required when `replicaCount > 1`.
 
-Register `https://poddy.example.com/external-auth/<id>/callback` with each provider. See [docs/external-auth.md](../../../docs/external-auth.md) for provider defaults, template `externalAuth:` declarations, workspace env vars, and troubleshooting.
+Register `https://poddy.example.com/external-auth/<id>/callback` with each provider. See [external authentication](https://slimaineb.github.io/poddy/external-auth/) for provider defaults, template `externalAuth:` declarations, workspace env vars, and troubleshooting.
 
 ## PostgreSQL control plane and audit
 
@@ -321,7 +321,7 @@ With the official `postgres` image on an EBS-backed PVC, set
 `PGDATA=/var/lib/postgresql/data/pgdata`; otherwise `initdb` fails on
 `lost+found`. The portal mirrors RBAC, OIDC users, templates, workspaces, and
 team/user quotas; the bastion records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
-page. See [docs/postgres-schema.md](../../../docs/postgres-schema.md) for the
+page. See [PostgreSQL schema](https://slimaineb.github.io/poddy/postgres-schema/) for the
 schema, audit actions, backup, and limitations.
 
 ## Validation and tests
@@ -381,7 +381,7 @@ region manager opens an outbound WebSocket tunnel to `regionManager.hubUrl`, so
 the hub does not need inbound access or VPN peering to the region cluster. The
 hub owns auth/RBAC/templates/external auth and routes workspace HTTP/WebSocket
 traffic through that tunnel. See the main
-[multi-region documentation](../../docs/regions.md) for the Secret format and
+[multi-region documentation](https://slimaineb.github.io/poddy/regions/) for the Secret format and
 network requirements.
 
 ## RBAC
@@ -442,7 +442,7 @@ rbac:
         - backend
 ```
 
-The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` re-applies these seed values; set `rbac.createConfigMap: false` after the initial install if admins should manage access only from the UI. See [docs/rbac.md](../../../docs/rbac.md).
+The portal writes the RBAC document to the ConfigMap at runtime. `helm upgrade` re-applies these seed values; set `rbac.createConfigMap: false` after the initial install if admins should manage access only from the UI. See [RBAC](https://slimaineb.github.io/poddy/rbac/).
 
 ## Security
 

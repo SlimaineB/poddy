@@ -8,7 +8,6 @@ PODMAN      ?= podman
 HELM        ?= helm
 K3S         ?= k3s
 SUDO        ?= sudo -n
-MKDOCS      ?= mkdocs
 REGISTRY    ?= ghcr.io/slimaineb
 IMAGE       ?= $(REGISTRY)/poddy
 IMAGE_TAG   ?= access-$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -47,7 +46,8 @@ fmt:
 lint: fmt vet
 
 docs:
-	$(MKDOCS) build --strict
+	npm ci
+	npm run build
 
 kubeconfig: $(KUBECONFIG)
 
@@ -127,7 +127,7 @@ help:
 	@echo "  make test         - go test ./..."
 	@echo "  make vet          - go vet ./..."
 	@echo "  make fmt          - gofmt -w ."
-	@echo "  make docs         - mkdocs build --strict"
+	@echo "  make docs         - build the Astro documentation site"
 	@echo "  make sync-templates - copy built-in templates into poddy-templates chart"
 	@echo "  make check-templates - verify built-in templates are in sync"
 	@echo "  make check-helm-render - verify charts render one ConfigMap per document"

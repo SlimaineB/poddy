@@ -1,0 +1,179 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+  --sl-font: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sl-color-accent-low: #211641;
+  --sl-color-accent: #8b5cf6;
+  --sl-color-accent-high: #ddd6fe;
+  --sl-color-white: #f7f5ff;
+  --sl-color-gray-1: #ece9f5;
+  --sl-color-gray-2: #c9c5da;
+  --sl-color-gray-3: #a7a3b8;
+  --sl-color-gray-4: #777389;
+  --sl-color-gray-5: #34303f;
+  --sl-color-gray-6: #1a1822;
+  --sl-color-black: #07070c;
+  --sl-color-bg: #0a0a12;
+  --sl-color-bg-nav: rgba(10, 10, 18, 0.86);
+  --sl-color-bg-sidebar: rgba(10, 10, 18, 0.52);
+  --sl-color-hairline: rgba(255, 255, 255, 0.08);
+  --sl-color-hairline-light: rgba(255, 255, 255, 0.13);
+  --sl-color-hairline-shade: rgba(0, 0, 0, 0.35);
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: #c4b5fd;
+  --sl-color-bg-inline-code: rgba(139, 92, 246, 0.12);
+  --sl-color-orange-low: #3b2416;
+  --sl-color-orange: #fb923c;
+  --sl-color-orange-high: #fed7aa;
+  --sl-color-green-low: #102e24;
+  --sl-color-green: #34d399;
+  --sl-color-green-high: #bbf7d0;
+  --sl-color-blue-low: #11253d;
+  --sl-color-blue: #38bdf8;
+  --sl-color-blue-high: #bae6fd;
+  --sl-color-purple-low: #251541;
+  --sl-color-purple: #a78bfa;
+  --sl-color-purple-high: #ddd6fe;
+  --sl-color-red-low: #3b141a;
+  --sl-color-red: #f87171;
+  --sl-color-red-high: #fecaca;
+  --sl-color-backdrop-overlay: rgba(4, 4, 8, 0.72);
+  --sl-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.22);
+  --sl-shadow-md: 0 10px 32px rgba(0, 0, 0, 0.28);
+  --sl-shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.36);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ede9fe;
+  --sl-color-accent: #7c3aed;
+  --sl-color-accent-high: #4c1d95;
+  --sl-color-white: #14121d;
+  --sl-color-gray-1: #262232;
+  --sl-color-gray-2: #3d3850;
+  --sl-color-gray-3: #625d75;
+  --sl-color-gray-4: #89849b;
+  --sl-color-gray-5: #d7d3e2;
+  --sl-color-gray-6: #eeeaf5;
+  --sl-color-gray-7: #f7f5fb;
+  --sl-color-black: #ffffff;
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: rgba(255, 255, 255, 0.88);
+  --sl-color-bg-sidebar: rgba(250, 249, 253, 0.75);
+  --sl-color-hairline: rgba(20, 18, 29, 0.1);
+  --sl-color-hairline-light: rgba(20, 18, 29, 0.16);
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: #6d28d9;
+  --sl-color-bg-inline-code: rgba(124, 58, 237, 0.09);
+}
+
+body {
+  background:
+    radial-gradient(760px 420px at 8% -6%, rgba(139, 92, 246, 0.09), transparent 62%),
+    radial-gradient(640px 380px at 96% 4%, rgba(34, 211, 238, 0.045), transparent 60%),
+    var(--sl-color-bg);
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(760px 420px at 8% -6%, rgba(139, 92, 246, 0.06), transparent 62%),
+    radial-gradient(640px 380px at 96% 4%, rgba(34, 211, 238, 0.04), transparent 60%),
+    var(--sl-color-bg);
+}
+
+header.header {
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+.site-title {
+  gap: 0.55rem;
+  font-weight: 680;
+  letter-spacing: -0.035em;
+}
+
+.site-title img {
+  border-radius: 8px;
+  box-shadow: 0 5px 16px rgba(99, 102, 241, 0.24);
+}
+
+.sidebar-pane {
+  border-inline-end-color: var(--sl-color-hairline);
+}
+
+.sidebar-content a {
+  border-radius: 7px;
+}
+
+.sidebar-content a:hover {
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  letter-spacing: -0.035em;
+}
+
+.sl-markdown-content h1 {
+  font-size: clamp(2.1rem, 5vw, 2.75rem);
+  line-height: 1.08;
+}
+
+.sl-markdown-content h2 {
+  margin-top: 2.8em;
+  padding-top: 0.2em;
+}
+
+.sl-markdown-content > p:first-of-type {
+  font-size: 1.05rem;
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 0.06em;
+}
+
+.sl-markdown-content code:not(:where(.not-content *)) {
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 5px;
+}
+
+.sl-markdown-content table {
+  font-size: 0.9rem;
+}
+
+.sl-markdown-content :is(th, td) {
+  border-color: var(--sl-color-hairline);
+}
+
+.sl-markdown-content blockquote {
+  border-inline-start-color: var(--sl-color-accent);
+  background: rgba(139, 92, 246, 0.055);
+  border-radius: 0 8px 8px 0;
+}
+
+.sl-markdown-content .starlight-aside {
+  border-radius: 10px;
+}
+
+.pagination-links a {
+  border-radius: 12px;
+}
+
+.pagination-links a:hover {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.07);
+}
+
+.right-sidebar-panel {
+  border-inline-start-color: var(--sl-color-hairline);
+}
+
+@media (min-width: 72rem) {
+  .right-sidebar-container {
+    width: 17rem;
+  }
+}

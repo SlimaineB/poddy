@@ -8,7 +8,7 @@
 #     poddy-ssh-keys.
 #   - Namespace poddy-workspaces already exists.
 #
-# See docs/eks.md for the full walkthrough.
+# See https://slimaineb.github.io/poddy/eks/ for the full walkthrough.
 image:
   repository: ghcr.io/slimaineb/poddy
   tag: "latest" # Pin a release tag in production.

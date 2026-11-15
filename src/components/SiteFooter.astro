@@ -1,0 +1,46 @@
+---
+import logo from '../assets/logo.svg';
+
+const base = import.meta.env.BASE_URL;
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href={base}>
+        <img src={logo.src} width="32" height="32" alt="" />
+        <span>poddy</span>
+      </a>
+      <p>Self-service Kubernetes workspaces for teams that want to ship.</p>
+    </div>
+
+    <div class="footer-links">
+      <div>
+        <h3>Product</h3>
+        <a href={`${base}#product`}>Overview</a>
+        <a href={`${base}#how-it-works`}>How it works</a>
+        <a href={`${base}#security`}>Security</a>
+        <a href={`${base}#quickstart`}>Quick start</a>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <a href={`${base}getting-started/`}>Get started</a>
+        <a href={`${base}workspaces/`}>Workspaces</a>
+        <a href={`${base}deploy/`}>Deployment</a>
+        <a href={`${base}operations/`}>Operations</a>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <a href="https://github.com/SlimaineB/poddy">GitHub</a>
+        <a href="https://github.com/SlimaineB/poddy/releases">Releases</a>
+        <a href={`${base}development/`}>Contributing</a>
+        <a href="https://github.com/SlimaineB/poddy/blob/main/README.md">README</a>
+      </div>
+    </div>
+  </div>
+  <div class="shell footer-bottom">
+    <span>&copy; {year} poddy</span>
+    <span>Open source · Self-hosted on your Kubernetes</span>
+  </div>
+</footer>

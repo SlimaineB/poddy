@@ -9,6 +9,6 @@
 - a required PostgreSQL connection Secret for the control plane;
 - an optional `allowedGroups` sign-in allowlist.
 
-See [`docs/okta.md`](../../docs/okta.md) for the full walkthrough: Okta
+See [the Okta guide](https://slimaineb.github.io/poddy/okta/) for the full walkthrough: Okta
 application setup, groups claim, Secret creation, verification, and
 troubleshooting.

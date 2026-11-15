@@ -145,7 +145,7 @@ The portal and SSH bastion are separate Deployments built from the same image. T
 
 In multi-region mode, a central hub owns authentication and the UI while each region manager owns its Kubernetes cluster. Region managers connect outbound to the hub, so the hub does not need a private network path to every cluster.
 
-See [Architecture](docs/architecture.md) for request flows, HA state, and component boundaries.
+See [Architecture](https://slimaineb.github.io/poddy/architecture/) for request flows, HA state, and component boundaries.
 
 ## Production checklist
 
@@ -160,37 +160,37 @@ Before exposing poddy to a team:
 - [ ] Protect template ConfigMaps: whoever can write a template can control the pod spec.
 - [ ] Restrict the metrics Service to your monitoring stack.
 - [ ] Configure volume backups or storage snapshots for persistent homes.
-- [ ] Read the [operations guide](docs/operations.md) and [security model](docs/rbac.md).
+- [ ] Read the [operations guide](https://slimaineb.github.io/poddy/operations/) and [security model](https://slimaineb.github.io/poddy/rbac/).
 
 ## Documentation map
 
 | I want to… | Read |
 |------------|------|
-| Try poddy quickly | [Quick start](docs/getting-started.md) |
-| Understand the product and concepts | [Product tour](docs/guided-tour.md) |
-| Run the full demo stack with Gitea, Dex, MinIO, and PostgreSQL | [Full demo](docs/demo.md) |
-| Use workspaces day to day | [Workspaces](docs/workspaces.md) |
-| Install for production | [Kubernetes deployment](docs/deploy.md) |
-| Operate, upgrade, back up, and monitor | [Operations](docs/operations.md) |
-| Run on Amazon EKS | [EKS guide](docs/eks.md) |
-| Add my own image or template | [Templates](docs/templates.md) |
-| Connect GitHub/GitLab inside a workspace | [External authentication](docs/external-auth.md) |
-| Configure SSO | [OIDC](docs/oidc.md) / [Okta](docs/okta.md) |
-| Control who can do what | [RBAC](docs/rbac.md) |
-| Connect over SSH or an IDE | [SSH access](docs/ssh.md) |
-| Understand the data model | [Data model](docs/data-model.md) / [PostgreSQL](docs/postgres-schema.md) |
-| Fix a problem | [Troubleshooting](docs/troubleshooting.md) |
+| Try poddy quickly | [Quick start](https://slimaineb.github.io/poddy/getting-started/) |
+| Understand the product and concepts | [Product tour](https://slimaineb.github.io/poddy/guided-tour/) |
+| Run the full demo stack with Gitea, Dex, MinIO, and PostgreSQL | [Full demo](https://slimaineb.github.io/poddy/demo/) |
+| Use workspaces day to day | [Workspaces](https://slimaineb.github.io/poddy/workspaces/) |
+| Install for production | [Kubernetes deployment](https://slimaineb.github.io/poddy/deploy/) |
+| Operate, upgrade, back up, and monitor | [Operations](https://slimaineb.github.io/poddy/operations/) |
+| Run on Amazon EKS | [EKS guide](https://slimaineb.github.io/poddy/eks/) |
+| Add my own image or template | [Templates](https://slimaineb.github.io/poddy/templates/) |
+| Connect GitHub/GitLab inside a workspace | [External authentication](https://slimaineb.github.io/poddy/external-auth/) |
+| Configure SSO | [OIDC](https://slimaineb.github.io/poddy/oidc/) / [Okta](https://slimaineb.github.io/poddy/okta/) |
+| Control who can do what | [RBAC](https://slimaineb.github.io/poddy/rbac/) |
+| Connect over SSH or an IDE | [SSH access](https://slimaineb.github.io/poddy/ssh/) |
+| Understand the data model | [Data model](https://slimaineb.github.io/poddy/data-model/) / [PostgreSQL](https://slimaineb.github.io/poddy/postgres-schema/) |
+| Fix a problem | [Troubleshooting](https://slimaineb.github.io/poddy/troubleshooting/) |
 
-The documentation site is built from `docs/` with MkDocs Material:
+The documentation site is built with Astro and Starlight:
 
 ```bash
-pip install -r requirements-docs.txt
-mkdocs serve
+npm install
+npm run dev
 ```
 
 ## Development
 
-Contributor setup, local builds, test commands, and image publishing are in [Development](docs/development.md).
+Contributor setup, local builds, test commands, and image publishing are in [Development](https://slimaineb.github.io/poddy/development/).
 
 ```bash
 go test ./...

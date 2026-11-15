@@ -5,3 +5,5 @@ __pycache__/
 /site/
 vscode-extension/*.vsix
 vscode-extension/node_modules/
+node_modules/
+.astro/

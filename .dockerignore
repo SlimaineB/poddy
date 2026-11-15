@@ -3,6 +3,10 @@
 poddy
 *.test
 site
-docs
-mkdocs.yml
-requirements-docs.txt
+node_modules
+.astro
+src
+public
+astro.config.mjs
+package.json
+package-lock.json

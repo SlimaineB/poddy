@@ -14,5 +14,5 @@ The example uses EBS for the per-workspace `/home/dev` volume and EFS for
 shared data. poddy creates the workspace PVC as `ReadWriteOnce`, which is the
 right mode for EBS; EFS access points are `ReadWriteMany`.
 
-See [`docs/eks.md`](../../docs/eks.md) for the full walkthrough: controllers,
+See [the EKS guide](https://slimaineb.github.io/poddy/eks/) for the full walkthrough: controllers,
 IRSA, EBS, EFS, secrets, install, DNS, and troubleshooting.
