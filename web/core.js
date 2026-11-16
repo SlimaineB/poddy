@@ -8,6 +8,7 @@ const state = {
   templates: [],
   teams: [],
   workspaces: [],
+  workspaceInsights: {},
   topology: { totals: {}, users: [] },
   directory: { users: [], groups: [] },
   workspaceQuery: "",

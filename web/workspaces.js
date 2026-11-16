@@ -227,6 +227,73 @@ function statusPill(phase) {
   return status;
 }
 
+const WORKSPACE_WASTE_SIGNALS = new Set([
+  "idle-cpu",
+  "idle-memory",
+  "oversized",
+  "contended",
+  "missing-requests",
+  "restarts",
+  "oom",
+]);
+const WORKSPACE_WASTE_DANGER = new Set(["oversized", "contended", "oom"]);
+
+function workspaceWasteInfo(workspace) {
+  const item = state.workspaceInsights && state.workspaceInsights[workspace.name];
+  if (!item || !Array.isArray(item.signals)) return null;
+  const signals = item.signals.filter((signal) => WORKSPACE_WASTE_SIGNALS.has(signal));
+  if (!signals.length) return null;
+
+  const recommendations = [];
+  const add = (text) => {
+    if (text && !recommendations.includes(text)) recommendations.push(text);
+  };
+  const usageCPU = item.usage ? Number(item.usage.cpuCores) : NaN;
+  const requestCPU = item.requests ? Number(item.requests.cpuCores) : NaN;
+  const usageMemory = item.usage ? Number(item.usage.memoryBytes) : NaN;
+  const requestMemory = item.requests ? Number(item.requests.memoryBytes) : NaN;
+
+  if (signals.includes("idle-cpu")) {
+    if (Number.isFinite(usageCPU) && Number.isFinite(requestCPU) && requestCPU > 0) {
+      const target = Math.max(0.05, Math.round(usageCPU * 15) / 10);
+      add(`Lower the CPU request from ${formatCPU(requestCPU)} to about ${formatCPU(target)}.`);
+    } else {
+      add("Lower the CPU request to match observed usage.");
+    }
+  }
+  if (signals.includes("idle-memory")) {
+    if (Number.isFinite(usageMemory) && Number.isFinite(requestMemory) && requestMemory > 0) {
+      const target = Math.max(64 * 1024 * 1024, Math.ceil((usageMemory * 1.25) / (1024 * 1024)) * 1024 * 1024);
+      add(`Lower the memory request from ${formatBytes(requestMemory)} to about ${formatBytes(target)}.`);
+    } else {
+      add("Lower the memory request to match observed usage.");
+    }
+  }
+  if (signals.includes("oversized")) add("Requests are far above real usage: right-size CPU and memory.");
+  if (signals.includes("contended")) add("CPU usage is above the request: raise the CPU request or cap the workload.");
+  if (signals.includes("missing-requests")) add("Set CPU and memory requests so waste can be measured and scheduled.");
+  if (signals.includes("restarts")) add("Restarts detected: check crash loops before resizing.");
+  if (signals.includes("oom")) add("OOM kills detected: raise the memory limit before adjusting requests.");
+  if (!recommendations.length) add("Review this workspace's CPU and memory requests.");
+
+  const tone = signals.some((signal) => WORKSPACE_WASTE_DANGER.has(signal)) ? "danger" : "warning";
+  return {
+    tone,
+    label: tone === "danger" ? "Waste alert" : "Waste warning",
+    signals,
+    recommendations,
+  };
+}
+
+function workspaceWasteBadge(info) {
+  const badge = document.createElement("span");
+  badge.className = `badge waste tone-${info.tone}`;
+  badge.innerHTML = `${icon("alert")}<span></span>`;
+  badge.querySelector("span").textContent = info.label;
+  badge.title = info.recommendations.join("\n");
+  return badge;
+}
+
 function renderCard(workspace) {
   const card = document.createElement("article");
   card.className = `card card-${statusClass(workspace.phase) || "unknown"}`;
@@ -248,6 +315,7 @@ function renderCard(workspace) {
   title.append(mark, name);
 
   const status = statusPill(workspace.phase);
+  const waste = workspaceWasteInfo(workspace);
 
   top.append(title);
 
@@ -311,6 +379,8 @@ function renderCard(workspace) {
     metaRow.append(pending);
   }
 
+  if (waste) metaRow.append(workspaceWasteBadge(waste));
+
   meta.append(metaRow);
   if (workspace.createdAt) {
     const created = document.createElement("span");
@@ -318,6 +388,14 @@ function renderCard(workspace) {
     created.innerHTML = `${icon("clock")}<span></span>`;
     created.querySelector("span").textContent = `Created ${formatAge(workspace.createdAt)}`;
     meta.append(created);
+  }
+  if (waste) {
+    const note = document.createElement("p");
+    note.className = `card-waste-note tone-${waste.tone}`;
+    note.innerHTML = `${icon("alert")}<span></span>`;
+    note.querySelector("span").textContent = waste.recommendations[0];
+    note.title = waste.recommendations.join("\n");
+    meta.append(note);
   }
 
   const actions = renderWorkspaceActions(workspace);
@@ -418,7 +496,7 @@ function workspaceOpenControl(workspace, running) {
 
   const primary = document.createElement("button");
   primary.type = "button";
-  primary.className = "button small primary split-primary";
+  primary.className = "button small split-primary";
   primary.innerHTML = `${icon(primaryEntry.icon, primaryEntry.brand ? "icon brand-icon" : "icon")}<span></span>`;
   primary.querySelector("span").textContent = primaryEntry.label;
   primary.title = primaryEntry.title || `Open ${primaryEntry.label}`;
@@ -433,7 +511,7 @@ function workspaceOpenControl(workspace, running) {
 
   const toggle = document.createElement("button");
   toggle.type = "button";
-  toggle.className = "button small primary split-toggle";
+  toggle.className = "button small split-toggle";
   toggle.title = "More ways to open";
   toggle.setAttribute("aria-label", "More ways to open");
   toggle.setAttribute("aria-haspopup", "menu");
@@ -594,6 +672,8 @@ function renderWorkspaceRow(workspace) {
   nameButton.title = workspace.name;
   nameButton.addEventListener("click", () => showDetails(workspace));
   nameWrap.append(nameMark, nameButton);
+  const waste = workspaceWasteInfo(workspace);
+  if (waste) nameWrap.append(workspaceWasteBadge(waste));
   nameCell.append(nameWrap);
 
   const statusCell = document.createElement("td");
@@ -623,6 +703,40 @@ function renderWorkspaceRow(workspace) {
   row.append(nameCell, statusCell, templateCell, ownerCell, createdCell, actionsCell);
   return row;
 }
+const workspaceInsightState = {
+  request: 0,
+  loadedAt: 0,
+  pending: false,
+};
+
+async function loadWorkspaceInsights({ force = false } = {}) {
+  if (typeof monitoringLiveEnabled !== "function" || !monitoringLiveEnabled()) return;
+  if (workspaceInsightState.pending) return;
+  const now = Date.now();
+  if (!force && workspaceInsightState.loadedAt && now - workspaceInsightState.loadedAt < 60000) return;
+  workspaceInsightState.pending = true;
+  const request = ++workspaceInsightState.request;
+  try {
+    const report = await api("/api/monitoring/finops");
+    if (request !== workspaceInsightState.request) return;
+    const insights = {};
+    for (const item of (Array.isArray(report.workspaces) ? report.workspaces : [])) {
+      if (item && item.name) insights[item.name] = item;
+    }
+    state.workspaceInsights = insights;
+    workspaceInsightState.loadedAt = Date.now();
+    renderWorkspaces();
+    if (state.detailWorkspace) {
+      const fresh = state.workspaces.find((item) => item.name === state.detailWorkspace.name);
+      renderDetailHeader(fresh || state.detailWorkspace);
+    }
+  } catch {
+    workspaceInsightState.loadedAt = Date.now();
+  } finally {
+    workspaceInsightState.pending = false;
+  }
+}
+
 async function load({ silent = false } = {}) {
   if (state.loading) {
     state.reloadPending = true;
@@ -630,6 +744,7 @@ async function load({ silent = false } = {}) {
   }
   state.loading = true;
   if (!silent && !state.loaded) els.loading.hidden = false;
+  loadWorkspaceInsights();
 
   try {
     const headers = {};
@@ -864,6 +979,8 @@ function renderDetailHeader(workspace) {
   badge.innerHTML = `<span class="dot ${statusClass(phase)}"></span><span></span>`;
   badge.querySelector("span:last-child").textContent = phase;
   els.detailStatus.append(badge);
+  const waste = workspaceWasteInfo(workspace);
+  if (waste) els.detailStatus.append(workspaceWasteBadge(waste));
 
   const actions = renderWorkspaceActions(workspace);
   actions.classList.add("detail-action-list");

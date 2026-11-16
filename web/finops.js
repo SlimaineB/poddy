@@ -292,37 +292,58 @@ function finopsOverviewRow(label, used, reserved, formatter) {
   const tone = idlePercent == null ? "empty" : idlePercent >= 60 ? "danger" : idlePercent >= 30 ? "warning" : "ok";
 
   const row = document.createElement("article");
-  row.className = "finops-resource";
+  row.className = "finops-gauge";
 
+  const donut = document.createElement("div");
+  donut.className = `finops-donut tone-${tone}`;
+  donut.style.setProperty("--gauge", percent == null ? 0 : percent);
+  const donutContent = document.createElement("div");
+  donutContent.className = "finops-donut-content";
+  const percentValue = document.createElement("strong");
+  percentValue.textContent = percent == null ? "—" : `${Math.round(percent)}%`;
+  const percentLabel = document.createElement("span");
+  percentLabel.textContent = "used";
+  donutContent.append(percentValue, percentLabel);
+  donut.append(donutContent);
+
+  const info = document.createElement("div");
+  info.className = "finops-gauge-info";
   const head = document.createElement("div");
-  head.className = "finops-resource-head";
+  head.className = "finops-gauge-head";
   const name = document.createElement("span");
-  name.className = "finops-resource-label";
+  name.className = "finops-gauge-label";
   name.textContent = label;
-  const value = document.createElement("span");
-  value.className = "finops-resource-value";
-  value.textContent = reserved > 0
-    ? `${formatter(used)} used of ${formatter(reserved)}`
-    : "No reservation";
-  head.append(name, value);
+  const capacity = document.createElement("span");
+  capacity.className = "finops-gauge-capacity";
+  capacity.textContent = reserved > 0 ? `${formatter(reserved)} reserved` : "No reservation";
+  head.append(name, capacity);
 
-  const track = document.createElement("div");
-  track.className = `finops-track large${tone === "empty" ? " empty" : ""}`;
-  const fill = document.createElement("span");
-  fill.style.width = `${percent == null ? 0 : Math.max(1, percent)}%`;
-  if (tone === "warning" || tone === "danger") fill.className = tone;
-  track.append(fill);
+  const legend = document.createElement("div");
+  legend.className = "finops-gauge-legend";
+  const legendRow = (dotClass, legendLabel, value) => {
+    const line = document.createElement("div");
+    const key = document.createElement("span");
+    const dot = document.createElement("span");
+    dot.className = `finops-gauge-dot ${dotClass}`;
+    key.append(dot, document.createTextNode(legendLabel));
+    const amount = document.createElement("span");
+    amount.textContent = value;
+    line.append(key, amount);
+    return line;
+  };
+  legend.append(
+    legendRow("used", "Used", formatter(used)),
+    legendRow("idle", "Idle", percent == null ? "—" : formatter(idle)),
+  );
+  info.append(head, legend);
+  if (percent == null) {
+    const hint = document.createElement("p");
+    hint.className = "finops-gauge-hint";
+    hint.textContent = "Add requests to measure waste.";
+    info.append(hint);
+  }
 
-  const foot = document.createElement("div");
-  foot.className = "finops-resource-foot";
-  const usedLabel = document.createElement("span");
-  usedLabel.textContent = percent == null ? "Usage cannot be compared" : `${percent.toFixed(0)}% used`;
-  const idleLabel = document.createElement("span");
-  idleLabel.className = `finops-resource-idle tone-${tone}`;
-  idleLabel.textContent = percent == null ? "Add requests to measure waste" : `${formatter(idle)} idle`;
-  foot.append(usedLabel, idleLabel);
-
-  row.append(head, track, foot);
+  row.append(donut, info);
   return row;
 }
 
@@ -341,8 +362,8 @@ function renderFinOpsOverview(report, currency) {
     ? `${formatMoney(totals.usedHourly, currency)}/h used · ${formatMoney(totals.wastedHourly, currency)}/h idle`
     : `${formatCPU(totals.cpuUsageCores)} CPU · ${formatBytes(totals.memoryUsageBytes)} in use`;
   els.finopsOverviewCopy.textContent = report.costVisible
-    ? "Each bar compares live usage with the resources reserved by workspace requests. The empty part is capacity you pay for but do not use."
-    : "Each bar compares live usage with the resources reserved by workspace requests. The empty part is capacity blocked from other workspaces, even when no prices are configured.";
+    ? "Each gauge compares live usage with the capacity reserved by workspace requests. The idle share is capacity you pay for but do not use."
+    : "Each gauge compares live usage with the capacity reserved by workspace requests. The idle share is capacity blocked from other workspaces, even when no prices are configured.";
 
   els.finopsOverview.replaceChildren(
     finopsOverviewRow("CPU", Number(totals.cpuUsageCores) || 0, Number(totals.cpuRequestsCores) || 0, formatCPU),
