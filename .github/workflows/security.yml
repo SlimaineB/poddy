@@ -95,14 +95,14 @@ jobs:
       - name: Build images
         run: |
           docker build -t poddy:scan .
-          docker build -f Dockerfile.workspace-base -t poddy/workspace-base:scan .
-          docker build -f Dockerfile.workspace-go \
+          docker build -f docker/workspace/base/Dockerfile -t poddy/workspace-base:scan .
+          docker build -f docker/workspace/go/Dockerfile \
             --build-arg BASE_IMAGE=poddy/workspace-base:scan \
             -t poddy/workspace-go:scan .
-          docker build -f Dockerfile.workspace-node \
+          docker build -f docker/workspace/node/Dockerfile \
             --build-arg BASE_IMAGE=poddy/workspace-base:scan \
             -t poddy/workspace-node:scan .
-          docker build -f Dockerfile.workspace-python \
+          docker build -f docker/workspace/python/Dockerfile \
             --build-arg BASE_IMAGE=poddy/workspace-base:scan \
             -t poddy/workspace-python:scan .
       - name: Scan images with Trivy

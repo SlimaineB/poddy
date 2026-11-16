@@ -75,7 +75,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile.workspace-base
+          file: ./docker/workspace/base/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta_base.outputs.tags }}
@@ -100,7 +100,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile.workspace-go
+          file: ./docker/workspace/go/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
@@ -121,7 +121,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile.workspace-node
+          file: ./docker/workspace/node/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
@@ -142,7 +142,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile.workspace-python
+          file: ./docker/workspace/python/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |

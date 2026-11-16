@@ -371,10 +371,10 @@ The repository uses these Dockerfiles:
 | Image | Dockerfile |
 |-------|------------|
 | Portal | `Dockerfile` |
-| Workspace base | `Dockerfile.workspace-base` |
-| Go workspace | `Dockerfile.workspace-go` |
-| Node.js workspace | `Dockerfile.workspace-node` |
-| Python workspace | `Dockerfile.workspace-python` |
+| Workspace base | `docker/workspace/base/Dockerfile` |
+| Go workspace | `docker/workspace/go/Dockerfile` |
+| Node.js workspace | `docker/workspace/node/Dockerfile` |
+| Python workspace | `docker/workspace/python/Dockerfile` |
 
 ### Dockerfile pattern
 
@@ -394,7 +394,7 @@ CMD ["/usr/sbin/sshd", "-D", "-e"]
 
 **Build & publish (custom images only):**
 ```bash
-docker build -f Dockerfile.workspace-base -t ghcr.io/your-org/poddy-workspace-base:1 .
+docker build -f docker/workspace/base/Dockerfile -t ghcr.io/your-org/poddy-workspace-base:1 .
 docker push ghcr.io/your-org/poddy-workspace-base:1
 
 docker build -f examples/workspaces/node/Dockerfile \

@@ -60,7 +60,7 @@ the portal image, which contains `/usr/local/bin/poddy-agent`. Set
 With `ssh.agent.sidecar=false`, the agent runs inside the workspace container
 instead. In that mode, custom workspace images must include
 `/usr/local/bin/poddy-agent` and start it from the container entrypoint. The
-repository's `Dockerfile.workspace-base` builds and installs the agent, and
+repository's `docker/workspace/base/Dockerfile` builds and installs the agent, and
 `scripts/poddy-ssh-start` launches it before `sshd`. If an image cannot include
 the agent, set `ssh.requireAgent=false` to keep the Kubernetes port-forward
 fallback.

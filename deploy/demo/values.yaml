@@ -7,7 +7,7 @@ auth:
   tokenAdmin: true
 
 bastion:
-  enabled: false
+  enabled: true
 
 createWorkspaceNamespace: false
 
@@ -101,6 +101,8 @@ ssh:
     existingSecret: poddy-ssh-ca
     keyKey: ssh-ca-key
   enabled: true
+  existingHostKeySecret: poddy-host-key
+  hostKeySecretKey: ssh_host_ed25519_key
   existingKeysSecret: poddy-ssh-keys
   keysSecretKey: authorized_keys
   publicHost: __DEMO_HOST__
@@ -108,7 +110,8 @@ ssh:
   requireAgent: false
   service:
     port: 2222
-    type: ClusterIP
+    type: NodePort
+    nodePort: 30223
 
 workspaceNamespace: poddy-workspaces
 
