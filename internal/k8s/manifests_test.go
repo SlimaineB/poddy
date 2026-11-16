@@ -33,7 +33,7 @@ func TestWorkspaceManifestsRunningAndStopped(t *testing.T) {
 	if manifests.PVC.Kind != "PersistentVolumeClaim" || manifests.PVC.Name != "poddy-app" {
 		t.Fatalf("pvc = %+v", manifests.PVC)
 	}
-	if manifests.Template != "base" || manifests.Parameters["storage"] != "5Gi" {
+	if manifests.Template != "base" || manifests.Parameters["storage"] != "500Mi" {
 		t.Fatalf("template metadata = %+v", manifests)
 	}
 

@@ -69,7 +69,7 @@ func TestResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if params["cpu"] != "2" || params["memory"] != "1Gi" || params["storage"] != "5Gi" {
+	if params["cpu"] != "2" || params["memory"] != "1Gi" || params["storage"] != "500Mi" {
 		t.Fatalf("params = %+v", params)
 	}
 

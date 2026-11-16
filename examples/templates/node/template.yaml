@@ -12,7 +12,7 @@ parameters:
     default: 2Gi
   - name: storage
     description: Persistent volume size (empty for ephemeral storage)
-    default: 10Gi
+    default: 500Mi
   - name: storageClass
     description: StorageClass name (empty for the cluster default)
     default: ""

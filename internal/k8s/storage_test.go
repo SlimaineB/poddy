@@ -23,10 +23,10 @@ func TestListVolumes(t *testing.T) {
 	if volume.Workspace != "app" || volume.Name != "poddy-app" {
 		t.Fatalf("volume = %+v", volume)
 	}
-	if volume.Requested != "5Gi" || volume.Capacity != "5Gi" {
+	if volume.Requested != "500Mi" || volume.Capacity != "500Mi" {
 		t.Fatalf("capacity = %q requested = %q", volume.Capacity, volume.Requested)
 	}
-	if volume.Bytes != 5*1024*1024*1024 {
+	if volume.Bytes != 500*1024*1024 {
 		t.Fatalf("bytes = %d", volume.Bytes)
 	}
 }

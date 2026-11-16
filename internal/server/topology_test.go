@@ -72,7 +72,7 @@ func TestTopologyGroupsByUserAndIncludesVolumes(t *testing.T) {
 	if len(resources) != 1 || resources[0].Kind != "PersistentVolumeClaim" || resources[0].Name != "poddy-alice-ws" {
 		t.Fatalf("alice resources = %+v", resources)
 	}
-	if resources[0].Capacity != "5Gi" {
+	if resources[0].Capacity != "500Mi" {
 		t.Fatalf("capacity = %q", resources[0].Capacity)
 	}
 

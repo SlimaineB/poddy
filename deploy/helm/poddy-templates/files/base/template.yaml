@@ -39,7 +39,7 @@ parameters:
     displayName: Home storage
     type: string
     description: Size of the persistent home volume.
-    default: "5Gi"
+    default: "500Mi"
     options:
       - label: Ephemeral (no persistence)
         value: ""

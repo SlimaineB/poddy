@@ -75,10 +75,16 @@ parameters:                   # optional list
         value: 4Gi
   - name: storage
     description: PVC size
-    default: 10Gi
+    default: 500Mi
     options:
       - label: Ephemeral (no persistence)
         value: ""
+      - label: 200 MiB
+        value: 200Mi
+      - label: 500 MiB
+        value: 500Mi
+      - label: 1 GiB
+        value: 1Gi
       - label: 10 GiB
         value: 10Gi
   - name: storageClass

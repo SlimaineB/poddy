@@ -74,7 +74,7 @@ func TestCreateWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pvc: %v", err)
 	}
-	if got := pvc.Spec.Resources.Requests.Storage().String(); got != "5Gi" {
+	if got := pvc.Spec.Resources.Requests.Storage().String(); got != "500Mi" {
 		t.Fatalf("storage = %q", got)
 	}
 }
@@ -627,7 +627,7 @@ func TestStopStartRestartWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Owner != "alice@example.com" || state.Storage != "5Gi" {
+	if state.Owner != "alice@example.com" || state.Storage != "500Mi" {
 		t.Fatalf("state = %+v", state)
 	}
 
@@ -929,7 +929,7 @@ func TestCreateQuotaCheckRunsBeforeResources(t *testing.T) {
 		Name: "blocked",
 		QuotaCheck: func(usage ResourceUsage) error {
 			called = true
-			if usage.Storage.Cmp(resource.MustParse("5Gi")) != 0 {
+			if usage.Storage.Cmp(resource.MustParse("500Mi")) != 0 {
 				t.Fatalf("storage = %s", usage.Storage.String())
 			}
 			return errors.New("quota exceeded")

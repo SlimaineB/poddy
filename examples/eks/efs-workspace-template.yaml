@@ -32,7 +32,7 @@ data:
         default: 2Gi
       - name: storage
         description: Per-workspace home volume size
-        default: 10Gi
+        default: 500Mi
       - name: storageClass
         description: StorageClass for the home volume (empty uses the cluster default)
         default: ""
