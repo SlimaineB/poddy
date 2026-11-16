@@ -37,6 +37,54 @@ function memberInitials(entry) {
   return clean.slice(0, 2).toUpperCase();
 }
 
+function splitTeamMembers(members) {
+  const users = [];
+  const groups = [];
+  for (const entry of members || []) {
+    const raw = String(entry || "").trim();
+    if (!raw) continue;
+    if (/^group:/i.test(raw)) {
+      const group = directoryGroup(raw);
+      if (group) groups.push(group);
+    } else {
+      users.push(raw);
+    }
+  }
+  return { users, groups };
+}
+
+function combineTeamMembers(users, groups) {
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(trimmed);
+  };
+  for (const user of users || []) push(user);
+  for (const group of groups || []) {
+    const name = directoryGroup(group);
+    if (name) push(`group:${name}`);
+  }
+  return out;
+}
+
+function teamMemberSummary(team) {
+  const members = Array.isArray(team.members) ? team.members : [];
+  if (!members.length) {
+    const count = Number(team.memberCount) || 0;
+    return count ? `${count} member${count === 1 ? "" : "s"}` : "No members";
+  }
+  const { users, groups } = splitTeamMembers(members);
+  const parts = [];
+  if (users.length) parts.push(`${users.length} user${users.length === 1 ? "" : "s"}`);
+  if (groups.length) parts.push(`${groups.length} OIDC group${groups.length === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(" · ") : "No members";
+}
+
 function renderTeamMembers(team) {
   const wrap = document.createElement("div");
   wrap.className = "team-card-members";
@@ -47,31 +95,46 @@ function renderTeamMembers(team) {
     empty.className = "team-member-empty";
     empty.textContent = count
       ? `${count} member${count === 1 ? "" : "s"} · names visible to admins`
-      : "No members yet.";
+      : "No users or OIDC groups yet.";
     wrap.append(empty);
     return wrap;
   }
 
+  const { users, groups } = splitTeamMembers(members);
+  const ordered = [
+    ...users.map((value) => ({ value, group: false })),
+    ...groups.map((value) => ({ value: `group:${value}`, group: true })),
+  ];
+
   const stack = document.createElement("span");
   stack.className = "team-avatar-stack";
-  for (const member of members.slice(0, 4)) {
+  for (const entry of ordered.slice(0, 4)) {
     const avatar = document.createElement("span");
     avatar.className = "team-avatar";
-    if (String(member).toLowerCase().startsWith("group:")) avatar.classList.add("group");
-    avatar.textContent = memberInitials(member);
-    avatar.title = member;
+    if (entry.group) avatar.classList.add("group");
+    avatar.textContent = memberInitials(entry.value);
+    avatar.title = entry.group ? `OIDC group: ${directoryGroup(entry.value)}` : entry.value;
     stack.append(avatar);
   }
-  if (members.length > 4) {
+  if (ordered.length > 4) {
     const more = document.createElement("span");
     more.className = "team-avatar more";
-    more.textContent = `+${members.length - 4}`;
+    more.textContent = `+${ordered.length - 4}`;
     stack.append(more);
   }
-  const names = document.createElement("span");
-  names.className = "team-member-names";
-  names.textContent = members.slice(0, 3).join(", ") + (members.length > 3 ? ` +${members.length - 3} more` : "");
-  wrap.append(stack, names);
+
+  const labels = document.createElement("span");
+  labels.className = "team-member-names";
+  const parts = [];
+  if (users.length) {
+    parts.push(users.slice(0, 3).join(", ") + (users.length > 3 ? ` +${users.length - 3}` : ""));
+  }
+  if (groups.length) {
+    const names = groups.slice(0, 2).map((group) => `OIDC: ${group}`).join(", ");
+    parts.push(names + (groups.length > 2 ? ` +${groups.length - 2}` : ""));
+  }
+  labels.textContent = parts.join(" · ");
+  wrap.append(stack, labels);
   return wrap;
 }
 
@@ -99,10 +162,9 @@ function renderTeams() {
     titleRow.className = "team-card-title";
     const name = document.createElement("h3");
     name.textContent = team.name;
-    const members = Number(team.memberCount) || 0;
     const count = document.createElement("span");
     count.className = "badge neutral";
-    count.textContent = `${members} member${members === 1 ? "" : "s"}`;
+    count.textContent = teamMemberSummary(team);
     titleRow.append(name, count);
     info.append(titleRow, renderTeamMembers(team));
 
@@ -147,7 +209,9 @@ function editTeam(team) {
   els.teamFormTitle.textContent = `Edit ${team.name}`;
   els.teamName.value = team.name;
   els.teamName.readOnly = true;
-  entryLists.teamMembers.setValues(team.members || []);
+  const { users, groups } = splitTeamMembers(team.members || []);
+  entryLists.teamMembers.setValues(users);
+  entryLists.teamGroups.setValues(groups);
   setQuotaInputs("team", team.quota || null);
   setTeamQuotaEnabled(state.me.isAdmin);
   els.teamSave.textContent = "Save team";
@@ -158,6 +222,7 @@ function newTeam() {
   els.teamForm.reset();
   els.teamFormTitle.textContent = "New team";
   entryLists.teamMembers.setValues([]);
+  entryLists.teamGroups.setValues([]);
   setQuotaInputs("team", null);
   setTeamQuotaEnabled(state.me.isAdmin);
   els.teamName.readOnly = false;
@@ -168,7 +233,7 @@ async function saveTeam(event) {
   event.preventDefault();
   const name = els.teamName.value.trim();
   if (!name) return;
-  const members = entryLists.teamMembers.getValues();
+  const members = combineTeamMembers(entryLists.teamMembers.getValues(), entryLists.teamGroups.getValues());
   let quota;
   try {
     quota = readQuota("team");
@@ -197,7 +262,9 @@ async function saveTeam(event) {
     await refreshTeams({ paginated: true, page: state.teamPage });
     renderTeamsPagination();
     const current = state.teams.find((team) => team.name === name);
-    entryLists.teamMembers.setValues(current?.members || members);
+    const savedMembers = splitTeamMembers(current?.members || members);
+    entryLists.teamMembers.setValues(savedMembers.users);
+    entryLists.teamGroups.setValues(savedMembers.groups);
     setQuotaInputs("team", current?.quota || null);
   } catch (err) {
     toast(err.message || "Failed to save team.");

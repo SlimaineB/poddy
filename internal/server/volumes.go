@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,7 +12,9 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"poddy/internal/envstore"
 	"poddy/internal/k8s"
+	"poddy/internal/quota"
 	"poddy/internal/rbac"
 	"poddy/internal/region"
 )
@@ -201,6 +204,17 @@ func (s *Server) createVolumeBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	if !volumeReadyForBackup(w, volume) {
 		return
+	}
+	if !s.isAdmin(id, cfg) {
+		reached, count, limit, err := s.backupQuotaReached(r.Context(), cfg, volume)
+		if err != nil {
+			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if reached {
+			http.Error(w, fmt.Sprintf("backup quota exceeded: %d of %d backups", count, limit), http.StatusConflict)
+			return
+		}
 	}
 
 	key := s.Backups.Key(volume.Name, time.Now())
@@ -454,6 +468,28 @@ func (s *Server) backupEnabled(w http.ResponseWriter) bool {
 		return false
 	}
 	return true
+}
+
+// backupQuotaReached reports whether the volume owner already reached the
+// maxBackups limit of their effective quota.
+func (s *Server) backupQuotaReached(ctx context.Context, cfg rbac.Config, volume k8s.Volume) (bool, int, int, error) {
+	if s.Quota == nil || s.Backups == nil || strings.TrimSpace(volume.Owner) == "" {
+		return false, 0, 0, nil
+	}
+	identity := envstore.IdentityForOwner(ctx, s.Users, volume.Owner)
+	limit, err := quota.Effective(ctx, s.Quota, cfg, identity)
+	if err != nil {
+		return false, 0, 0, err
+	}
+	if limit.MaxBackups == nil {
+		return false, 0, 0, nil
+	}
+	objects, err := s.Backups.List(ctx, volume.Name)
+	if err != nil {
+		return false, 0, 0, err
+	}
+	count := len(objects)
+	return count >= *limit.MaxBackups, count, *limit.MaxBackups, nil
 }
 
 func (s *Server) validVolumeKey(volume, key string) bool {

@@ -499,6 +499,12 @@ func Run(ctx context.Context, args []string) error {
 			Global:        cfg.MonitoringGlobal,
 			Costs:         cfg.MonitoringCosts,
 			CostsForUsers: cfg.MonitoringCostsForUsers,
+			Pricing: monitoring.Pricing{
+				CPUCoreHour:    cfg.CostCPUCoreHour,
+				MemoryGBHour:   cfg.CostMemoryGBHour,
+				StorageGBMonth: cfg.CostStorageGBMonth,
+				Currency:       cfg.CostCurrency,
+			},
 		},
 		WebFS:             web.FS,
 		Token:             cfg.Token,

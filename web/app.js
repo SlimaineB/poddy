@@ -34,6 +34,8 @@ async function init() {
     await openAudit();
   } else if (initialView === "monitoring" && typeof openMonitoring === "function") {
     await openMonitoring();
+  } else if (initialView === "finops" && typeof openFinOps === "function") {
+    await openFinOps();
   }
 }
 

@@ -169,6 +169,14 @@ spec:
               value: {{ .Values.monitoring.costs.enabled | quote }}
             - name: PODDY_MONITORING_COSTS_FOR_USERS
               value: {{ .Values.monitoring.costs.visibleToUsers | quote }}
+            - name: PODDY_COST_CPU_CORE_HOUR
+              value: {{ .Values.monitoring.costs.cpuCoreHour | quote }}
+            - name: PODDY_COST_MEMORY_GB_HOUR
+              value: {{ .Values.monitoring.costs.memoryGBHour | quote }}
+            - name: PODDY_COST_STORAGE_GB_MONTH
+              value: {{ .Values.monitoring.costs.storageGBMonth | quote }}
+            - name: PODDY_COST_CURRENCY
+              value: {{ .Values.monitoring.costs.currency | quote }}
             {{- with .Values.monitoring.prometheus.url }}
             - name: PODDY_PROMETHEUS_URL
               value: {{ . | quote }}

@@ -64,7 +64,7 @@ Every entry is matched against the signed-in identity (username, email, groups):
 | `group:backend` | one of the identity's groups |
 | `*` | every authenticated user |
 
-Use `group:` for IdP groups, or plain email/username for small setups. Team membership uses the same matching rules.
+Use `group:` for identity-provider groups, or plain email/username for small setups. Team membership uses the same matching rules; the UI keeps **Users** and **OIDC groups** in separate fields.
 
 > `*` is powerful. `admins: ["*"]` makes everyone an admin; `owners: ["*"]` lets everyone manage a template. Use it only in `users` when you want a template with owners to remain public.
 
@@ -103,10 +103,11 @@ The server rejects unknown team names when saving access.
 
 Quotas are optional per-user budgets stored in PostgreSQL `user_quotas` and
 `team_quotas`. The RBAC document carries team membership; the ConfigMap remains
-a mirror. The portal checks quotas when a workspace is created. Usage includes every
-workspace owned by the user, running or stopped, plus the workspace being
-created. CPU, memory, and storage are summed from the rendered resource requests
-and PVC size.
+a mirror. The portal checks quotas when a workspace is created and when a volume
+backup is created. Usage includes every workspace owned by the user, running or
+stopped, plus the workspace being created. CPU, memory, and storage are summed
+from the rendered resource requests and PVC size. `maxBackups` caps the number
+of backups kept for the workspace volume being backed up.
 
 Team quota (set on the team form or `PUT /api/teams/{team}`):
 
@@ -114,6 +115,7 @@ Team quota (set on the team form or `PUT /api/teams/{team}`):
 {
   "quota": {
     "maxWorkspaces": 5,
+    "maxBackups": 10,
     "cpu": "4",
     "memory": "8Gi",
     "storage": "50Gi"
@@ -126,6 +128,7 @@ User override (`PUT /api/user-quotas/{identity}`):
 ```json
 {
   "maxWorkspaces": 2,
+  "maxBackups": 3,
   "cpu": "2"
 }
 ```
@@ -144,8 +147,12 @@ Rules:
 - In multi-region deployments the central hub enforces the quota across all
   regions. Region managers do not enforce quotas locally, so create workspaces
   through the hub.
-- `maxWorkspaces` is a non-negative integer. CPU, memory, and storage are
-  non-negative Kubernetes quantities such as `500m`, `4`, `8Gi`, or `50Gi`.
+- `maxWorkspaces` and `maxBackups` are non-negative integers. `maxBackups`
+  applies per workspace volume; when the limit is reached, creating another
+  backup of that volume fails with `409 Conflict` (`backup quota exceeded`).
+  Existing backups are not removed automatically. Admins bypass the limit.
+- CPU, memory, and storage are non-negative Kubernetes quantities such as
+  `500m`, `4`, `8Gi`, or `50Gi`.
 
 `userQuotas` keys may be a plain username/email, `user:<username>`, or
 `email:<email>`, matched case-insensitively. The wildcard `*` is not allowed as
@@ -178,9 +185,9 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 
 ## UI
 
-- **Users** (admins and owners): dedicated page listing known users and groups, with search. Admins also see which teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
+- **Users** (admins and owners): dedicated page listing known users and OIDC groups, with search. Admins also see which Poddy teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
 - **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The database is required outside region-manager mode, so the page is available to admins and auditors.
-- **Teams** (admins): dedicated page to create, edit members, set quota defaults, and delete teams. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
+- **Teams** (admins): a Poddy team is a quota/access group, distinct from an OIDC group. On the team page, add **users** directly and/or attach **OIDC groups** so their members join automatically. Set quota defaults, then delete teams as needed. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
 - **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
 - **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
 - Workspace cards show the owner badge to global admins.
@@ -197,7 +204,7 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `PUT /api/templates/{name}/access` | admin or owner | body `{"owners":[],"users":[],"teams":[]}` |
 | `GET /api/users` | admin or template owner | known users and groups for the Users page and autocomplete |
 | `GET /api/teams` | admin or template owner | team names; members only for admins |
-| `PUT /api/teams/{name}` | admin | body `{"members":[],"quota":{"maxWorkspaces":5,"cpu":"4","memory":"8Gi","storage":"50Gi"}}`; omit `quota` to preserve, send `{}` to clear |
+| `PUT /api/teams/{name}` | admin | body `{"members":[],"quota":{"maxWorkspaces":5,"maxBackups":10,"cpu":"4","memory":"8Gi","storage":"50Gi"}}`; omit `quota` to preserve, send `{}` to clear |
 | `DELETE /api/teams/{name}` | admin | delete and detach from templates |
 | `GET /api/user-quotas` | admin | list explicit user quota overrides |
 | `PUT /api/user-quotas/{identity}` | admin | set an override; `{}` or all-empty fields remove it |

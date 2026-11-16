@@ -21,6 +21,10 @@ type Config struct {
 	MonitoringGlobal          bool
 	MonitoringCosts           bool
 	MonitoringCostsForUsers   bool
+	CostCPUCoreHour           float64
+	CostMemoryGBHour          float64
+	CostStorageGBMonth        float64
+	CostCurrency              string
 	PrometheusURL             string
 	PrometheusToken           string
 	Namespace                 string
@@ -120,6 +124,10 @@ func Load(args []string) (Config, error) {
 		MonitoringGlobal:          envBool("PODDY_MONITORING_GLOBAL", true),
 		MonitoringCosts:           envBool("PODDY_MONITORING_COSTS", false),
 		MonitoringCostsForUsers:   envBool("PODDY_MONITORING_COSTS_FOR_USERS", false),
+		CostCPUCoreHour:           envFloat("PODDY_COST_CPU_CORE_HOUR", 0),
+		CostMemoryGBHour:          envFloat("PODDY_COST_MEMORY_GB_HOUR", 0),
+		CostStorageGBMonth:        envFloat("PODDY_COST_STORAGE_GB_MONTH", 0),
+		CostCurrency:              env("PODDY_COST_CURRENCY", "USD"),
 		PrometheusURL:             os.Getenv("PODDY_PROMETHEUS_URL"),
 		PrometheusToken:           os.Getenv("PODDY_PROMETHEUS_TOKEN"),
 		Namespace:                 env("PODDY_NAMESPACE", "default"),
@@ -215,6 +223,10 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.MonitoringGlobal, "monitoring-global", cfg.MonitoringGlobal, "enable the portal-wide admin monitoring view")
 	fs.BoolVar(&cfg.MonitoringCosts, "monitoring-costs", cfg.MonitoringCosts, "enable FinOps cost data")
 	fs.BoolVar(&cfg.MonitoringCostsForUsers, "monitoring-costs-for-users", cfg.MonitoringCostsForUsers, "show cost data to workspace owners instead of admins only")
+	fs.Float64Var(&cfg.CostCPUCoreHour, "cost-cpu-core-hour", cfg.CostCPUCoreHour, "FinOps price per CPU core per hour (0 disables CPU cost)")
+	fs.Float64Var(&cfg.CostMemoryGBHour, "cost-memory-gb-hour", cfg.CostMemoryGBHour, "FinOps price per memory GiB per hour (0 disables memory cost)")
+	fs.Float64Var(&cfg.CostStorageGBMonth, "cost-storage-gb-month", cfg.CostStorageGBMonth, "FinOps price per storage GiB per month (0 disables storage cost)")
+	fs.StringVar(&cfg.CostCurrency, "cost-currency", cfg.CostCurrency, "FinOps currency label")
 	fs.StringVar(&cfg.PrometheusURL, "prometheus-url", cfg.PrometheusURL, "Prometheus base URL for monitoring history (empty disables history)")
 	fs.StringVar(&cfg.PrometheusToken, "prometheus-token", cfg.PrometheusToken, "bearer token used to query Prometheus")
 	fs.StringVar(&cfg.Namespace, "namespace", cfg.Namespace, "workspace namespace")

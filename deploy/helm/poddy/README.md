@@ -169,6 +169,10 @@ name (without the leading `v`) is used.
 | `monitoring.global` | `true` | Admin-only portal-wide monitoring view. |
 | `monitoring.costs.enabled` | `false` | Enable FinOps cost data. |
 | `monitoring.costs.visibleToUsers` | `false` | Show cost data to workspace owners instead of admins only. |
+| `monitoring.costs.cpuCoreHour` | `0` | Price per CPU core per hour. `0` disables CPU cost. |
+| `monitoring.costs.memoryGBHour` | `0` | Price per memory GiB per hour. `0` disables memory cost. |
+| `monitoring.costs.storageGBMonth` | `0` | Price per provisioned storage GiB per month. `0` disables storage cost. |
+| `monitoring.costs.currency` | `USD` | Currency label shown next to cost estimates. |
 | `monitoring.prometheus.url` | `""` | Prometheus base URL. Empty disables history. |
 | `monitoring.prometheus.existingSecret` | `""` | Existing Secret containing a Prometheus bearer token. |
 | `monitoring.prometheus.tokenKey` | `token` | Key in the Prometheus token Secret. |

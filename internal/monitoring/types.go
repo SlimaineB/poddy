@@ -60,19 +60,21 @@ type WorkspaceMetrics struct {
 
 // WorkspaceOverview is one row in the portal-wide monitoring table.
 type WorkspaceOverview struct {
-	Name       string        `json:"name"`
-	Template   string        `json:"template,omitempty"`
-	Owner      string        `json:"owner,omitempty"`
-	Phase      string        `json:"phase,omitempty"`
-	Region     string        `json:"region,omitempty"`
-	Available  bool          `json:"available"`
-	Reason     string        `json:"reason,omitempty"`
-	Usage      ResourceUsage `json:"usage"`
-	Requests   ResourceUsage `json:"requests"`
-	Limits     ResourceUsage `json:"limits"`
-	Restarts   int32         `json:"restarts"`
-	Ready      bool          `json:"ready"`
-	ObservedAt *time.Time    `json:"observedAt,omitempty"`
+	Name         string        `json:"name"`
+	Template     string        `json:"template,omitempty"`
+	Owner        string        `json:"owner,omitempty"`
+	Phase        string        `json:"phase,omitempty"`
+	Region       string        `json:"region,omitempty"`
+	Available    bool          `json:"available"`
+	Reason       string        `json:"reason,omitempty"`
+	Usage        ResourceUsage `json:"usage"`
+	Requests     ResourceUsage `json:"requests"`
+	Limits       ResourceUsage `json:"limits"`
+	Restarts     int32         `json:"restarts"`
+	Ready        bool          `json:"ready"`
+	OOMKilled    bool          `json:"oomKilled,omitempty"`
+	StorageBytes int64         `json:"storageBytes,omitempty"`
+	ObservedAt   *time.Time    `json:"observedAt,omitempty"`
 }
 
 // Overview is the portal-wide live monitoring payload.

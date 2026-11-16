@@ -632,6 +632,21 @@
             },
             "visibleToUsers": {
               "type": "boolean"
+            },
+            "cpuCoreHour": {
+              "type": "number",
+              "minimum": 0
+            },
+            "memoryGBHour": {
+              "type": "number",
+              "minimum": 0
+            },
+            "storageGBMonth": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string"
             }
           }
         },

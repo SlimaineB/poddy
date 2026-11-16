@@ -64,8 +64,8 @@ function renderDirectorySummary(totalUsers, totalGroups) {
   if (!els.usersSummary) return;
   const cards = [
     ["user", "Users", totalUsers, "known identities"],
-    ["users", "Groups", totalGroups, "identity groups"],
-    ["grid", "Teams", state.teams.length, "membership groups"],
+    ["users", "OIDC groups", totalGroups, "from the identity provider"],
+    ["grid", "Poddy teams", state.teams.length, "quota and access groups"],
   ];
   if (state.me.isAdmin) {
     cards.push(["shield", "Quota overrides", state.userQuotas.length, "user-specific limits"]);
@@ -147,7 +147,7 @@ function renderDirectoryList(container, values, memberships, kind, query) {
     if (kind === "group") {
       const badge = document.createElement("span");
       badge.className = "badge neutral";
-      badge.textContent = "group";
+      badge.textContent = "OIDC group";
       nameRow.append(badge);
     }
 

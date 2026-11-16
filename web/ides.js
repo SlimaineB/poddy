@@ -78,6 +78,15 @@ function ideAvailable(ide, workspace) {
   return false;
 }
 
+function workspaceIDEs(workspace) {
+  return IDE_INTEGRATIONS.filter((ide) => ideAvailable(ide, workspace));
+}
+
+function launchWorkspaceIDE(ide, workspace, element) {
+  if (typeof ensureWorkspaceAccess === "function" && !ensureWorkspaceAccess(workspace)) return;
+  openIDE(ide, workspace, element);
+}
+
 async function openIDE(ide, workspace, element) {
   if (ide.kind === "browser") {
     const target = ide.port ? window.open("about:blank", "_blank") : null;
@@ -103,10 +112,12 @@ async function openIDE(ide, workspace, element) {
   }
 
   const local = ideUsesLocalLaunch(ide);
-  const original = element.innerHTML;
-  element.disabled = true;
-  element.setAttribute("aria-busy", "true");
-  element.innerHTML = `<span class="spinner small"></span>Opening`;
+  const original = element ? element.innerHTML : "";
+  if (element) {
+    element.disabled = true;
+    element.setAttribute("aria-busy", "true");
+    element.innerHTML = `<span class="spinner small"></span>Opening`;
+  }
 
   try {
     if (local) {
@@ -128,9 +139,11 @@ async function openIDE(ide, workspace, element) {
   } catch (err) {
     toast(err.message || `Failed to open ${ide.label}.`);
   } finally {
-    element.disabled = false;
-    element.removeAttribute("aria-busy");
-    element.innerHTML = original;
+    if (element) {
+      element.disabled = false;
+      element.removeAttribute("aria-busy");
+      element.innerHTML = original;
+    }
   }
 }
 
@@ -180,13 +193,6 @@ function ideButton(ide, workspace, { dialog = false } = {}) {
     }
   });
   return element;
-}
-
-function renderWorkspaceIDEButtons(container, workspace) {
-  for (const ide of IDE_INTEGRATIONS) {
-    if (!ideAvailable(ide, workspace)) continue;
-    container.append(ideButton(ide, workspace));
-  }
 }
 
 function renderSSHIDEActions(workspace) {

@@ -25,6 +25,7 @@ func TestQuotaValidate(t *testing.T) {
 
 	for name, quota := range map[string]Quota{
 		"negative workspaces": {MaxWorkspaces: quotaIntPtr(-1)},
+		"negative backups":    {MaxBackups: quotaIntPtr(-1)},
 		"invalid cpu":         {CPU: "nope"},
 		"negative memory":     {Memory: "-1Gi"},
 		"invalid storage":     {Storage: "1GB!"},
@@ -77,6 +78,31 @@ func TestEffectiveQuotaUsesUserOverrideAndMostPermissiveTeam(t *testing.T) {
 	}
 	if got.Storage != "10Gi" {
 		t.Fatalf("storage = %q", got.Storage)
+	}
+}
+
+func TestEffectiveQuotaBackupsMostPermissiveAndOverride(t *testing.T) {
+	cfg := Config{
+		Teams: map[string]Team{
+			"backend":  {Members: []string{"alice"}, Quota: &Quota{MaxBackups: quotaIntPtr(2)}},
+			"frontend": {Members: []string{"alice"}, Quota: &Quota{MaxBackups: quotaIntPtr(5)}},
+		},
+	}
+	got, err := cfg.EffectiveQuota(Identity{Username: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MaxBackups == nil || *got.MaxBackups != 5 {
+		t.Fatalf("max backups = %v, want 5", got.MaxBackups)
+	}
+
+	cfg.UserQuotas = map[string]Quota{"alice": {MaxBackups: quotaIntPtr(1)}}
+	got, err = cfg.EffectiveQuota(Identity{Username: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MaxBackups == nil || *got.MaxBackups != 1 {
+		t.Fatalf("max backups override = %v, want 1", got.MaxBackups)
 	}
 }
 

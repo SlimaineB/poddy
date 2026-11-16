@@ -43,6 +43,9 @@ function renderMonitoringConfig() {
   if (els.manageMonitoring) {
     els.manageMonitoring.hidden = !canSeeGlobalMonitoring();
   }
+  if (els.manageFinops) {
+    els.manageFinops.hidden = !monitoringLiveEnabled();
+  }
   if (typeof syncManageMenu === "function") syncManageMenu();
   if (els.detailMonitoring) {
     els.detailMonitoring.hidden = !canSeeWorkspaceMonitoring();

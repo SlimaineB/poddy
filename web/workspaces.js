@@ -226,22 +226,6 @@ function renderCard(workspace) {
   dot.className = `dot ${statusClass(workspace.phase)}`;
   status.append(dot, document.createTextNode(workspace.phase || "Unknown"));
 
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "icon-button danger";
-  remove.title = "Delete workspace";
-  remove.setAttribute("aria-label", `Delete ${workspace.name}`);
-  remove.innerHTML = icon("trash");
-  remove.addEventListener("click", () => confirmDelete(workspace));
-
-  const details = document.createElement("button");
-  details.type = "button";
-  details.className = "icon-button info";
-  details.title = "Workspace details";
-  details.setAttribute("aria-label", `Details for ${workspace.name}`);
-  details.innerHTML = icon("info");
-  details.addEventListener("click", () => showDetails(workspace));
-
   top.append(title);
 
   const meta = document.createElement("div");
@@ -314,9 +298,7 @@ function renderCard(workspace) {
   }
 
   const actions = renderWorkspaceActions(workspace);
-  const spacer = document.createElement("span");
-  spacer.className = "spacer";
-  actions.append(spacer, details, remove);
+  actions.classList.add("card-actions");
 
   card.append(top, meta, actions);
   card.classList.add("card-clickable");
@@ -327,72 +309,122 @@ function renderCard(workspace) {
   return card;
 }
 
+function workspaceOpenGroups(workspace, running) {
+  const ides = workspaceIDEs(workspace).map((ide) => ({
+    ide,
+    label: ide.label,
+    icon: ide.icon,
+    brand: ide.brand,
+    title: ide.title(ideUsesLocalLaunch(ide)),
+    disabled: !running,
+    onSelect: () => launchWorkspaceIDE(ide, workspace),
+  }));
+
+  const connect = [];
+  if (state.config.ssh) {
+    connect.push({
+      label: "SSH",
+      icon: "key",
+      title: "Open an SSH session",
+      onSelect: () => {
+        if (ensureWorkspaceAccess(workspace)) showSSH(workspace);
+      },
+    });
+  }
+  connect.push({
+    label: "Ports",
+    icon: "server",
+    title: "Open an application running in this workspace",
+    onSelect: () => {
+      if (ensureWorkspaceAccess(workspace)) showPorts(workspace);
+    },
+  });
+  connect.push({
+    label: "Terminal",
+    icon: "terminal",
+    title: running ? "Open a web terminal" : "Workspace is not running",
+    disabled: !running,
+    onSelect: () => {
+      if (ensureWorkspaceAccess(workspace)) window.location.href = withToken(`/terminal?name=${encodeURIComponent(workspace.name)}`);
+    },
+  });
+
+  const links = [];
+  const template = templateByName(workspace.template);
+  for (const link of (template && Array.isArray(template.links) ? template.links : [])) {
+    const href = resolveLink(link, workspace);
+    if (!href) continue;
+    const iconName = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
+    links.push({
+      label: link.name,
+      icon: iconName,
+      brand: ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab"].includes(iconName),
+      href,
+      target: link.newTab ? "_blank" : "",
+      title: href,
+    });
+  }
+
+  return { ides, connect, links };
+}
+
+function workspaceOpenMenu(groups) {
+  const items = [];
+  if (groups.ides.length) {
+    items.push({ heading: "Editors" }, ...groups.ides);
+  }
+  if (groups.connect.length) {
+    items.push({ heading: "Connect" }, ...groups.connect);
+  }
+  if (groups.links.length) {
+    items.push({ heading: "Links" }, ...groups.links);
+  }
+  return items;
+}
+
+function workspaceOpenControl(workspace, running) {
+  const groups = workspaceOpenGroups(workspace, running);
+  const primaryEntry = groups.ides[0] || groups.connect.find((item) => item.label === "Terminal");
+  if (!primaryEntry) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "split-action";
+
+  const primary = document.createElement("button");
+  primary.type = "button";
+  primary.className = "button small primary split-primary";
+  primary.innerHTML = `${icon(primaryEntry.icon, primaryEntry.brand ? "icon brand-icon" : "icon")}<span></span>`;
+  primary.querySelector("span").textContent = primaryEntry.label;
+  primary.title = primaryEntry.title || `Open ${primaryEntry.label}`;
+  if (primaryEntry.disabled) {
+    primary.disabled = true;
+  } else {
+    primary.addEventListener("click", () => {
+      if (primaryEntry.ide) launchWorkspaceIDE(primaryEntry.ide, workspace, primary);
+      else if (primaryEntry.onSelect) primaryEntry.onSelect();
+    });
+  }
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "button small primary split-toggle";
+  toggle.title = "More ways to open";
+  toggle.setAttribute("aria-label", "More ways to open");
+  toggle.setAttribute("aria-haspopup", "menu");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.innerHTML = icon("chevron-down");
+  const panel = actionMenuPanel(workspaceOpenMenu(groups));
+  toggle.addEventListener("click", (event) => toggleActionMenu(toggle, panel, event));
+
+  wrap.append(primary, toggle);
+  return wrap;
+}
+
 function renderWorkspaceActions(workspace) {
   const actions = document.createElement("div");
-  actions.className = "card-actions";
+  actions.className = "workspace-action-bar";
   const stopped = workspace.phase === "Stopped";
   const running = workspace.phase === "Running";
-
-  if (!stopped) {
-    renderWorkspaceIDEButtons(actions, workspace);
-
-    if (state.config.ssh) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "button small ssh";
-      button.innerHTML = `${icon("key")}SSH`;
-      button.addEventListener("click", () => {
-        if (ensureWorkspaceAccess(workspace)) showSSH(workspace);
-      });
-      actions.append(button);
-    }
-
-    const ports = document.createElement("button");
-    ports.type = "button";
-    ports.className = "button small";
-    ports.innerHTML = `${icon("server")}Ports`;
-    ports.title = "Open an application running in this workspace";
-    ports.addEventListener("click", () => {
-      if (ensureWorkspaceAccess(workspace)) showPorts(workspace);
-    });
-    actions.append(ports);
-
-    const terminal = document.createElement("a");
-    terminal.className = "button small terminal";
-    terminal.href = withToken(`/terminal?name=${encodeURIComponent(workspace.name)}`);
-    terminal.innerHTML = `${icon("terminal")}Terminal`;
-    if (!running) {
-      terminal.setAttribute("aria-disabled", "true");
-      terminal.title = "Workspace is not running";
-      terminal.tabIndex = -1;
-      terminal.style.opacity = "0.45";
-      terminal.style.pointerEvents = "none";
-      terminal.addEventListener("click", (event) => event.preventDefault());
-    } else {
-      terminal.addEventListener("click", (event) => {
-        if (!ensureWorkspaceAccess(workspace)) event.preventDefault();
-      });
-    }
-    actions.append(terminal);
-
-    const template = templateByName(workspace.template);
-    for (const link of (template && Array.isArray(template.links) ? template.links : [])) {
-      const href = resolveLink(link, workspace);
-      if (!href) continue;
-      const anchor = document.createElement("a");
-      anchor.className = "button small link-button";
-      anchor.href = href;
-      const iconName = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
-      const iconClass = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab"].includes(iconName) ? "icon brand-icon" : "icon";
-      anchor.innerHTML = `${icon(iconName, iconClass)}<span></span>`;
-      anchor.querySelector("span").textContent = link.name;
-      if (link.newTab) {
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
-      }
-      actions.append(anchor);
-    }
-  }
 
   if (stopped) {
     const start = document.createElement("button");
@@ -402,20 +434,24 @@ function renderWorkspaceActions(workspace) {
     start.addEventListener("click", () => runWorkspaceAction(workspace, "start", start));
     actions.append(start);
   } else {
-    const restart = document.createElement("button");
-    restart.type = "button";
-    restart.className = "button small restart";
-    restart.innerHTML = `${icon("refresh")}Restart`;
-    restart.addEventListener("click", () => confirmWorkspaceAction(workspace, "restart"));
-    actions.append(restart);
-
-    const stop = document.createElement("button");
-    stop.type = "button";
-    stop.className = "button small stop";
-    stop.innerHTML = `${icon("stop")}Stop`;
-    stop.addEventListener("click", () => confirmWorkspaceAction(workspace, "stop"));
-    actions.append(stop);
+    const open = workspaceOpenControl(workspace, running);
+    if (open) actions.append(open);
   }
+
+  const overflow = [
+    { label: "Details", icon: "info", onSelect: () => showDetails(workspace) },
+  ];
+  if (!stopped) {
+    overflow.push(
+      { label: "Restart", icon: "refresh", onSelect: () => confirmWorkspaceAction(workspace, "restart") },
+      { label: "Stop", icon: "stop", onSelect: () => confirmWorkspaceAction(workspace, "stop") },
+    );
+  }
+  overflow.push(
+    { separator: true },
+    { label: "Delete workspace", icon: "trash", danger: true, onSelect: () => confirmDelete(workspace) },
+  );
+  actions.append(actionMenuOverflow(overflow));
 
   return actions;
 }
@@ -563,15 +599,6 @@ function renderWorkspaceRow(workspace) {
   actionsCell.className = "workspace-table-actions";
   const actions = renderWorkspaceActions(workspace);
   actions.classList.add("workspace-actions");
-
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "icon-button danger";
-  remove.title = "Delete workspace";
-  remove.setAttribute("aria-label", `Delete ${workspace.name}`);
-  remove.innerHTML = icon("trash");
-  remove.addEventListener("click", () => confirmDelete(workspace));
-  actions.append(remove);
   actionsCell.append(actions);
 
   row.append(nameCell, statusCell, templateCell, ownerCell, createdCell, actionsCell);
@@ -821,12 +848,6 @@ function renderDetailHeader(workspace) {
 
   const actions = renderWorkspaceActions(workspace);
   actions.classList.add("detail-action-list");
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "button small danger";
-  remove.innerHTML = `${icon("trash")}Delete`;
-  remove.addEventListener("click", () => confirmDelete(workspace));
-  actions.append(remove);
   els.detailActions.replaceChildren(actions);
 }
 

@@ -418,6 +418,12 @@ monitoring:
   costs:
     enabled: false
     visibleToUsers: false
+    # Unit prices for FinOps estimates. Leave at 0 to hide that cost line;
+    # resource waste is still reported without any pricing.
+    cpuCoreHour: 0
+    memoryGBHour: 0
+    storageGBMonth: 0
+    currency: USD
   prometheus:
     # In-cluster Prometheus base URL, for example
     # http://prometheus-operated.monitoring.svc:9090

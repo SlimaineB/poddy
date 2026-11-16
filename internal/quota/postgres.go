@@ -24,7 +24,7 @@ func NewPostgres(pool *pgxpool.Pool, namespace string) *Postgres {
 
 func (p *Postgres) UserQuotas(ctx context.Context) (map[string]rbac.Quota, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT identity, max_workspaces, cpu, memory, storage
+		`SELECT identity, max_workspaces, max_backups, cpu, memory, storage
 		 FROM poddy.user_quotas WHERE namespace = $1`,
 		p.namespace)
 	if err != nil {
@@ -34,12 +34,13 @@ func (p *Postgres) UserQuotas(ctx context.Context) (map[string]rbac.Quota, error
 	out := map[string]rbac.Quota{}
 	for rows.Next() {
 		var identity string
-		var max sql.NullInt64
+		var max, backups sql.NullInt64
 		var quota rbac.Quota
-		if err := rows.Scan(&identity, &max, &quota.CPU, &quota.Memory, &quota.Storage); err != nil {
+		if err := rows.Scan(&identity, &max, &backups, &quota.CPU, &quota.Memory, &quota.Storage); err != nil {
 			return nil, fmt.Errorf("scan user quota: %w", err)
 		}
 		quota.MaxWorkspaces = nullInt(max)
+		quota.MaxBackups = nullInt(backups)
 		out[identity] = quota
 	}
 	if err := rows.Err(); err != nil {
@@ -50,7 +51,7 @@ func (p *Postgres) UserQuotas(ctx context.Context) (map[string]rbac.Quota, error
 
 func (p *Postgres) TeamQuotas(ctx context.Context) (map[string]rbac.Quota, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT team, max_workspaces, cpu, memory, storage
+		`SELECT team, max_workspaces, max_backups, cpu, memory, storage
 		 FROM poddy.team_quotas WHERE namespace = $1`,
 		p.namespace)
 	if err != nil {
@@ -60,12 +61,13 @@ func (p *Postgres) TeamQuotas(ctx context.Context) (map[string]rbac.Quota, error
 	out := map[string]rbac.Quota{}
 	for rows.Next() {
 		var team string
-		var max sql.NullInt64
+		var max, backups sql.NullInt64
 		var quota rbac.Quota
-		if err := rows.Scan(&team, &max, &quota.CPU, &quota.Memory, &quota.Storage); err != nil {
+		if err := rows.Scan(&team, &max, &backups, &quota.CPU, &quota.Memory, &quota.Storage); err != nil {
 			return nil, fmt.Errorf("scan team quota: %w", err)
 		}
 		quota.MaxWorkspaces = nullInt(max)
+		quota.MaxBackups = nullInt(backups)
 		out[team] = quota
 	}
 	if err := rows.Err(); err != nil {
@@ -85,15 +87,16 @@ func (p *Postgres) SetUserQuota(ctx context.Context, identity string, quota rbac
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO poddy.user_quotas (
-			namespace, identity, max_workspaces, cpu, memory, storage
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			namespace, identity, max_workspaces, max_backups, cpu, memory, storage
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (namespace, identity) DO UPDATE SET
 			max_workspaces = EXCLUDED.max_workspaces,
+			max_backups = EXCLUDED.max_backups,
 			cpu = EXCLUDED.cpu,
 			memory = EXCLUDED.memory,
 			storage = EXCLUDED.storage,
 			updated_at = now()`,
-		p.namespace, identity, quota.MaxWorkspaces, quota.CPU, quota.Memory, quota.Storage,
+		p.namespace, identity, quota.MaxWorkspaces, quota.MaxBackups, quota.CPU, quota.Memory, quota.Storage,
 	); err != nil {
 		return fmt.Errorf("set user quota %q: %w", identity, err)
 	}
@@ -120,15 +123,16 @@ func (p *Postgres) SetTeamQuota(ctx context.Context, team string, quota rbac.Quo
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO poddy.team_quotas (
-			namespace, team, max_workspaces, cpu, memory, storage
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			namespace, team, max_workspaces, max_backups, cpu, memory, storage
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (namespace, team) DO UPDATE SET
 			max_workspaces = EXCLUDED.max_workspaces,
+			max_backups = EXCLUDED.max_backups,
 			cpu = EXCLUDED.cpu,
 			memory = EXCLUDED.memory,
 			storage = EXCLUDED.storage,
 			updated_at = now()`,
-		p.namespace, team, quota.MaxWorkspaces, quota.CPU, quota.Memory, quota.Storage,
+		p.namespace, team, quota.MaxWorkspaces, quota.MaxBackups, quota.CPU, quota.Memory, quota.Storage,
 	); err != nil {
 		return fmt.Errorf("set team quota %q: %w", team, err)
 	}

@@ -4,6 +4,7 @@ function quotaInputs(scope) {
   if (scope === "team") {
     return {
       workspaces: els.teamQuotaWorkspaces,
+      backups: els.teamQuotaBackups,
       cpu: els.teamQuotaCPU,
       memory: els.teamQuotaMemory,
       storage: els.teamQuotaStorage,
@@ -11,6 +12,7 @@ function quotaInputs(scope) {
   }
   return {
     workspaces: els.quotaWorkspaces,
+    backups: els.quotaBackups,
     cpu: els.quotaCPU,
     memory: els.quotaMemory,
     storage: els.quotaStorage,
@@ -20,13 +22,15 @@ function quotaInputs(scope) {
 function readQuota(scope) {
   const inputs = quotaInputs(scope);
   const quota = {};
-  const workspaces = inputs.workspaces.value.trim();
-  if (workspaces) {
-    const value = Number(workspaces);
+  for (const [key, label] of [["workspaces", "Max workspaces"], ["backups", "Max backups"]]) {
+    const text = inputs[key].value.trim();
+    if (!text) continue;
+    const value = Number(text);
     if (!Number.isInteger(value) || value < 0) {
-      throw new Error("Max workspaces must be a non-negative whole number.");
+      throw new Error(`${label} must be a non-negative whole number.`);
     }
-    quota.maxWorkspaces = value;
+    if (key === "workspaces") quota.maxWorkspaces = value;
+    else quota.maxBackups = value;
   }
   for (const key of ["cpu", "memory", "storage"]) {
     const value = inputs[key].value.trim();
@@ -38,6 +42,7 @@ function readQuota(scope) {
 function setQuotaInputs(scope, quota) {
   const inputs = quotaInputs(scope);
   inputs.workspaces.value = quota?.maxWorkspaces ?? "";
+  inputs.backups.value = quota?.maxBackups ?? "";
   inputs.cpu.value = quota?.cpu || "";
   inputs.memory.value = quota?.memory || "";
   inputs.storage.value = quota?.storage || "";
@@ -54,6 +59,9 @@ function quotaSummary(quota) {
   if (quota.maxWorkspaces !== undefined && quota.maxWorkspaces !== null) {
     parts.push(`${quota.maxWorkspaces} workspace${quota.maxWorkspaces === 1 ? "" : "s"}`);
   }
+  if (quota.maxBackups !== undefined && quota.maxBackups !== null) {
+    parts.push(`${quota.maxBackups} backup${quota.maxBackups === 1 ? "" : "s"}/workspace`);
+  }
   if (quota.cpu) parts.push(`${quota.cpu} CPU`);
   if (quota.memory) parts.push(`${quota.memory} memory`);
   if (quota.storage) parts.push(`${quota.storage} storage`);
@@ -68,10 +76,11 @@ function previewQuota(scope) {
   const inputs = quotaInputs(scope);
   const quota = {};
   let invalid = false;
-  const workspaces = inputs.workspaces.value.trim();
-  if (workspaces) {
-    const value = Number(workspaces);
-    if (Number.isInteger(value) && value >= 0) quota.maxWorkspaces = value;
+  for (const [key, target] of [["workspaces", "maxWorkspaces"], ["backups", "maxBackups"]]) {
+    const text = inputs[key].value.trim();
+    if (!text) continue;
+    const value = Number(text);
+    if (Number.isInteger(value) && value >= 0) quota[target] = value;
     else invalid = true;
   }
   for (const key of ["cpu", "memory", "storage"]) {
@@ -99,6 +108,9 @@ function quotaChips(quota, emptyLabel = "Unlimited") {
   const values = [];
   if (quota?.maxWorkspaces !== undefined && quota?.maxWorkspaces !== null) {
     values.push(["Workspaces", String(quota.maxWorkspaces)]);
+  }
+  if (quota?.maxBackups !== undefined && quota?.maxBackups !== null) {
+    values.push(["Backups", String(quota.maxBackups)]);
   }
   if (quota?.cpu) values.push(["CPU", String(quota.cpu)]);
   if (quota?.memory) values.push(["Memory", String(quota.memory)]);
@@ -189,7 +201,7 @@ function renderUserQuotaMeters() {
   }
   const override = previewQuota("user").quota;
   const effective = { ...(details.effective || {}) };
-  for (const key of ["maxWorkspaces", "cpu", "memory", "storage"]) {
+  for (const key of ["maxWorkspaces", "maxBackups", "cpu", "memory", "storage"]) {
     if (override[key] !== undefined) effective[key] = override[key];
   }
   const usage = details.usage || {};
@@ -221,7 +233,7 @@ function renderTeamQuotaPreview() {
   if (preview.invalid) {
     const invalid = document.createElement("span");
     invalid.className = "quota-chip invalid";
-    invalid.textContent = "Workspaces must be a whole number";
+    invalid.textContent = "Counts must be whole numbers";
     els.teamQuotaPreview.append(invalid);
     return;
   }

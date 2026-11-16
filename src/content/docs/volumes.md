@@ -46,6 +46,10 @@ Backups and restores require:
   application or stop the workspace if you need a fully consistent archive.
 - Live backup is not supported for `ReadWriteOncePod` volumes; stop the
   workspace first.
+- The owner's effective quota `maxBackups` (team default or user override) caps
+  how many backups can be kept for one volume. Creating a backup past the limit
+  returns `409 Conflict`; delete older backups to free space. Admins bypass the
+  limit.
 
 Poddy runs a short-lived helper pod for each backup or restore. The helper
 image must contain `sh`, `tar`, and `gzip`; the default `busybox:1.36` is

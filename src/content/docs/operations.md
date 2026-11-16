@@ -226,6 +226,28 @@ configured) and the workspace **Monitoring** panel. Common failures are missing
 cAdvisor/kube-state-metrics series. Global history only queries workspace pods
 matching `poddy-*-0`.
 
+The **FinOps** page (and `GET /api/monitoring/finops`) compares requested CPU
+and memory with live usage for every workspace. It flags idle, oversized,
+contended, restarting, and OOM-killed workloads. Resource waste needs no
+configuration; adding prices turns it into estimated hourly and monthly spend.
+
+```yaml
+monitoring:
+  costs:
+    enabled: true       # PODDY_MONITORING_COSTS
+    visibleToUsers: false # PODDY_MONITORING_COSTS_FOR_USERS
+    cpuCoreHour: 0.04     # PODDY_COST_CPU_CORE_HOUR
+    memoryGBHour: 0.005   # PODDY_COST_MEMORY_GB_HOUR
+    storageGBMonth: 0.08  # PODDY_COST_STORAGE_GB_MONTH
+    currency: USD         # PODDY_COST_CURRENCY
+```
+
+Costs stay hidden unless pricing is configured **and** `monitoring.costs` is
+enabled. Admins always see spend; non-admins see it only when
+`costsForUsers` is also true. Per-member waste is shown to admins only, with
+OIDC group membership resolved from each user's last sign-in. On-prem clusters
+without meaningful prices can leave pricing empty and use resource waste only.
+
 Also log:
 
 - portal and bastion JSON logs;

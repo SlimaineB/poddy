@@ -191,13 +191,13 @@ func quotaSources(cfg rbac.Config, id rbac.Identity, owner string, userQuotas, t
 	user, hasUser := (rbac.Config{UserQuotas: userQuotas}).UserQuota(id)
 	user.Normalize()
 	if hasUser {
-		for _, field := range []string{"maxWorkspaces", "cpu", "memory", "storage"} {
+		for _, field := range []string{"maxWorkspaces", "maxBackups", "cpu", "memory", "storage"} {
 			if quotaFieldSet(user, field) {
 				out[field] = quotaSourceInfo{Scope: "user", Target: owner}
 			}
 		}
 	}
-	for _, field := range []string{"maxWorkspaces", "cpu", "memory", "storage"} {
+	for _, field := range []string{"maxWorkspaces", "maxBackups", "cpu", "memory", "storage"} {
 		if _, ok := out[field]; ok || !quotaFieldSet(effective, field) {
 			continue
 		}
@@ -225,6 +225,8 @@ func quotaFieldSet(quota rbac.Quota, field string) bool {
 	switch field {
 	case "maxWorkspaces":
 		return quota.MaxWorkspaces != nil
+	case "maxBackups":
+		return quota.MaxBackups != nil
 	case "cpu":
 		return strings.TrimSpace(quota.CPU) != ""
 	case "memory":
@@ -240,6 +242,8 @@ func quotaFieldEqual(left, right rbac.Quota, field string) bool {
 	switch field {
 	case "maxWorkspaces":
 		return left.MaxWorkspaces != nil && right.MaxWorkspaces != nil && *left.MaxWorkspaces == *right.MaxWorkspaces
+	case "maxBackups":
+		return left.MaxBackups != nil && right.MaxBackups != nil && *left.MaxBackups == *right.MaxBackups
 	case "cpu", "memory", "storage":
 		var leftValue, rightValue string
 		switch field {

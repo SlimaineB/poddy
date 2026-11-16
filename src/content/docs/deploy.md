@@ -559,12 +559,18 @@ Every surface has an independent switch:
 | Admin global view | `PODDY_MONITORING_GLOBAL` | `monitoring.global` | `true` |
 | FinOps cost data | `PODDY_MONITORING_COSTS` | `monitoring.costs.enabled` | `false` |
 | Costs visible to users | `PODDY_MONITORING_COSTS_FOR_USERS` | `monitoring.costs.visibleToUsers` | `false` |
+| CPU price per core/hour | `PODDY_COST_CPU_CORE_HOUR` | `monitoring.costs.cpuCoreHour` | `0` |
+| Memory price per GiB/hour | `PODDY_COST_MEMORY_GB_HOUR` | `monitoring.costs.memoryGBHour` | `0` |
+| Storage price per GiB/month | `PODDY_COST_STORAGE_GB_MONTH` | `monitoring.costs.storageGBMonth` | `0` |
+| Currency label | `PODDY_COST_CURRENCY` | `monitoring.costs.currency` | `USD` |
 
 Prometheus is configured with `PODDY_PROMETHEUS_URL` (or
 `monitoring.prometheus.url`) and an optional bearer token from
 `monitoring.prometheus.existingSecret`. History is disabled automatically when
-the URL is empty. Cost flags are reserved for FinOps: cost data is admin-only
-unless `visibleToUsers` is explicitly enabled.
+the URL is empty. FinOps cost data appears only when at least one unit price is
+non-zero and `PODDY_MONITORING_COSTS` is enabled; it is admin-only unless
+`visibleToUsers` is explicitly enabled. Without prices the FinOps page still
+reports resource waste.
 
 ```yaml
 monitoring:

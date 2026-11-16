@@ -202,6 +202,7 @@ const els = {
   detailAccess: document.getElementById("detail-access"),
   manageWorkspaces: document.getElementById("manage-workspaces"),
   manageVolumes: document.getElementById("manage-volumes"),
+  manageFinops: document.getElementById("manage-finops"),
   manageMonitoring: document.getElementById("manage-monitoring"),
   manageMenu: document.getElementById("manage-menu"),
   manageConnections: document.getElementById("manage-connections"),
@@ -256,6 +257,22 @@ const els = {
   monitoringEmpty: document.getElementById("monitoring-empty"),
   monitoringListWrap: document.getElementById("monitoring-list-wrap"),
   monitoringList: document.getElementById("monitoring-list"),
+  finopsView: document.getElementById("finops-view"),
+  finopsBack: document.getElementById("finops-back"),
+  finopsRefresh: document.getElementById("finops-refresh"),
+  finopsUpdated: document.getElementById("finops-updated"),
+  finopsSubtitle: document.getElementById("finops-subtitle"),
+  finopsKpis: document.getElementById("finops-kpis"),
+  finopsMessages: document.getElementById("finops-messages"),
+  finopsBarsNote: document.getElementById("finops-bars-note"),
+  finopsBars: document.getElementById("finops-bars"),
+  finopsTeamsPanel: document.getElementById("finops-teams-panel"),
+  finopsTeams: document.getElementById("finops-teams"),
+  finopsLoading: document.getElementById("finops-loading"),
+  finopsEmpty: document.getElementById("finops-empty"),
+  finopsEmptyText: document.getElementById("finops-empty-text"),
+  finopsListWrap: document.getElementById("finops-list-wrap"),
+  finopsList: document.getElementById("finops-list"),
   detailMonitoring: document.getElementById("detail-monitoring"),
   detailMonitoringNote: document.getElementById("detail-monitoring-note"),
   detailMonitoringBody: document.getElementById("detail-monitoring-body"),
@@ -363,9 +380,11 @@ const els = {
   teamFormTitle: document.getElementById("team-form-title"),
   teamName: document.getElementById("team-name"),
   teamMembers: document.getElementById("team-members"),
+  teamGroups: document.getElementById("team-groups"),
   teamNew: document.getElementById("team-new"),
   teamSave: document.getElementById("team-save"),
   teamQuotaWorkspaces: document.getElementById("team-quota-workspaces"),
+  teamQuotaBackups: document.getElementById("team-quota-backups"),
   teamQuotaCPU: document.getElementById("team-quota-cpu"),
   teamQuotaMemory: document.getElementById("team-quota-memory"),
   teamQuotaStorage: document.getElementById("team-quota-storage"),
@@ -377,6 +396,7 @@ const els = {
   quotaAvatar: document.getElementById("user-quota-avatar"),
   quotaMode: document.getElementById("user-quota-mode"),
   quotaWorkspaces: document.getElementById("user-quota-workspaces"),
+  quotaBackups: document.getElementById("user-quota-backups"),
   quotaCPU: document.getElementById("user-quota-cpu"),
   quotaMemory: document.getElementById("user-quota-memory"),
   quotaStorage: document.getElementById("user-quota-storage"),
@@ -1088,7 +1108,7 @@ function emptyInline(message) {
   node.textContent = message;
   return node;
 }
-function createEntryList(container, { placeholder = "", addLabel = "Add" } = {}) {
+function createEntryList(container, { placeholder = "", addLabel = "Add", suggest = "all" } = {}) {
   container.classList.add("entry-list");
   container.replaceChildren();
 
@@ -1155,8 +1175,10 @@ function createEntryList(container, { placeholder = "", addLabel = "Add" } = {})
 
   function allSuggestions() {
     const users = Array.isArray(state.directory.users) ? state.directory.users : [];
-    const groups = Array.isArray(state.directory.groups) ? state.directory.groups.map((group) => `group:${group}`) : [];
-    return [...users, ...groups];
+    const groups = Array.isArray(state.directory.groups) ? state.directory.groups : [];
+    if (suggest === "users") return users;
+    if (suggest === "groups") return groups;
+    return [...users, ...groups.map((group) => `group:${group}`)];
   }
 
   function updateSuggestions() {
@@ -1265,7 +1287,8 @@ function createEntryList(container, { placeholder = "", addLabel = "Add" } = {})
 const entryLists = {
   owners: createEntryList(els.accessOwners, { placeholder: "owner@example.com", addLabel: "Add owner" }),
   users: createEntryList(els.accessUsers, { placeholder: "alice@example.com", addLabel: "Add user" }),
-  teamMembers: createEntryList(els.teamMembers, { placeholder: "alice@example.com or group:backend", addLabel: "Add member" }),
+  teamMembers: createEntryList(els.teamMembers, { placeholder: "alice@example.com", addLabel: "Add user", suggest: "users" }),
+  teamGroups: createEntryList(els.teamGroups, { placeholder: "platform-team", addLabel: "Add group", suggest: "groups" }),
 };
 async function loadMe() {
   try {
@@ -1311,11 +1334,140 @@ async function loadMe() {
     // The server redirects unauthenticated page loads to the login page.
   }
 }
+let activeActionMenu = null;
+
+function closeActionMenu() {
+  if (!activeActionMenu) return;
+  activeActionMenu.panel.remove();
+  activeActionMenu.trigger.setAttribute("aria-expanded", "false");
+  activeActionMenu = null;
+}
+
+function openActionMenu(trigger, panel) {
+  closeActionMenu();
+  panel.hidden = false;
+  document.body.append(panel);
+  const maxWidth = Math.max(180, window.innerWidth - 16);
+  const width = Math.min(panel.offsetWidth || 230, maxWidth);
+  panel.style.width = `${width}px`;
+  const rect = trigger.getBoundingClientRect();
+  let left = rect.right - width;
+  if (left < 8) left = 8;
+  let top = rect.bottom + 6;
+  const height = panel.offsetHeight || 0;
+  if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  trigger.setAttribute("aria-expanded", "true");
+  activeActionMenu = { trigger, panel };
+}
+
+function toggleActionMenu(trigger, panel, event) {
+  if (event) event.stopPropagation();
+  if (activeActionMenu && activeActionMenu.trigger === trigger) {
+    closeActionMenu();
+    return;
+  }
+  openActionMenu(trigger, panel);
+}
+
+function actionMenuPanel(items) {
+  const panel = document.createElement("div");
+  panel.className = "action-menu-panel";
+  panel.setAttribute("role", "menu");
+  for (const item of items) {
+    if (!item) continue;
+    if (item.separator) {
+      const rule = document.createElement("div");
+      rule.className = "action-menu-separator";
+      panel.append(rule);
+      continue;
+    }
+    if (item.heading) {
+      const heading = document.createElement("span");
+      heading.className = "action-menu-heading";
+      heading.textContent = item.heading;
+      panel.append(heading);
+      continue;
+    }
+    const element = document.createElement(item.href ? "a" : "button");
+    element.className = "action-menu-item";
+    if (item.href) {
+      element.href = item.href;
+      if (item.target) {
+        element.target = item.target;
+        element.rel = "noopener";
+      }
+    } else {
+      element.type = "button";
+    }
+    if (item.danger) element.classList.add("danger");
+    if (item.title) element.title = item.title;
+    const iconName = item.icon || "external";
+    element.innerHTML = `${icon(iconName, item.brand ? "icon brand-icon" : "icon")}<span></span>`;
+    element.querySelector("span").textContent = item.label;
+    if (item.description) {
+      const description = document.createElement("small");
+      description.textContent = item.description;
+      element.append(description);
+    }
+    if (item.disabled) {
+      element.classList.add("disabled");
+      element.setAttribute("aria-disabled", "true");
+      element.tabIndex = -1;
+      if (element.tagName === "A") element.removeAttribute("href");
+      else element.disabled = true;
+    }
+    element.addEventListener("click", (event) => {
+      if (item.disabled) {
+        event.preventDefault();
+        return;
+      }
+      closeActionMenu();
+      if (item.onSelect) item.onSelect(event);
+    });
+    panel.append(element);
+  }
+  return panel;
+}
+
+function actionMenuOverflow(items, { title = "More actions", className = "icon-button" } = {}) {
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = className;
+  trigger.title = title;
+  trigger.setAttribute("aria-label", title);
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.innerHTML = icon("more");
+  const panel = actionMenuPanel(items);
+  trigger.addEventListener("click", (event) => toggleActionMenu(trigger, panel, event));
+  return trigger;
+}
+
+document.addEventListener("click", (event) => {
+  if (!activeActionMenu) return;
+  if (activeActionMenu.panel.contains(event.target)) return;
+  if (activeActionMenu.trigger.contains(event.target)) return;
+  closeActionMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeActionMenu();
+});
+
+window.addEventListener("resize", closeActionMenu);
+window.addEventListener("scroll", (event) => {
+  if (activeActionMenu && activeActionMenu.panel.contains(event.target)) return;
+  closeActionMenu();
+}, true);
+
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";
   els.workspaceDetailView.hidden = name !== "workspace-detail";
   els.volumesView.hidden = name !== "volumes";
   els.monitoringView.hidden = name !== "monitoring";
+  els.finopsView.hidden = name !== "finops";
   els.topologyView.hidden = name !== "topology";
   els.mapView.hidden = name !== "map";
   els.connectionsView.hidden = name !== "connections";
@@ -1328,6 +1480,7 @@ function showView(name) {
   els.auditView.hidden = name !== "audit";
   const active = name === "workspaces" || name === "workspace-detail" || name === "topology" || name === "map" ? els.manageWorkspaces
     : name === "volumes" ? els.manageVolumes
+    : name === "finops" ? els.manageFinops
     : name === "monitoring" ? els.manageMonitoring
     : name === "connections" ? els.manageConnections
     : name === "users" ? els.manageUsers
@@ -1336,7 +1489,7 @@ function showView(name) {
     : name === "environment" ? els.manageEnv
     : name === "audit" ? els.manageAudit
     : null;
-  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageMonitoring, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageEnv, els.manageAudit]) {
+  for (const button of [els.manageWorkspaces, els.manageVolumes, els.manageFinops, els.manageMonitoring, els.manageConnections, els.manageUsers, els.manageTeams, els.manageTemplates, els.manageEnv, els.manageAudit]) {
     if (!button) continue;
     button.classList.toggle("active", button === active);
     if (button === active) button.setAttribute("aria-current", "page");

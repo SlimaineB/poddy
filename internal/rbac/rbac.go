@@ -46,6 +46,7 @@ type Identity struct {
 // corresponding team field.
 type Quota struct {
 	MaxWorkspaces *int   `json:"maxWorkspaces,omitempty" yaml:"maxWorkspaces,omitempty"`
+	MaxBackups    *int   `json:"maxBackups,omitempty" yaml:"maxBackups,omitempty"`
 	CPU           string `json:"cpu,omitempty" yaml:"cpu,omitempty"`
 	Memory        string `json:"memory,omitempty" yaml:"memory,omitempty"`
 	Storage       string `json:"storage,omitempty" yaml:"storage,omitempty"`
@@ -95,6 +96,7 @@ func ValidateTeamName(name string) error {
 // IsZero reports whether the quota has no configured limit.
 func (q Quota) IsZero() bool {
 	return q.MaxWorkspaces == nil &&
+		q.MaxBackups == nil &&
 		strings.TrimSpace(q.CPU) == "" &&
 		strings.TrimSpace(q.Memory) == "" &&
 		strings.TrimSpace(q.Storage) == ""
@@ -114,6 +116,9 @@ func (q *Quota) Normalize() {
 func (q Quota) Validate() error {
 	if q.MaxWorkspaces != nil && *q.MaxWorkspaces < 0 {
 		return fmt.Errorf("maxWorkspaces must be zero or greater")
+	}
+	if q.MaxBackups != nil && *q.MaxBackups < 0 {
+		return fmt.Errorf("maxBackups must be zero or greater")
 	}
 	for name, value := range map[string]string{
 		"cpu":     q.CPU,
@@ -259,6 +264,13 @@ func (q *Quota) fillMostPermissive(team, user Quota, hasUser bool) error {
 			q.MaxWorkspaces = team.MaxWorkspaces
 		} else if team.MaxWorkspaces != nil && *team.MaxWorkspaces > *q.MaxWorkspaces {
 			q.MaxWorkspaces = team.MaxWorkspaces
+		}
+	}
+	if !hasUser || user.MaxBackups == nil {
+		if q.MaxBackups == nil {
+			q.MaxBackups = team.MaxBackups
+		} else if team.MaxBackups != nil && *team.MaxBackups > *q.MaxBackups {
+			q.MaxBackups = team.MaxBackups
 		}
 	}
 	fields := []struct {

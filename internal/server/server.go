@@ -111,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/monitoring/overview", s.monitoringOverview)
 	mux.HandleFunc("GET /api/monitoring/history", s.monitoringHistory)
+	mux.HandleFunc("GET /api/monitoring/finops", s.finOps)
 	mux.HandleFunc("GET /api/audit", s.auditLog)
 	mux.HandleFunc("GET /api/regions", s.regionSummaries)
 	mux.HandleFunc("GET /api/templates", s.templates)
@@ -239,6 +240,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			"global":        s.Monitoring.Global,
 			"costs":         s.Monitoring.Costs,
 			"costsForUsers": s.Monitoring.CostsForUsers,
+			"pricing":       s.Monitoring.Pricing,
 		},
 	})
 }
