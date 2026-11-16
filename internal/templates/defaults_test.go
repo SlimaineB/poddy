@@ -147,7 +147,7 @@ func TestApplyDefaultsPreservesExplicitValues(t *testing.T) {
 apiVersion: v1
 kind: Pod
 spec:
-  automountServiceAccountToken: true
+  automountServiceAccountToken: false
   securityContext:
     fsGroup: 2000
   containers:
@@ -180,8 +180,8 @@ spec:
 		t.Fatal(err)
 	}
 
-	if pod.Spec.AutomountServiceAccountToken == nil || !*pod.Spec.AutomountServiceAccountToken {
-		t.Fatal("automountServiceAccountToken was overridden")
+	if pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
+		t.Fatal("automountServiceAccountToken must stay disabled")
 	}
 	if *pod.Spec.SecurityContext.FSGroup != 2000 {
 		t.Fatalf("fsGroup = %d", *pod.Spec.SecurityContext.FSGroup)
@@ -264,11 +264,10 @@ spec:
           mountPath: /cache
   volumes:
     - name: data-a
-      persistentVolumeClaim:
-        claimName: data-a
+      configMap:
+        name: workspace-config
     - name: data-b
-      persistentVolumeClaim:
-        claimName: data-b
+      emptyDir: {}
     - name: cache
       emptyDir: {}
 `)

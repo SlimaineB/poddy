@@ -39,6 +39,7 @@ const state = {
   topologyActive: false,
   mapActive: false,
   mapSelected: "",
+  mapQuery: "",
   workspaceView: (() => {
     try {
       return localStorage.getItem("poddy.workspaceView") === "list" ? "list" : "cards";
@@ -114,6 +115,8 @@ const els = {
   workspacesPagination: document.getElementById("workspaces-pagination"),
   topologyPagination: document.getElementById("topology-pagination"),
   topologySearch: document.getElementById("topology-search"),
+  mapSearch: document.getElementById("map-search"),
+  themeToggle: document.getElementById("theme-toggle"),
   usersPagination: document.getElementById("users-pagination"),
   groupsPagination: document.getElementById("groups-pagination"),
   teamsPagination: document.getElementById("teams-pagination"),
@@ -264,6 +267,11 @@ const els = {
   finopsSubtitle: document.getElementById("finops-subtitle"),
   finopsKpis: document.getElementById("finops-kpis"),
   finopsMessages: document.getElementById("finops-messages"),
+  finopsOverviewPanel: document.getElementById("finops-overview-panel"),
+  finopsOverviewNote: document.getElementById("finops-overview-note"),
+  finopsOverviewCopy: document.getElementById("finops-overview-copy"),
+  finopsOverview: document.getElementById("finops-overview"),
+  finopsOverviewStats: document.getElementById("finops-overview-stats"),
   finopsBarsNote: document.getElementById("finops-bars-note"),
   finopsBars: document.getElementById("finops-bars"),
   finopsTeamsPanel: document.getElementById("finops-teams-panel"),
@@ -1059,6 +1067,7 @@ function appChoices(template) {
   if (!template || typeof IDE_INTEGRATIONS === "undefined") return [];
   const choices = [];
   for (const ide of IDE_INTEGRATIONS) {
+    if (ide.kind === "gateway") continue;
     if (ide.id === "vscode-web" && !templateParameter(template, "browserVSCode")) continue;
     if (ide.id === "jupyterlab" && !templateParameter(template, "jupyterLab")) continue;
     choices.push(ide);
@@ -1461,6 +1470,57 @@ window.addEventListener("scroll", (event) => {
   if (activeActionMenu && activeActionMenu.panel.contains(event.target)) return;
   closeActionMenu();
 }, true);
+
+function storedTheme() {
+  try {
+    const value = localStorage.getItem("poddy.theme");
+    return value === "dark" || value === "light" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function systemTheme() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme, { persist = false } = {}) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", next === "dark" ? "#0b1120" : "#4f46e5");
+  if (els.themeToggle) {
+    const label = next === "dark" ? "Switch to light mode" : "Switch to dark mode";
+    els.themeToggle.title = label;
+    els.themeToggle.setAttribute("aria-label", label);
+    els.themeToggle.setAttribute("aria-pressed", String(next === "dark"));
+  }
+  if (persist) {
+    try {
+      localStorage.setItem("poddy.theme", next);
+    } catch {
+      // ignore storage failures
+    }
+  }
+}
+
+function initTheme() {
+  applyTheme(storedTheme() || document.documentElement.dataset.theme || systemTheme());
+  if (!els.themeToggle) return;
+  els.themeToggle.addEventListener("click", () => {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", { persist: true });
+  });
+  if (window.matchMedia) {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    if (media.addEventListener) {
+      media.addEventListener("change", () => {
+        if (!storedTheme()) applyTheme(systemTheme());
+      });
+    }
+  }
+}
+
+initTheme();
 
 function showView(name) {
   els.workspacesView.hidden = name !== "workspaces";

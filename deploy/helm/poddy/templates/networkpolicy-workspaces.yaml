@@ -1,0 +1,97 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "poddy.fullname" . }}-workspaces
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: poddy.io/workspace
+        operator: Exists
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if .Values.networkPolicy.workspace.allowPortal }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - {{ printf "%s-portal" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
+                  - {{ printf "%s-bastion" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
+    {{- else }}
+    []
+    {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.workspace.egress.allowDNS }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.workspace.egress.dnsNamespace }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- range .Values.networkPolicy.workspace.egress.dnsCIDRs }}
+    - to:
+        - ipBlock:
+            cidr: {{ . }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- if .Values.networkPolicy.workspace.egress.allowControlPlane }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - {{ printf "%s-portal" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
+                  - {{ printf "%s-bastion" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
+      ports:
+        - protocol: TCP
+          port: {{ regexReplaceAll ".*:" .Values.portal.addr "" | int }}
+        {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+        - protocol: TCP
+          port: {{ .Values.ssh.agent.port }}
+        {{- end }}
+    {{- end }}
+    {{- if .Values.networkPolicy.workspace.egress.allowInternet }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+    {{- end }}
+    {{- range .Values.networkPolicy.workspace.egress.allowedCIDRs }}
+    - to:
+        - ipBlock:
+            cidr: {{ . }}
+    {{- end }}
+    {{- range .Values.networkPolicy.workspace.egress.allowedNamespaces }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+    {{- end }}
+{{- end }}

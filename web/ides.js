@@ -38,6 +38,18 @@ const IDE_INTEGRATIONS = [
     title: (local) => local ? "Open PyCharm through JetBrains Gateway on the portal machine" : "Open PyCharm through JetBrains Gateway (uses the Poddy SSH config)",
   },
   {
+    id: "clion",
+    label: "CLion",
+    icon: "clion",
+    brand: true,
+    kind: "gateway",
+    localFlag: "localMode",
+    buttonClass: "clion",
+    localPath: (workspace) => `/api/workspaces/${encodeURIComponent(workspace.name)}/gateway`,
+    url: (workspace) => gatewayURL(workspace),
+    title: (local) => local ? "Open CLion through JetBrains Gateway on the portal machine" : "Open CLion through JetBrains Gateway (uses the Poddy SSH config)",
+  },
+  {
     id: "jupyterlab",
     label: "JupyterLab",
     icon: "jupyterlab",
@@ -68,7 +80,7 @@ function ideUsesLocalLaunch(ide) {
 }
 
 function ideAvailable(ide, workspace) {
-  if (Array.isArray(workspace.apps) && !workspace.apps.includes(ide.id)) return false;
+  if (ide.kind !== "gateway" && Array.isArray(workspace.apps) && !workspace.apps.includes(ide.id)) return false;
   if (ide.available && !ide.available(workspace)) return false;
   if (ide.kind === "browser") return true;
   if (ide.kind === "desktop") {

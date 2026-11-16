@@ -163,6 +163,42 @@ rbac:
 workspaceNamespace: ""
 createWorkspaceNamespace: false
 
+# Network isolation for workspace pods. The default policy denies all ingress
+# and egress, then allows DNS, reaches the portal/bastion, and (optionally)
+# public internet access with private, CGNAT and IMDS ranges excluded.
+networkPolicy:
+  enabled: true
+  workspace:
+    # Allow the portal and bastion to reach workspace ports. Direct browser
+    # access still goes through the portal, so no ingress controller rule is
+    # needed.
+    allowPortal: true
+    egress:
+      # Allow CoreDNS in kube-system.
+      allowDNS: true
+      dnsNamespace: kube-system
+      # Allow the workspace agent and external-auth helper to reach the
+      # portal/bastion in the release namespace on their control-plane ports.
+      allowControlPlane: true
+      # Allow public internet egress while blocking RFC1918, CGNAT and
+      # link-local ranges (including the cloud metadata endpoint).
+      allowInternet: true
+      # Additional allowed destination CIDRs, for example an internal package
+      # mirror or a database outside the cluster.
+      allowedCIDRs: []
+      # Additional allowed destination namespaces. Workspace access to the
+      # database is intentionally not enabled by default.
+      allowedNamespaces: []
+      # Additional DNS endpoints such as NodeLocal DNSCache
+      # (169.254.20.10/32). Metadata endpoints must never be added here.
+      dnsCIDRs: []
+    # Pod Security Admission labels applied when the chart creates the
+    # workspace namespace. Baseline is only advisory here because workspace
+    # containers need SYS_RESOURCE for sshd OOM protection.
+    psa:
+      warn: baseline
+      audit: baseline
+
 # Legacy stopped-workspace ConfigMap, read only for migration. Workspaces are
 # stored as StatefulSets, so new installs can leave this empty.
 workspaceState:
@@ -370,10 +406,12 @@ ssh:
   existingHostKeySecret: ""
   hostKeySecretKey: ssh_host_ed25519_key
   service:
-    type: LoadBalancer
+    # ClusterIP by default. Set LoadBalancer or NodePort explicitly when the
+    # bastion must be reachable from outside the cluster, and restrict access
+    # with annotations/firewall rules.
+    type: ClusterIP
     port: 2222
-    # Optional fixed NodePort (30000-32767). Useful when LoadBalancer is not
-    # available or when the node already uses 2222.
+    # Optional fixed NodePort (30000-32767) for type NodePort/LoadBalancer.
     nodePort: 0
     annotations: {}
     loadBalancerIP: ""

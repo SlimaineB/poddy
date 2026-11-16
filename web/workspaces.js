@@ -198,6 +198,35 @@ if (els.accessDialog) els.accessDialog.addEventListener("close", () => {
   pendingAccessWorkspace = null;
 });
 
+const workspaceMarks = {
+  vscode: { icon: "vscode", tone: "vscode" },
+  cursor: { icon: "cursor", tone: "cursor" },
+  pycharm: { icon: "pycharm", tone: "pycharm" },
+  clion: { icon: "clion", tone: "clion" },
+  jupyterlab: { icon: "jupyterlab", tone: "jupyterlab" },
+  "vscode-web": { icon: "code", tone: "code" },
+};
+
+function workspaceMark(workspace, extraClass = "") {
+  const apps = Array.isArray(workspace.apps) ? workspace.apps : [];
+  const app = apps.find((id) => workspaceMarks[id]);
+  const mark = workspaceMarks[app] || { icon: "box", tone: "default" };
+  const node = document.createElement("span");
+  node.className = `workspace-mark tone-${mark.tone}${extraClass ? ` ${extraClass}` : ""}`;
+  node.innerHTML = icon(mark.icon, mark.icon === "vscode" ? "icon brand-icon" : "icon");
+  return node;
+}
+
+function statusPill(phase) {
+  const status = document.createElement("span");
+  const state = statusClass(phase) || "unknown";
+  status.className = `status status-${state}`;
+  const dot = document.createElement("span");
+  dot.className = `dot ${state}`;
+  status.append(dot, document.createTextNode(phase || "Unknown"));
+  return status;
+}
+
 function renderCard(workspace) {
   const card = document.createElement("article");
   card.className = `card card-${statusClass(workspace.phase) || "unknown"}`;
@@ -207,9 +236,7 @@ function renderCard(workspace) {
 
   const title = document.createElement("div");
   title.className = "card-title";
-  const mark = document.createElement("span");
-  mark.className = "workspace-mark";
-  mark.innerHTML = icon("box");
+  const mark = workspaceMark(workspace);
   const name = document.createElement("h2");
   const nameButton = document.createElement("button");
   nameButton.type = "button";
@@ -220,11 +247,7 @@ function renderCard(workspace) {
   name.append(nameButton);
   title.append(mark, name);
 
-  const status = document.createElement("span");
-  status.className = "status";
-  const dot = document.createElement("span");
-  dot.className = `dot ${statusClass(workspace.phase)}`;
-  status.append(dot, document.createTextNode(workspace.phase || "Unknown"));
+  const status = statusPill(workspace.phase);
 
   top.append(title);
 
@@ -354,11 +377,11 @@ function workspaceOpenGroups(workspace, running) {
   for (const link of (template && Array.isArray(template.links) ? template.links : [])) {
     const href = resolveLink(link, workspace);
     if (!href) continue;
-    const iconName = ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
+    const iconName = ["vscode", "cursor", "pycharm", "clion", "jetbrains", "jupyterlab", "terminal", "code", "link", "external"].includes(link.icon) ? link.icon : "external";
     links.push({
       label: link.name,
       icon: iconName,
-      brand: ["vscode", "cursor", "pycharm", "jetbrains", "jupyterlab"].includes(iconName),
+      brand: ["vscode", "cursor", "pycharm", "clion", "jetbrains", "jupyterlab"].includes(iconName),
       href,
       target: link.newTab ? "_blank" : "",
       title: href,
@@ -384,7 +407,10 @@ function workspaceOpenMenu(groups) {
 
 function workspaceOpenControl(workspace, running) {
   const groups = workspaceOpenGroups(workspace, running);
-  const primaryEntry = groups.ides[0] || groups.connect.find((item) => item.label === "Terminal");
+  const apps = Array.isArray(workspace.apps) ? workspace.apps : [];
+  const primaryEntry = groups.ides.find((item) => apps.includes(item.ide.id))
+    || groups.ides[0]
+    || groups.connect.find((item) => item.label === "Terminal");
   if (!primaryEntry) return null;
 
   const wrap = document.createElement("div");
@@ -560,9 +586,7 @@ function renderWorkspaceRow(workspace) {
   const nameCell = document.createElement("td");
   const nameWrap = document.createElement("div");
   nameWrap.className = "workspace-name-cell";
-  const nameMark = document.createElement("span");
-  nameMark.className = "workspace-mark small";
-  nameMark.innerHTML = icon("box");
+  const nameMark = workspaceMark(workspace, "small");
   const nameButton = document.createElement("button");
   nameButton.type = "button";
   nameButton.className = "workspace-name-button";
@@ -573,12 +597,7 @@ function renderWorkspaceRow(workspace) {
   nameCell.append(nameWrap);
 
   const statusCell = document.createElement("td");
-  const status = document.createElement("span");
-  status.className = "status";
-  const dot = document.createElement("span");
-  dot.className = `dot ${statusClass(workspace.phase)}`;
-  status.append(dot, document.createTextNode(workspace.phase || "Unknown"));
-  statusCell.append(status);
+  statusCell.append(statusPill(workspace.phase));
 
   const templateCell = document.createElement("td");
   const template = document.createElement("span");

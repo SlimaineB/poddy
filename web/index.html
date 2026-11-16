@@ -5,6 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#4f46e5">
   <title>poddy</title>
+  <script>
+    try {
+      const stored = localStorage.getItem("poddy.theme");
+      const theme = stored === "dark" || stored === "light"
+        ? stored
+        : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch {
+      document.documentElement.dataset.theme = "light";
+    }
+  </script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -27,6 +38,8 @@
     <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
     <symbol id="icon-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
     <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
     <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></symbol>
     <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></symbol>
@@ -49,6 +62,7 @@
     <symbol id="icon-cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L9 19z"/></symbol>
     <symbol id="icon-jetbrains" viewBox="0 0 24 24"><text x="12" y="16.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="currentColor" stroke="none">JB</text></symbol>
     <symbol id="icon-pycharm" viewBox="0 0 24 24"><defs><linearGradient id="pycharm-gradient" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#21D789"/><stop offset="1" stop-color="#07C3F2"/></linearGradient></defs><rect width="24" height="24" rx="5" fill="url(#pycharm-gradient)"/><path fill="#fff" d="M6.4 17.2V6.8h4.1c2.4 0 3.9 1.3 3.9 3.4s-1.5 3.4-3.9 3.4H8.5v3.6H6.4zm2.1-5.4h1.8c1.2 0 1.9-.6 1.9-1.6s-.7-1.6-1.9-1.6H8.5v3.2z"/><path fill="#fff" d="M17.7 17.4c-2.4 0-4-1.7-4-4.4s1.6-4.4 4-4.4c1.5 0 2.7.6 3.4 1.6l-1.5 1.4c-.5-.6-1.1-.9-1.8-.9-1.1 0-1.8.9-1.8 2.3s.7 2.3 1.8 2.3c.8 0 1.4-.3 1.9-.9l1.4 1.4c-.8 1-1.9 1.6-3.4 1.6z"/></symbol>
+    <symbol id="icon-clion" viewBox="0 0 24 24"><text x="12" y="16.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="currentColor" stroke="none">CL</text></symbol>
     <symbol id="icon-jupyterlab" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#F37626"/><circle cx="12" cy="6.3" r="1.7" fill="#fff"/><circle cx="5.7" cy="10.1" r="1.2" fill="#fff"/><circle cx="18.3" cy="10.1" r="1.2" fill="#fff"/><path d="M5.5 14.2c1.3 2.5 3.7 4 6.5 4s5.2-1.5 6.5-4" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="icon-arrow-left" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
@@ -87,6 +101,10 @@
             </div>
           </div>
         </details>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" title="Switch to dark mode" aria-label="Switch to dark mode">
+          <svg class="icon theme-icon theme-icon-sun"><use href="#icon-sun"></use></svg>
+          <svg class="icon theme-icon theme-icon-moon"><use href="#icon-moon"></use></svg>
+        </button>
         <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">
           <svg class="icon"><use href="#icon-refresh"></use></svg>
         </button>
@@ -179,29 +197,30 @@
   </main>
 
   <section id="topology-view" class="page" hidden>
-    <header class="view-header">
+    <section class="page-header">
       <div>
-        <h1>Topology</h1>
-        <p>Users, their workspaces, and the persistent storage attached to each workspace.</p>
+        <h1>Workspaces</h1>
+        <p>Development environments running on Kubernetes.</p>
       </div>
-      <div class="view-header-actions">
-        <span id="topology-count" class="count"></span>
-        <div class="view-toggle" role="group" aria-label="Workspace view">
-          <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false"><svg class="icon"><use href="#icon-grid"></use></svg>Cards</button>
-          <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false"><svg class="icon"><use href="#icon-list"></use></svg>List</button>
-          <button class="button ghost small active" type="button" data-workspace-view="topology" aria-pressed="true"><svg class="icon"><use href="#icon-topology"></use></svg>Topology</button>
-          <button class="button ghost small" type="button" data-workspace-view="map" aria-pressed="false"><svg class="icon"><use href="#icon-map"></use></svg>Map</button>
-        </div>
+      <span id="topology-count" class="count"></span>
+    </section>
+
+    <div class="workspace-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="topology-search" type="search" placeholder="Search users, workspaces, or regions" aria-label="Search topology" autocomplete="off">
       </div>
-    </header>
+      <div class="view-toggle" role="group" aria-label="Workspace view">
+        <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false"><svg class="icon"><use href="#icon-grid"></use></svg>Cards</button>
+        <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false"><svg class="icon"><use href="#icon-list"></use></svg>List</button>
+        <button class="button ghost small active" type="button" data-workspace-view="topology" aria-pressed="true"><svg class="icon"><use href="#icon-topology"></use></svg>Topology</button>
+        <button class="button ghost small" type="button" data-workspace-view="map" aria-pressed="false"><svg class="icon"><use href="#icon-map"></use></svg>Map</button>
+      </div>
+    </div>
 
     <div class="region-summary" data-region-summary hidden></div>
 
     <div class="topology-toolbar">
-      <div class="search-box topology-search">
-        <svg class="icon"><use href="#icon-search"></use></svg>
-        <input id="topology-search" type="search" placeholder="Search users, workspaces, or regions" aria-label="Search topology" autocomplete="off">
-      </div>
       <div class="topology-legend">
         <span><span class="legend-swatch user"></span>User</span>
         <span><span class="legend-swatch workspace"></span>Workspace</span>
@@ -232,21 +251,26 @@
   </section>
 
   <section id="map-view" class="page" hidden>
-    <header class="view-header">
+    <section class="page-header">
       <div>
-        <h1>World map</h1>
-        <p>Workspaces and users across every connected region.</p>
+        <h1>Workspaces</h1>
+        <p>Development environments running on Kubernetes.</p>
       </div>
-      <div class="view-header-actions">
-        <span id="map-count" class="count"></span>
-        <div class="view-toggle" role="group" aria-label="Workspace view">
-          <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false"><svg class="icon"><use href="#icon-grid"></use></svg>Cards</button>
-          <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false"><svg class="icon"><use href="#icon-list"></use></svg>List</button>
-          <button class="button ghost small" type="button" data-workspace-view="topology" aria-pressed="false"><svg class="icon"><use href="#icon-topology"></use></svg>Topology</button>
-          <button class="button ghost small active" type="button" data-workspace-view="map" aria-pressed="true"><svg class="icon"><use href="#icon-map"></use></svg>Map</button>
-        </div>
+      <span id="map-count" class="count"></span>
+    </section>
+
+    <div class="workspace-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="map-search" type="search" placeholder="Search regions by name or SSH host" aria-label="Search regions" autocomplete="off">
       </div>
-    </header>
+      <div class="view-toggle" role="group" aria-label="Workspace view">
+        <button class="button ghost small" type="button" data-workspace-view="cards" aria-pressed="false"><svg class="icon"><use href="#icon-grid"></use></svg>Cards</button>
+        <button class="button ghost small" type="button" data-workspace-view="list" aria-pressed="false"><svg class="icon"><use href="#icon-list"></use></svg>List</button>
+        <button class="button ghost small" type="button" data-workspace-view="topology" aria-pressed="false"><svg class="icon"><use href="#icon-topology"></use></svg>Topology</button>
+        <button class="button ghost small active" type="button" data-workspace-view="map" aria-pressed="true"><svg class="icon"><use href="#icon-map"></use></svg>Map</button>
+      </div>
+    </div>
 
     <div class="map-toolbar">
       <div class="map-legend">
@@ -708,6 +732,16 @@
 
     <section id="finops-kpis" class="monitoring-kpis"></section>
     <div id="finops-messages" class="finops-messages"></div>
+
+    <section id="finops-overview-panel" class="panel finops-panel finops-overview-panel" hidden>
+      <div class="panel-header">
+        <h2>Capacity efficiency</h2>
+        <span id="finops-overview-note" class="count"></span>
+      </div>
+      <p id="finops-overview-copy" class="finops-overview-copy"></p>
+      <div id="finops-overview" class="finops-overview-grid"></div>
+      <div id="finops-overview-stats" class="finops-overview-stats"></div>
+    </section>
 
     <section class="panel finops-panel">
       <div class="panel-header">

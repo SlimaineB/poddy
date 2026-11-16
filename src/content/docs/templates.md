@@ -26,21 +26,24 @@ ConfigMaps can also carry `poddy.io/template-version` and `poddy.io/template-act
 
 ## Security and trust
 
-A template's `pod.yaml` is merged into the final Pod, so whoever can write a
-template can control the pod spec: privileged containers, hostPath volumes, host
-networking, service account tokens, and so on. Treat template ConfigMaps as
-cluster-privileged objects.
+A template's `pod.yaml` is merged into the final Pod. Poddy rejects unsafe
+overlays before creating the workspace, but template ConfigMaps still deserve
+the same protection as other cluster configuration.
 
 - Only trusted operators and CI pipelines should have write access to the
   template ConfigMaps (Kubernetes RBAC). Template `owners` in poddy RBAC manage
   who can use a template, not its content.
 - A per-team GitOps repository that renders templates needs deploy credentials:
   protect it like any other path to cluster-admin.
-- Use admission policies (Kyverno, OPA Gatekeeper, Pod Security Admission) to
-  reject privileged pods, hostPath volumes, or root users when teams do not need
-  them. poddy does not vet pod fields.
-- Poddy merges the overlay over its defaults; the defaults are not a security
-  boundary.
+- Poddy rejects privileged containers, host networking/PID/IPC, hostPath,
+  secret and projected volumes, service account tokens, host ports, sysctls,
+  unconfined seccomp profiles, and dangerous capabilities. The only added
+  capability allowed is `SYS_RESOURCE`.
+- PVC volumes must use the workspace's own claim (`poddy-<name>`). Ephemeral
+  workspaces cannot declare PVC volumes. Other volumes are limited to
+  `emptyDir` and `configMap`.
+- These checks are defense in depth, not a replacement for Kubernetes RBAC,
+  NetworkPolicy, or admission policies.
 
 ## template.yaml schema
 
@@ -175,7 +178,7 @@ The portal calls `template.Render(Data)` where `Data` contains:
 - Lists merge with the usual Kubernetes keys: containers by `name`, env by `name`, ports by `containerPort`, and volume mounts by `mountPath`.
 - A volume defined in `pod.yaml` with the same name as a default volume replaces that default volume.
 - Use the standard `$patch: replace` or `$patch: delete` directives when a list must be replaced or removed instead of merged.
-- Templates are not limited to the default volume or environment. They can declare any number of additional PVCs, volumes, mounts, env vars, containers, and init containers; the defaults only fill what is missing.
+- Templates can add mounts, environment variables, containers, and init containers; the defaults only fill what is missing. Additional volumes are restricted to the workspace PVC, `emptyDir`, and `configMap`.
 - Define a `code-server` container to customize the IDE image, arguments, resources, or mounts. Set `browserVSCode: "false"` to omit the default sidecar.
 - The final pod must still contain a container named `workspace`; the defaults provide one if the template does not.
 

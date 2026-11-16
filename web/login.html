@@ -4,6 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in · poddy</title>
+  <script>
+    try {
+      const stored = localStorage.getItem("poddy.theme");
+      const theme = stored === "dark" || stored === "light"
+        ? stored
+        : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch {
+      document.documentElement.dataset.theme = "light";
+    }
+  </script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-page">

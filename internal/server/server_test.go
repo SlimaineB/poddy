@@ -513,3 +513,50 @@ func TestWorkspaceLogsResponseAndAudit(t *testing.T) {
 		t.Fatalf("logs audit = %+v", event)
 	}
 }
+
+func TestBrowserJupyterProxyAcceptsPost(t *testing.T) {
+	s := newTestServer("secret")
+	req := httptest.NewRequest(http.MethodPost, "/api/workspaces/app/lab/api/kernels", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("POST to JupyterLab proxy returned 405: %s", rec.Body.String())
+	}
+}
+
+func TestTerminalWebSocketOrigin(t *testing.T) {
+	cases := []struct {
+		name      string
+		host      string
+		origin    string
+		forwarded string
+		want      bool
+	}{
+		{name: "missing origin", host: "portal.example.com", want: true},
+		{name: "same origin", host: "portal.example.com", origin: "https://portal.example.com", want: true},
+		{name: "default https port", host: "portal.example.com", origin: "https://portal.example.com:443", want: true},
+		{name: "default http port", host: "portal.example.com:80", origin: "http://portal.example.com", want: true},
+		{name: "different host", host: "portal.example.com", origin: "https://evil.example.com", want: false},
+		{name: "different port", host: "portal.example.com:8443", origin: "https://portal.example.com", want: false},
+		{name: "non http scheme", host: "portal.example.com", origin: "ftp://portal.example.com", want: false},
+		{name: "malformed origin", host: "portal.example.com", origin: "://bad", want: false},
+		{name: "forwarded host", host: "portal:8080", origin: "https://portal.example.com", forwarded: "portal.example.com", want: true},
+		{name: "forwarded host list", host: "portal:8080", origin: "https://portal.example.com", forwarded: "internal, portal.example.com", want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "http://"+tc.host+"/api/terminal", nil)
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
+			if tc.forwarded != "" {
+				r.Header.Set("X-Forwarded-Host", tc.forwarded)
+			}
+			if got := sameOriginRequest(r); got != tc.want {
+				t.Fatalf("sameOriginRequest() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

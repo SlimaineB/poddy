@@ -5,4 +5,15 @@ metadata:
   name: {{ .Values.workspaceNamespace }}
   labels:
     {{- include "poddy.labels" . | nindent 4 }}
+    {{- with .Values.networkPolicy.workspace.psa }}
+    {{- with .warn }}
+    pod-security.kubernetes.io/warn: {{ . | quote }}
+    {{- end }}
+    {{- with .audit }}
+    pod-security.kubernetes.io/audit: {{ . | quote }}
+    {{- end }}
+    {{- with .enforce }}
+    pod-security.kubernetes.io/enforce: {{ . | quote }}
+    {{- end }}
+    {{- end }}
 {{- end }}

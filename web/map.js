@@ -238,6 +238,7 @@ function ensureMapInteractions() {
 async function openMap() {
   state.mapActive = true;
   state.topologyActive = false;
+  if (els.mapSearch) els.mapSearch.value = state.mapQuery;
   const regions = mapRegions();
   if (state.regionFilter) {
     state.mapSelected = state.regionFilter;
@@ -259,25 +260,49 @@ function renderMapIfVisible() {
   renderMap();
 }
 
+function mapRegionSearchText(region, summary) {
+  return [
+    region.name,
+    region.displayName,
+    region.sshHost,
+    summary && summary.sshHost,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function filteredMapRegions() {
+  const query = state.mapQuery.trim().toLowerCase();
+  return mapRegions().filter((region) => {
+    if (state.regionFilter && region.name !== state.regionFilter) return false;
+    if (!query) return true;
+    return mapRegionSearchText(region, mapRegionSummary(region)).includes(query);
+  });
+}
+
 function renderMap() {
   if (!els.mapView) return;
   ensureMapWorld();
   ensureMapInteractions();
 
-  const allRegions = mapRegions();
-  const regions = state.regionFilter
-    ? allRegions.filter((region) => region.name === state.regionFilter)
-    : allRegions;
+  const regions = filteredMapRegions();
+  const query = state.mapQuery.trim();
   const hasActivity = regions.some((region) => mapRegionSummary(region));
   const selected = regions.find((region) => region.name === state.mapSelected) || regions[0];
   if (selected && state.mapSelected !== selected.name) state.mapSelected = selected.name;
 
   if (!regions.length) {
+    const emptyTitle = els.mapEmpty.querySelector("h2");
+    const emptyText = els.mapEmpty.querySelector("p");
+    if (emptyTitle) emptyTitle.textContent = query ? "No matching regions" : "No regions configured";
+    if (emptyText) {
+      emptyText.textContent = query
+        ? `No region matches “${query}”. Try another name or SSH host.`
+        : "Add regions to the portal configuration to see the world map.";
+    }
     els.mapEmpty.hidden = false;
     els.mapContainer.hidden = true;
     els.mapDetail.hidden = true;
     els.mapRegionsList.replaceChildren();
-    els.mapCount.textContent = "No regions";
+    els.mapCount.textContent = query ? "No matching regions" : "No regions";
     els.mapMarkers.replaceChildren();
     return;
   }
@@ -289,9 +314,10 @@ function renderMap() {
     const summary = mapRegionSummary(region);
     return sum + (summary ? Number(summary.workspaces) || 0 : 0);
   }, 0);
+  const matchLabel = query ? " matching" : "";
   els.mapCount.textContent = hasActivity
-    ? `${regions.length} region${regions.length === 1 ? "" : "s"} · ${totalWorkspaces} workspace${totalWorkspaces === 1 ? "" : "s"}`
-    : `${regions.length} region${regions.length === 1 ? "" : "s"} · loading activity…`;
+    ? `${regions.length}${matchLabel} region${regions.length === 1 ? "" : "s"} · ${totalWorkspaces} workspace${totalWorkspaces === 1 ? "" : "s"}`
+    : `${regions.length}${matchLabel} region${regions.length === 1 ? "" : "s"} · loading activity…`;
 
   renderMapMarkers(regions);
   renderMapRegionList(regions);

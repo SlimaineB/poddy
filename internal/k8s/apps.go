@@ -6,6 +6,7 @@ const (
 	AppVSCode     = "vscode"
 	AppCursor     = "cursor"
 	AppPyCharm    = "pycharm"
+	AppCLion      = "clion"
 	AppJupyterLab = "jupyterlab"
 	AppVSCodeWeb  = "vscode-web"
 )
@@ -14,6 +15,7 @@ var supportedApps = map[string]struct{}{
 	AppVSCode:     {},
 	AppCursor:     {},
 	AppPyCharm:    {},
+	AppCLion:      {},
 	AppJupyterLab: {},
 	AppVSCodeWeb:  {},
 }

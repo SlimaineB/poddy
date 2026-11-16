@@ -76,6 +76,13 @@ func ApplyDefaults(raw []byte, data Data) (*corev1.Pod, error) {
 	if container.Image == "" {
 		return nil, fmt.Errorf("workspace container image is required")
 	}
+	expectedPVC := ""
+	if data.Storage != "" {
+		expectedPVC = data.PVCName
+	}
+	if err := validateWorkspacePod(&merged, expectedPVC); err != nil {
+		return nil, fmt.Errorf("unsafe pod template: %w", err)
+	}
 	return &merged, nil
 }
 

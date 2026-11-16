@@ -136,6 +136,7 @@ async function loadFinOps({ silent = false } = {}) {
     els.finopsListWrap.hidden = true;
     els.finopsKpis.replaceChildren();
     els.finopsMessages.replaceChildren();
+    if (els.finopsOverviewPanel) els.finopsOverviewPanel.hidden = true;
     els.finopsBars.replaceChildren();
     if (!silent) toast(err.message || "Failed to load FinOps data.");
     return;
@@ -161,6 +162,7 @@ function renderFinOps(report) {
 
   renderFinOpsKpis(report, currency);
   renderFinOpsMessages(report, currency);
+  renderFinOpsOverview(report, currency);
   renderFinOpsBars(report, currency);
   renderFinOpsTeams(report, currency);
   renderFinOpsTable(report, currency);
@@ -276,6 +278,94 @@ function renderFinOpsMessages(report, currency) {
     note.textContent = message.text;
     els.finopsMessages.append(note);
   }
+}
+
+function finopsUsagePercent(used, reserved) {
+  if (!(reserved > 0)) return null;
+  return Math.max(0, Math.min(100, (used / reserved) * 100));
+}
+
+function finopsOverviewRow(label, used, reserved, formatter) {
+  const percent = finopsUsagePercent(used, reserved);
+  const idle = Math.max(0, reserved - used);
+  const idlePercent = percent == null ? null : 100 - percent;
+  const tone = idlePercent == null ? "empty" : idlePercent >= 60 ? "danger" : idlePercent >= 30 ? "warning" : "ok";
+
+  const row = document.createElement("article");
+  row.className = "finops-resource";
+
+  const head = document.createElement("div");
+  head.className = "finops-resource-head";
+  const name = document.createElement("span");
+  name.className = "finops-resource-label";
+  name.textContent = label;
+  const value = document.createElement("span");
+  value.className = "finops-resource-value";
+  value.textContent = reserved > 0
+    ? `${formatter(used)} used of ${formatter(reserved)}`
+    : "No reservation";
+  head.append(name, value);
+
+  const track = document.createElement("div");
+  track.className = `finops-track large${tone === "empty" ? " empty" : ""}`;
+  const fill = document.createElement("span");
+  fill.style.width = `${percent == null ? 0 : Math.max(1, percent)}%`;
+  if (tone === "warning" || tone === "danger") fill.className = tone;
+  track.append(fill);
+
+  const foot = document.createElement("div");
+  foot.className = "finops-resource-foot";
+  const usedLabel = document.createElement("span");
+  usedLabel.textContent = percent == null ? "Usage cannot be compared" : `${percent.toFixed(0)}% used`;
+  const idleLabel = document.createElement("span");
+  idleLabel.className = `finops-resource-idle tone-${tone}`;
+  idleLabel.textContent = percent == null ? "Add requests to measure waste" : `${formatter(idle)} idle`;
+  foot.append(usedLabel, idleLabel);
+
+  row.append(head, track, foot);
+  return row;
+}
+
+function renderFinOpsOverview(report, currency) {
+  const panel = els.finopsOverviewPanel;
+  if (!panel) return;
+  const totals = report.totals || {};
+  const hasReservations = Number(totals.cpuRequestsCores) > 0 || Number(totals.memoryRequestsBytes) > 0;
+  if (!report.available || !hasReservations) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  els.finopsOverviewNote.textContent = report.costVisible
+    ? `${formatMoney(totals.usedHourly, currency)}/h used · ${formatMoney(totals.wastedHourly, currency)}/h idle`
+    : `${formatCPU(totals.cpuUsageCores)} CPU · ${formatBytes(totals.memoryUsageBytes)} in use`;
+  els.finopsOverviewCopy.textContent = report.costVisible
+    ? "Each bar compares live usage with the resources reserved by workspace requests. The empty part is capacity you pay for but do not use."
+    : "Each bar compares live usage with the resources reserved by workspace requests. The empty part is capacity blocked from other workspaces, even when no prices are configured.";
+
+  els.finopsOverview.replaceChildren(
+    finopsOverviewRow("CPU", Number(totals.cpuUsageCores) || 0, Number(totals.cpuRequestsCores) || 0, formatCPU),
+    finopsOverviewRow("Memory", Number(totals.memoryUsageBytes) || 0, Number(totals.memoryRequestsBytes) || 0, formatBytes),
+  );
+
+  const stats = [
+    [totals.workspaces || 0, "workspaces"],
+    [totals.idle || 0, "idle"],
+    [totals.oversized || 0, "oversized"],
+    [totals.missingRequests || 0, "no requests"],
+    [report.costVisible ? formatMoney(totals.storageMonthly, currency) : formatBytes(totals.storageBytes), report.costVisible ? "storage / month" : "storage provisioned"],
+  ];
+  els.finopsOverviewStats.replaceChildren(...stats.map(([value, label]) => {
+    const item = document.createElement("div");
+    item.className = "finops-overview-stat";
+    const strong = document.createElement("strong");
+    strong.textContent = value;
+    const span = document.createElement("span");
+    span.textContent = label;
+    item.append(strong, span);
+    return item;
+  }));
 }
 
 function renderFinOpsBars(report, currency) {

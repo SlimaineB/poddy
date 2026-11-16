@@ -404,6 +404,8 @@ no automatic failover of an existing workspace between regions.
   - The portal and bastion Roles/RoleBindings live in `workspaceNamespace`; both ServiceAccounts live in the release namespace. The RoleBinding subjects reference the SAs across namespaces.
   - Set `workspace.storageClass` when the cluster has no default StorageClass. The value is used only when the template's `storageClass` parameter is empty.
   - Set `workspace.imageRegistry` for a global mirror fallback and `workspace.imageRegistryMap` for per-host mirrors (`ghcr.io`, `docker.io`, `localhost:5000`, or `*`). Set `workspace.imagePullSecrets` to existing Secrets in `workspaceNamespace` for a private mirror.
+  - `networkPolicy.enabled` (default `true`) creates a default-deny policy for workspace pods. It allows DNS, the portal/bastion control-plane ports, and public internet with RFC1918, CGNAT and link-local (cloud IMDS) ranges excluded. Add internal mirrors or databases to `networkPolicy.workspace.egress.allowedCIDRs` / `allowedNamespaces`. This requires a CNI that enforces NetworkPolicy.
+  - The chart labels a chart-created workspace namespace with Pod Security Admission `warn`/`audit` set to `baseline`. Enforcement is not enabled by default because workspace containers need `SYS_RESOURCE` for SSH OOM protection.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
 ## Volume backups
@@ -623,7 +625,7 @@ button in the UI is not the security boundary.
 | `ssh.ca.key` | Inline CA private key (PEM). Empty generates and preserves a random key. |
 | `ssh.existingKeysSecret` | Use an existing Secret instead of ConfigMap. |
 | `ssh.existingHostKeySecret` | **Required for `bastion.replicaCount > 1`**. Secret with private host key at `ssh.hostKeySecretKey`. |
-| `ssh.service.type` | Service type for SSH (default `LoadBalancer`). |
+| `ssh.service.type` | Service type for SSH (default `ClusterIP`). |
 | `ssh.service.port` | Service port (default `2222`). |
 
 **How it works**: The bastion runs as a separate `poddy-bastion` Deployment on
@@ -644,8 +646,8 @@ workspace memory spike cannot OOM-kill it. The workspace container is granted
 [SSH access](ssh.md#memory-pressure-and-oom-protection).
 
 **Exposing SSH**:
-- Use `LoadBalancer` service type (default). The LB IP/DNS becomes `ssh.publicHost`. This is an L4 TCP load balancer, not an HTTP Ingress.
-- Or use an Ingress TCP service (nginx stream, Traefik TCP) pointing to the `poddy-ssh` Service, which selects the bastion pods. Set `ssh.service.type: ClusterIP` and configure your LB/Ingress accordingly.
+- The service defaults to `ClusterIP`. Opt in explicitly with `ssh.service.type: LoadBalancer` or `NodePort` when the bastion must be reachable from outside the cluster, and restrict access with cloud firewall rules, `loadBalancerSourceRanges`, or Service annotations. The LB IP/DNS becomes `ssh.publicHost`. This is an L4 TCP load balancer, not an HTTP Ingress.
+- Or use an Ingress TCP service (nginx stream, Traefik TCP) pointing to the `poddy-ssh` Service, which selects the bastion pods.
 - For local clusters, a NodePort works (`ssh.service.type: NodePort`); users connect to `<node-ip>:<nodePort>`.
 - Use a stable `ssh.existingHostKeySecret` so users do not get host-key warnings after restarts or when scaling bastion replicas.
 

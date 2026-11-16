@@ -169,6 +169,12 @@ els.topologySearch.addEventListener("input", () => {
   clearTimeout(topologySearchTimer);
   topologySearchTimer = setTimeout(() => loadTopology({ silent: true }), 250);
 });
+if (els.mapSearch) {
+  els.mapSearch.addEventListener("input", () => {
+    state.mapQuery = els.mapSearch.value;
+    renderMapIfVisible();
+  });
+}
 els.manageWorkspaces.addEventListener("click", () => {
   state.topologyActive = false;
   state.mapActive = false;

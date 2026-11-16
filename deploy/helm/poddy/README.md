@@ -157,12 +157,15 @@ name (without the leading `v`) is used.
 | `ssh.keysSecretKey` | `authorized_keys` | Key in the SSH keys Secret/ConfigMap. |
 | `ssh.existingHostKeySecret` | `""` | Secret with host private key. |
 | `ssh.hostKeySecretKey` | `ssh_host_ed25519_key` | Key in the host key Secret. |
-| `ssh.service.type` | `LoadBalancer` | SSH Service type. |
+| `ssh.service.type` | `ClusterIP` | SSH Service type. Opt in to `LoadBalancer`/`NodePort` explicitly. |
 | `ssh.service.port` | `2222` | SSH Service port. |
 | `ssh.service.nodePort` | `0` | Optional fixed SSH NodePort. |
 | `http.service.type` | `ClusterIP` | HTTP Service type. |
 | `http.service.port` | `80` | HTTP Service port. |
 | `http.service.nodePort` | `0` | Optional fixed HTTP NodePort. |
+| `networkPolicy.enabled` | `true` | Default-deny NetworkPolicy for workspace pods with DNS/control-plane/internet allow rules. |
+| `networkPolicy.workspace.egress.allowedCIDRs` | `[]` | Extra allowed destinations (internal mirrors, databases). |
+| `networkPolicy.workspace.egress.allowedNamespaces` | `[]` | Extra allowed namespace destinations. |
 | `monitoring.enabled` | `true` | Master switch for in-product workspace monitoring APIs and UI. |
 | `monitoring.live` | `true` | Live CPU/memory from metrics-server in workspace details. |
 | `monitoring.history` | `true` | Historical charts from Prometheus. Requires `monitoring.prometheus.url`. |

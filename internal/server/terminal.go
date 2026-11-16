@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
@@ -14,8 +18,54 @@ import (
 	"poddy/internal/metadata"
 )
 
+const (
+	wsMaxMessage = 1 << 20
+	wsPongWait   = 60 * time.Second
+	wsPingPeriod = 30 * time.Second
+	wsWriteWait  = 10 * time.Second
+)
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true },
+	HandshakeTimeout: 10 * time.Second,
+	CheckOrigin:      sameOriginRequest,
+}
+
+func sameOriginRequest(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return false
+	}
+	hosts := []string{r.Host}
+	for _, value := range r.Header.Values("X-Forwarded-Host") {
+		for _, host := range strings.Split(value, ",") {
+			hosts = append(hosts, host)
+		}
+	}
+	want := canonicalHost(parsed.Host)
+	for _, host := range hosts {
+		if canonicalHost(host) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalHost(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+	if name, port, err := net.SplitHostPort(host); err == nil {
+		if port == "80" || port == "443" {
+			return strings.ToLower(name)
+		}
+		return strings.ToLower(net.JoinHostPort(name, port))
+	}
+	return strings.ToLower(host)
 }
 
 type controlMessage struct {
@@ -78,6 +128,15 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	stopPresence := s.trackPresence(name, ownerID(id.User), "terminal")
 	defer stopPresence()
 
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	conn.SetReadLimit(wsMaxMessage)
+	_ = conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	})
+	go pingLoop(ctx, conn)
+
 	exec, err := remotecommand.NewSPDYExecutor(
 		s.Workspaces.Rest,
 		http.MethodPost,
@@ -87,9 +146,6 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		writeWS(conn, err.Error())
 		return
 	}
-
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
 
 	stdinR, stdinW := io.Pipe()
 	sizes := newSizeQueue()
@@ -142,7 +198,23 @@ func (s *Server) auditTerminal(r *http.Request, name, outcome, message string) {
 }
 
 func writeWS(conn *websocket.Conn, message string) {
-	conn.WriteMessage(websocket.BinaryMessage, []byte(message))
+	_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+	_ = conn.WriteMessage(websocket.BinaryMessage, []byte(message))
+}
+
+func pingLoop(ctx context.Context, conn *websocket.Conn) {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteWait)); err != nil {
+				return
+			}
+		}
+	}
 }
 
 type wsWriter struct {
@@ -153,6 +225,7 @@ type wsWriter struct {
 func (w *wsWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	_ = w.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 	if err := w.conn.WriteMessage(websocket.BinaryMessage, p); err != nil {
 		return 0, err
 	}
