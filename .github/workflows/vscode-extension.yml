@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload VSIX artifact
         if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: poddy-remote-vsix-${{ steps.version.outputs.version }}
           path: vscode-extension/poddy-remote-${{ steps.version.outputs.version }}.vsix
