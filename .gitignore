@@ -8,3 +8,5 @@ vscode-extension/*.vsix
 vscode-extension/node_modules/
 node_modules/
 .astro/
+/ui-tests/playwright-report/
+/ui-tests/test-results/

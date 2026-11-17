@@ -71,6 +71,23 @@ docker save poddy:dev | sudo k3s ctr images import -
 Use `image.repository=poddy` and `image.tag=dev` with `image.pullPolicy=IfNotPresent`
 for a local Helm install.
 
+## Tests
+
+Run the Go test suite with `go test ./...`.
+
+The portal UI has a Playwright suite that serves the static files from `web/`
+and mocks the API, so it does not need Kubernetes or PostgreSQL:
+
+```bash
+cd ui-tests
+npm ci
+npx playwright install chromium
+npm test
+```
+
+The same suite runs in CI and through `make ui-test` after a one-time
+`make ui-test-install`.
+
 ## Publishing images
 
 The GitHub Actions publish workflow builds and pushes the portal/bastion image,

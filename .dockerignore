@@ -2,6 +2,7 @@
 .github
 bin
 docs
+ui-tests
 website
 vscode-extension
 poddy

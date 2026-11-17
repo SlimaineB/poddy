@@ -48,7 +48,8 @@ export KUBECONFIG
         deploy deploy-hub deploy-eu deploy-us deploy-regions kubeconfig status clean help \
         sync-templates check-templates check-helm-render \
         local-image local-images k3d-up k3d-load k3d-deploy k3d-down \
-        kind-up kind-load kind-deploy kind-down local-up local-deploy local-down
+        kind-up kind-load kind-deploy kind-down local-up local-deploy local-down \
+        ui-test ui-test-install
 
 all: build test vet
 
@@ -70,11 +71,19 @@ security:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 	$(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail ./...
 	cd website && npm audit --audit-level=high
+	cd ui-tests && npm audit --audit-level=high
 	cd vscode-extension && npm audit --audit-level=high
 
 docs:
 	cd website && npm ci
 	cd website && npm run build
+
+ui-test-install:
+	cd ui-tests && npm ci
+	cd ui-tests && npx playwright install chromium
+
+ui-test:
+	cd ui-tests && npm test
 
 kubeconfig: $(KUBECONFIG)
 
@@ -214,6 +223,8 @@ help:
 	@echo "  make fmt          - gofmt -w ."
 	@echo "  make security     - run Go and npm security scans locally"
 	@echo "  make docs         - build the Astro documentation site"
+	@echo "  make ui-test-install - install Playwright and Chromium"
+	@echo "  make ui-test      - run Playwright UI tests"
 	@echo "  make sync-templates - copy built-in templates into poddy-templates chart"
 	@echo "  make check-templates - verify built-in templates are in sync"
 	@echo "  make check-helm-render - verify charts render one ConfigMap per document"
