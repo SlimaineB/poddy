@@ -119,11 +119,12 @@ They use a PostgreSQL advisory lock and `poddy.schema_migrations`, so several
 replicas can start at the same time safely.
 
 To apply the migrations manually instead, apply every file in lexical order
-(`0001_init.sql`, then `0002_quotas.sql`, and so on) and record the same version
-rows that the automatic runner would write. The runner wraps each file in a
-transaction and records its version (the filename without `.sql`) in
-`poddy.schema_migrations`. It re-runs any file without a matching row, so do
-not disable auto-migration halfway through a manual application.
+and record the same version rows that the automatic runner would write. The
+current baseline is `0001_init.sql`; future releases add new numbered files.
+The runner wraps each file in a transaction and records its version (the
+filename without `.sql`) in `poddy.schema_migrations`. It re-runs any file
+without a matching row, so do not disable auto-migration halfway through a
+manual application.
 
 ```bash
 for file in migrations/*.sql; do

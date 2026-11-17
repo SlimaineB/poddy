@@ -56,7 +56,7 @@ export default defineConfig({
         },
       ],
       editLink: {
-        baseUrl: 'https://github.com/SlimaineB/poddy/edit/main/',
+        baseUrl: 'https://github.com/SlimaineB/poddy/edit/main/website/',
       },
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
       sidebar: [

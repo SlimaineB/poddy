@@ -69,12 +69,12 @@ lint: fmt vet
 security:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 	$(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail ./...
-	npm audit --audit-level=high
+	cd website && npm audit --audit-level=high
 	cd vscode-extension && npm audit --audit-level=high
 
 docs:
-	npm ci
-	npm run build
+	cd website && npm ci
+	cd website && npm run build
 
 kubeconfig: $(KUBECONFIG)
 

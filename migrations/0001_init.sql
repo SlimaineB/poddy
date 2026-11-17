@@ -1,4 +1,7 @@
--- poddy metadata schema (optional PostgreSQL backend).
+-- poddy PostgreSQL schema baseline.
+--
+-- This is the schema for the first official release. It replaces the
+-- pre-release incremental migrations, which had no external users.
 --
 -- Kubernetes remains the runtime source of truth. The portal mirrors metadata
 -- and audit events into this schema. It stores control-plane metadata only:
@@ -63,6 +66,11 @@ CREATE TABLE teams (
     display_name text NOT NULL DEFAULT '',
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    quota_max_workspaces integer
+        CHECK (quota_max_workspaces IS NULL OR quota_max_workspaces >= 0),
+    quota_cpu text NOT NULL DEFAULT '',
+    quota_memory text NOT NULL DEFAULT '',
+    quota_storage text NOT NULL DEFAULT '',
     PRIMARY KEY (namespace, name)
 );
 
@@ -318,5 +326,248 @@ COMMENT ON TABLE audit_events IS
 COMMENT ON COLUMN audit_events.action IS
     'Dotted action name, for example workspace.create, workspace.terminal.open, ssh.connect, or team.update.';
 
-INSERT INTO schema_migrations (version) VALUES ('0001_init');
+-- Quotas are owned by the portal quota store. Kubernetes ResourceQuotas and
+-- LimitRanges are applied from this data when the portal reconciles a
+-- namespace.
+--
+-- Resource values are stored as text because they are Kubernetes quantities
+-- such as "500m", "4Gi", and "10Gi". An empty value or NULL max_workspaces
+-- means unlimited.
 
+
+CREATE TABLE IF NOT EXISTS user_quotas (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    identity text NOT NULL CHECK (btrim(identity) <> ''),
+    max_workspaces integer
+        CHECK (max_workspaces IS NULL OR max_workspaces >= 0),
+    cpu text NOT NULL DEFAULT '',
+    memory text NOT NULL DEFAULT '',
+    storage text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    max_backups integer
+        CHECK (max_backups IS NULL OR max_backups >= 0),
+    PRIMARY KEY (namespace, identity)
+);
+
+CREATE INDEX IF NOT EXISTS user_quotas_identity_idx
+    ON user_quotas (namespace, lower(identity));
+
+-- Workspace access state: owner approvals, pending requests, and presence.
+--
+-- This is mutable, frequently written state (presence heartbeats), so it lives
+-- in PostgreSQL instead of a Kubernetes Secret. The namespace column is the
+-- workspace namespace and isolates tenants that share one database.
+--
+-- Grants expire (expires_at) and presence entries are stale after a short TTL
+-- (last_seen). The portal prunes expired rows opportunistically.
+
+
+CREATE TABLE IF NOT EXISTS access_requests (
+    namespace text NOT NULL,
+    workspace text NOT NULL,
+    actor text NOT NULL CHECK (btrim(actor) <> ''),
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (namespace, workspace, actor)
+);
+
+CREATE TABLE IF NOT EXISTS access_grants (
+    namespace text NOT NULL,
+    workspace text NOT NULL,
+    actor text NOT NULL CHECK (btrim(actor) <> ''),
+    approved_by text NOT NULL DEFAULT '',
+    approved_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    PRIMARY KEY (namespace, workspace, actor)
+);
+
+CREATE INDEX IF NOT EXISTS access_grants_expires_idx
+    ON access_grants (namespace, expires_at);
+
+CREATE TABLE IF NOT EXISTS access_presence (
+    namespace text NOT NULL,
+    workspace text NOT NULL,
+    session text NOT NULL CHECK (btrim(session) <> ''),
+    actor text NOT NULL DEFAULT '',
+    kind text NOT NULL DEFAULT '',
+    since timestamptz NOT NULL DEFAULT now(),
+    last_seen timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (namespace, workspace, session)
+);
+
+CREATE INDEX IF NOT EXISTS access_presence_last_seen_idx
+    ON access_presence (namespace, last_seen);
+
+-- Team quotas are owned by the portal quota store. They apply to workspaces
+-- created by team members unless a user quota overrides them.
+--
+-- An empty resource value or NULL max_workspaces means unlimited.
+
+
+CREATE TABLE IF NOT EXISTS team_quotas (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    team text NOT NULL CHECK (btrim(team) <> ''),
+    max_workspaces integer
+        CHECK (max_workspaces IS NULL OR max_workspaces >= 0),
+    cpu text NOT NULL DEFAULT '',
+    memory text NOT NULL DEFAULT '',
+    storage text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    max_backups integer
+        CHECK (max_backups IS NULL OR max_backups >= 0),
+    PRIMARY KEY (namespace, team)
+);
+
+CREATE INDEX IF NOT EXISTS team_quotas_team_idx
+    ON team_quotas (namespace, lower(team));
+
+-- PostgreSQL is the authoritative store for RBAC, OIDC users, external auth
+-- tokens, and workspace share links when a database is configured. Kubernetes
+-- ConfigMaps and Secrets remain as compatibility mirrors or migration sources.
+--
+-- Share tokens are looked up by SHA-256 hash and stored encrypted at rest. Set
+-- PODDY_EXTERNAL_AUTH_KEY (or PODDY_OIDC_SESSION_KEY/PODDY_DESKTOP_SECRET) to a
+-- stable value so share links survive restarts.
+
+
+CREATE TABLE IF NOT EXISTS rbac_documents (
+    namespace text PRIMARY KEY REFERENCES tenants(namespace) ON DELETE CASCADE,
+    config jsonb NOT NULL DEFAULT '{}'::jsonb
+        CHECK (jsonb_typeof(config) = 'object'),
+    revision bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER rbac_documents_set_updated_at
+    BEFORE UPDATE ON rbac_documents
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+COMMENT ON TABLE rbac_documents IS
+    'Authoritative RBAC document when PostgreSQL is configured. The poddy-rbac ConfigMap is a materialized mirror.';
+
+CREATE TABLE IF NOT EXISTS share_links (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    token_hash text NOT NULL CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    token_ciphertext bytea NOT NULL,
+    workspace text NOT NULL CHECK (btrim(workspace) <> ''),
+    port integer NOT NULL DEFAULT 0
+        CHECK (port >= 0 AND port <= 65535),
+    path text NOT NULL DEFAULT '',
+    access text NOT NULL CHECK (access IN ('internal', 'public')),
+    created_by text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    encryption_key_version integer NOT NULL DEFAULT 1
+        CHECK (encryption_key_version > 0),
+    PRIMARY KEY (namespace, token_hash),
+    UNIQUE (namespace, workspace, path)
+);
+
+CREATE INDEX IF NOT EXISTS share_links_workspace_idx
+    ON share_links (namespace, workspace);
+
+CREATE TRIGGER share_links_set_updated_at
+    BEFORE UPDATE ON share_links
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+COMMENT ON TABLE share_links IS
+    'Workspace share links. Tokens are hashed for lookup and encrypted for URL reconstruction.';
+
+COMMENT ON COLUMN share_links.token_ciphertext IS
+    'AES-GCM encrypted raw share token. Never log or expose this value.';
+
+COMMENT ON COLUMN share_links.encryption_key_version IS
+    'Version of the application encryption key used for token_ciphertext.';
+
+CREATE TABLE IF NOT EXISTS metadata_imports (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('external_auth_tokens', 'share_links')),
+    imported_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (namespace, kind)
+);
+
+COMMENT ON TABLE metadata_imports IS
+    'Tracks one-time imports from Kubernetes Secrets. Prevents deleted tokens or shares from being re-imported after a restart.';
+
+COMMENT ON TABLE external_auth_tokens IS
+    'AES-GCM encrypted OAuth2 tokens. Authoritative when PostgreSQL is configured; the Kubernetes Secret is only an import source.';
+
+COMMENT ON TABLE users IS
+    'Authoritative OIDC user directory when PostgreSQL is configured; the poddy-users ConfigMap is a materialized mirror.';
+
+-- Environment variables are control-plane metadata resolved at workspace
+-- creation and start. Plain values are stored as text; secret values are
+-- encrypted with the portal key and never returned by the API.
+--
+-- Precedence is template < team < user < workspace. When several teams define
+-- the same variable, teams are applied in alphabetical order.
+
+
+CREATE TABLE IF NOT EXISTS env_vars (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    scope text NOT NULL CHECK (scope IN ('template', 'team', 'user', 'workspace')),
+    target text NOT NULL CHECK (btrim(target) <> '' AND char_length(target) <= 253),
+    name text NOT NULL CHECK (name ~ '^[A-Za-z_][A-Za-z0-9_]*$' AND char_length(name) <= 255),
+    value text,
+    value_ciphertext bytea,
+    is_secret boolean NOT NULL DEFAULT false,
+    encryption_key_version integer NOT NULL DEFAULT 1
+        CHECK (encryption_key_version > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (namespace, scope, target, name),
+    CHECK (
+        (is_secret AND value IS NULL AND value_ciphertext IS NOT NULL)
+        OR
+        (NOT is_secret AND value IS NOT NULL AND value_ciphertext IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS env_vars_target_idx
+    ON env_vars (namespace, scope, target);
+
+CREATE TRIGGER env_vars_set_updated_at
+    BEFORE UPDATE ON env_vars
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+COMMENT ON TABLE env_vars IS
+    'Template, team, user, and workspace environment variables. Resolved with workspace > user > team > template precedence.';
+
+COMMENT ON COLUMN env_vars.value IS
+    'Plain environment value. NULL for secrets.';
+
+COMMENT ON COLUMN env_vars.value_ciphertext IS
+    'AES-GCM encrypted secret environment value. Never expose this column.';
+
+COMMENT ON COLUMN env_vars.encryption_key_version IS
+    'Version of the application encryption key used for value_ciphertext.';
+
+-- Per-user dotfiles repositories are control-plane metadata. Workspaces clone
+-- the configured repository at startup and copy its top-level entries into
+-- /home/dev. A portal-wide fallback is configured with PODDY_DOTFILES_URL.
+
+
+CREATE TABLE IF NOT EXISTS dotfiles (
+    namespace text NOT NULL REFERENCES tenants(namespace) ON DELETE CASCADE,
+    identity text NOT NULL
+        CHECK (btrim(identity) <> '' AND identity = lower(identity) AND char_length(identity) <= 253),
+    url text NOT NULL
+        CHECK (btrim(url) <> '' AND char_length(url) <= 2048),
+    branch text NOT NULL DEFAULT 'main'
+        CHECK (btrim(branch) <> '' AND char_length(branch) <= 255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (namespace, identity)
+);
+
+CREATE TRIGGER dotfiles_set_updated_at
+    BEFORE UPDATE ON dotfiles
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+COMMENT ON TABLE dotfiles IS
+    'Per-user dotfiles repository URL and branch, applied to workspace homes at startup.';
+
+COMMENT ON COLUMN dotfiles.identity IS
+    'Canonical portal owner identity (lowercase email, username, or subject).';

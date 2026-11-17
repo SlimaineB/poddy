@@ -69,6 +69,7 @@ jobs:
         with:
           node-version: 22
       - name: Audit docs dependencies
+        working-directory: website
         run: npm audit --audit-level=high
       - name: Audit VS Code extension dependencies
         working-directory: vscode-extension

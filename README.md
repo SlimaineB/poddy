@@ -181,9 +181,10 @@ Before exposing poddy to a team:
 | Understand the data model | [Data model](https://slimaineb.github.io/poddy/data-model/) / [PostgreSQL](https://slimaineb.github.io/poddy/postgres-schema/) |
 | Fix a problem | [Troubleshooting](https://slimaineb.github.io/poddy/troubleshooting/) |
 
-The documentation site is built with Astro and Starlight:
+The documentation site lives in `website/` and is built with Astro and Starlight:
 
 ```bash
+cd website
 npm install
 npm run dev
 ```

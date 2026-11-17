@@ -31,8 +31,7 @@
 - `go build ./...`, `go vet ./...`, `go test ./...` passent.
 - `helm lint` et `helm template` passent (avec et sans Prometheus).
 - `node --check` passe sur les JS.
-- `npm run build` est bloqué localement par Node 22.18.0 ; Astro exige
-  `>=22.23.4`. À relancer avec une version Node conforme.
+- Build docs avec Node `>=22.23.4` : `cd website && npm run build`.
 
 ### Résultats du smoke test cluster (2026-11-15)
 
@@ -152,10 +151,10 @@ dans `/api/config` même si le flag est `true`.
    history ; les graphiques globaux doivent agréger les régions.
 5. **Ajouter un test de non-régression** sur le filtre global
    (`poddy-*-0`) et sur `MergeHistories`.
-6. **Documentation** : `src/content/docs/deploy.md` et `operations.md` sont à
-   jour ; ajouter éventuellement une page publique “Workspace monitoring” si le
-   produit doit la mettre en avant.
-7. **Build docs** : `npm run build`.
+6. **Documentation** : `website/src/content/docs/deploy.md` et `operations.md`
+   sont à jour ; ajouter éventuellement une page publique “Workspace monitoring”
+   si le produit doit la mettre en avant.
+7. **Build docs** : `cd website && npm run build`.
 8. **Nettoyage** : vérifier `gofmt`, `go vet`, `go test ./...`, `node --check`
    sur les JS, `helm lint`.
 
@@ -512,6 +511,7 @@ helm template poddy deploy/helm/poddy \
   >/tmp/poddy-monitoring.yaml
 
 # Docs
+cd website
 npm install
 npm run build
 ```

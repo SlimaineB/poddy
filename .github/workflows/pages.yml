@@ -4,11 +4,7 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "src/**"
-      - "public/**"
-      - "astro.config.mjs"
-      - "package.json"
-      - "package-lock.json"
+      - "website/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -34,14 +30,17 @@ jobs:
         with:
           node-version: "22.23.4"
           cache: npm
+          cache-dependency-path: website/package-lock.json
       - name: Install site dependencies
+        working-directory: website
         run: npm ci
       - name: Build Astro site
+        working-directory: website
         run: npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./site
+          path: ./website/site
 
   deploy:
     name: Deploy docs

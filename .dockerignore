@@ -1,12 +1,10 @@
 .git
 .github
+bin
+docs
+website
+vscode-extension
 poddy
 *.test
-site
 node_modules
 .astro
-src
-public
-astro.config.mjs
-package.json
-package-lock.json
