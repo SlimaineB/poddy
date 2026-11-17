@@ -67,6 +67,7 @@ export default defineConfig({
             { label: 'Product tour', slug: 'guided-tour' },
             { label: 'Full demo', slug: 'demo' },
             { label: 'Local k3s test', slug: 'k3s-test' },
+            { label: 'Local k3d and kind', slug: 'k3d-kind' },
           ],
         },
         {
