@@ -12,6 +12,26 @@ This page describes the validation used for the repository and the expected
 differences. The automated harness is
 [`scripts/validate-k3d-kind.sh`](https://github.com/SlimaineB/poddy/blob/main/scripts/validate-k3d-kind.sh).
 
+## Quick path
+
+The Makefile wraps cluster creation, local image build, image loading,
+deployment, and validation:
+
+```bash
+make k3d-deploy
+make kind-deploy
+make local-deploy   # both clusters
+make local-down     # delete both clusters
+```
+
+`make k3d-deploy` builds the portal image as `poddy:local` with Docker, creates
+the k3d cluster, imports the portal, workspace base, and PostgreSQL images,
+then runs the validation harness. `make kind-deploy` does the same with kind.
+Override `LOCAL_IMAGE_TAG`, `K3D_CLUSTER`, `KIND_CLUSTER`, or
+`KIND_NODE_IMAGE` if needed.
+
+The remaining sections show the equivalent commands manually.
+
 ## Tested versions
 
 | Component | k3d | kind |

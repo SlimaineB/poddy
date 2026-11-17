@@ -7,6 +7,8 @@ PORTAL_PORT="${3:?portal local port required}"
 SSH_PORT="${4:?ssh local port required}"
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 WORKDIR="${WORKDIR:-/tmp/poddy-e2e-${NAME}}"
+PORTAL_IMAGE_REPO="${PORTAL_IMAGE_REPO:-ghcr.io/slimaineb/poddy}"
+PORTAL_IMAGE_TAG="${PORTAL_IMAGE_TAG:-latest}"
 WS="test-${NAME}"
 WS_NAME="$WS"
 NS="poddy-system"
@@ -78,8 +80,8 @@ echo "==> [$NAME] templates chart from GitHub source"
 echo "==> [$NAME] portal chart from GitHub source"
 "${HELM[@]}" upgrade --install poddy "$ROOT/deploy/helm/poddy" \
   -n "$NS" \
-  --set image.repository=ghcr.io/slimaineb/poddy \
-  --set image.tag=latest \
+  --set image.repository="$PORTAL_IMAGE_REPO" \
+  --set image.tag="$PORTAL_IMAGE_TAG" \
   --set image.pullPolicy=IfNotPresent \
   --set auth.existingSecret=poddy-auth \
   --set auth.tokenAdmin=true \
