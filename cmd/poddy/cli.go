@@ -157,6 +157,16 @@ func runCLILogout(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	settings, settingsErr := loadCLISettings()
+	if settingsErr != nil {
+		fmt.Fprintf(stderr, "poddy: warning: %v\n", settingsErr)
+	} else if settings.PortalURL != "" && settings.Token != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if _, err := cliRequest[map[string]bool](ctx, settings, http.MethodPost, "/api/cli/logout", nil); err != nil {
+			fmt.Fprintf(stderr, "poddy: warning: could not revoke server token: %v\n", err)
+		}
+	}
 	path, err := cliConfigPath()
 	if err != nil {
 		fmt.Fprintf(stderr, "poddy: %v\n", err)

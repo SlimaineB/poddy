@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"poddy/internal/access"
+	"poddy/internal/clitoken"
 	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
 	"poddy/internal/externalauth"
@@ -62,7 +63,9 @@ func (p *Postgres) PGFirstReady(ctx context.Context) bool {
 			AND to_regclass('poddy.access_grants') IS NOT NULL
 			AND to_regclass('poddy.access_presence') IS NOT NULL
 			AND to_regclass('poddy.env_vars') IS NOT NULL
-			AND to_regclass('poddy.dotfiles') IS NOT NULL`,
+			AND to_regclass('poddy.dotfiles') IS NOT NULL
+			AND to_regclass('poddy.cli_revocations') IS NOT NULL
+			AND to_regclass('poddy.cli_used_codes') IS NOT NULL`,
 	).Scan(&ready)
 	return err == nil && ready
 }
@@ -97,6 +100,11 @@ func (p *Postgres) EnvStore(namespace, secret string) *envstore.PostgresStore {
 // DotfilesStore returns a PostgreSQL-backed per-user dotfiles store.
 func (p *Postgres) DotfilesStore(namespace string) *dotfiles.Postgres {
 	return dotfiles.NewPostgres(p.pool, namespace)
+}
+
+// CLITokenStore returns the shared CLI revocation and one-time-code store.
+func (p *Postgres) CLITokenStore() *clitoken.Postgres {
+	return clitoken.NewPostgres(p.pool)
 }
 
 // Open connects to PostgreSQL. An empty URL returns the disabled Nop backend.

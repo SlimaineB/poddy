@@ -10,6 +10,7 @@ import (
 
 	"poddy/internal/auth"
 	"poddy/internal/backup"
+	"poddy/internal/clitoken"
 	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
 	"poddy/internal/extension"
@@ -59,6 +60,7 @@ type Server struct {
 	UserKeys          *userkeys.Store
 	DesktopSecret     []byte
 	CLISecret         []byte
+	CLITokens         clitoken.Store
 	VSCodeExtension   extension.Metadata
 
 	OIDC            *auth.OIDC
@@ -111,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/me/ssh-certificate", s.issueSSHCertificate)
 	mux.HandleFunc("GET /api/cli/authorize", s.cliAuthorize)
 	mux.HandleFunc("POST /api/cli/token", s.cliToken)
+	mux.HandleFunc("POST /api/cli/logout", s.cliLogout)
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/monitoring/overview", s.monitoringOverview)
 	mux.HandleFunc("GET /api/monitoring/history", s.monitoringHistory)

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -25,6 +27,7 @@ const (
 )
 
 type cliCodeClaims struct {
+	ID                  string    `json:"jti,omitempty"`
 	User                auth.User `json:"user"`
 	Expires             int64     `json:"exp"`
 	Audience            string    `json:"aud"`
@@ -33,6 +36,7 @@ type cliCodeClaims struct {
 }
 
 type cliTokenClaims struct {
+	ID       string    `json:"jti,omitempty"`
 	User     auth.User `json:"user"`
 	Expires  int64     `json:"exp"`
 	Audience string    `json:"aud"`
@@ -62,7 +66,13 @@ func (s *Server) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	codeID, err := newCLIID()
+	if err != nil {
+		http.Error(w, "cannot create CLI code", http.StatusInternalServerError)
+		return
+	}
 	code, err := s.signCLI(cliCodeClaims{
+		ID:                  codeID,
 		User:                id.User,
 		Expires:             time.Now().Add(cliCodeTTL).Unix(),
 		Audience:            cliCodeAudience,
@@ -116,7 +126,17 @@ func (s *Server) cliToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
 		return
 	}
+	if err := s.consumeCLICode(r.Context(), claims); err != nil {
+		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
+		return
+	}
+	tokenID, err := newCLIID()
+	if err != nil {
+		http.Error(w, "cannot create CLI token", http.StatusInternalServerError)
+		return
+	}
 	token, err := s.signCLI(cliCodeClaims{
+		ID:       tokenID,
 		User:     claims.User,
 		Expires:  time.Now().Add(cliTokenTTL).Unix(),
 		Audience: cliTokenAudience,
@@ -158,13 +178,74 @@ func (s *Server) verifyCLI(value, audience string) (cliCodeClaims, error) {
 	return claims, nil
 }
 
-func (s *Server) verifyCLIToken(value string) (cliTokenClaims, error) {
+func (s *Server) verifyCLIToken(ctx context.Context, value string) (cliTokenClaims, error) {
 	claims, err := s.verifyCLI(value, cliTokenAudience)
-	return cliTokenClaims{
+	out := cliTokenClaims{
+		ID:       claims.ID,
 		User:     claims.User,
 		Expires:  claims.Expires,
 		Audience: claims.Audience,
-	}, err
+	}
+	if err != nil {
+		return out, err
+	}
+	if claims.ID != "" && s.CLITokens != nil {
+		revoked, err := s.CLITokens.Revoked(ctx, claims.ID)
+		if err != nil {
+			return out, err
+		}
+		if revoked {
+			return out, errors.New("CLI token revoked")
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) consumeCLICode(ctx context.Context, claims cliCodeClaims) error {
+	if claims.ID == "" || s.CLITokens == nil {
+		return nil
+	}
+	ok, err := s.CLITokens.ConsumeCode(ctx, claims.ID, time.Unix(claims.Expires, 0))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("CLI code already used")
+	}
+	return nil
+}
+
+func (s *Server) cliLogout(w http.ResponseWriter, r *http.Request) {
+	if len(s.CLISecret) == 0 {
+		http.Error(w, "CLI login is not configured", http.StatusNotImplemented)
+		return
+	}
+	claims, err := s.verifyCLIToken(r.Context(), bearerToken(r))
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if s.CLITokens == nil {
+		http.Error(w, "CLI token revocation is not configured", http.StatusNotImplemented)
+		return
+	}
+	if claims.ID == "" {
+		http.Error(w, "CLI token cannot be revoked", http.StatusConflict)
+		return
+	}
+	if err := s.CLITokens.Revoke(r.Context(), claims.ID, time.Unix(claims.Expires, 0)); err != nil {
+		http.Error(w, "cannot revoke CLI token", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
+}
+
+func newCLIID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func validPKCEValue(value string) bool {

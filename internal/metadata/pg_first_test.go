@@ -42,6 +42,25 @@ func TestPostgresFirstStores(t *testing.T) {
 		_, _ = pg.pool.Exec(context.Background(), "DELETE FROM poddy.tenants WHERE namespace = $1", namespace)
 	})
 
+	t.Run("cli tokens", func(t *testing.T) {
+		store := pg.CLITokenStore()
+		tokenID := fmt.Sprintf("token-%d", time.Now().UnixNano())
+		expires := time.Now().Add(time.Hour)
+		if err := store.Revoke(ctx, tokenID, expires); err != nil {
+			t.Fatal(err)
+		}
+		if revoked, err := store.Revoked(ctx, tokenID); err != nil || !revoked {
+			t.Fatalf("revoked = %v, %v", revoked, err)
+		}
+		codeID := fmt.Sprintf("code-%d", time.Now().UnixNano())
+		if ok, err := store.ConsumeCode(ctx, codeID, expires); err != nil || !ok {
+			t.Fatalf("first consume = %v, %v", ok, err)
+		}
+		if ok, err := store.ConsumeCode(ctx, codeID, expires); err != nil || ok {
+			t.Fatalf("second consume = %v, %v", ok, err)
+		}
+	})
+
 	t.Run("rbac", func(t *testing.T) {
 		client := fake.NewSimpleClientset()
 		mirror := rbac.NewStore(client, namespace, "")

@@ -202,14 +202,16 @@ poddy port-forward alice-dev 8080:80
 
 `poddy login` starts a loopback callback and opens the portal. The portal
 returns a short-lived code that the CLI exchanges for a session token, protected
-by PKCE (`S256`) so an intercepted code is not usable without the verifier. Use
+by PKCE (`S256`) so an intercepted code is not usable without the verifier.
+Login codes are single-use, and revoked tokens are rejected immediately. Use
 `--token` or `PODDY_TOKEN` for automation. `poddy config` prints the same
 `ProxyCommand` configuration as the portal; `--install` merges a managed block
 into `~/.ssh/config` without touching the rest of the file. `poddy ssh` creates
 a per-workspace key, requests a short-lived certificate when certificates are
 enabled, falls back to enrolling the public key, then runs the system `ssh`
 client. `poddy port-forward` uses the same tunnel and only forwards the requested
-local port.
+local port. `poddy logout` revokes the token server-side and removes the local
+config.
 
 ## Helm configuration
 

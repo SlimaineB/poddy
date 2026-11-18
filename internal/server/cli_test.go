@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"poddy/internal/auth"
+	"poddy/internal/clitoken"
 )
 
 const (
@@ -42,7 +44,7 @@ func TestValidLoopbackRedirect(t *testing.T) {
 }
 
 func TestCLITokenRoundTrip(t *testing.T) {
-	s := &Server{CLISecret: []byte("cli-secret")}
+	s := newCLITestServer()
 	user := auth.User{Username: "alice", Email: "alice@example.com"}
 	code, err := s.signCLI(cliCodeClaims{
 		User:     user,
@@ -64,6 +66,7 @@ func TestCLITokenRoundTrip(t *testing.T) {
 	}
 
 	token, err := s.signCLI(cliCodeClaims{
+		ID:       "token-1",
 		User:     user,
 		Expires:  time.Now().Add(time.Minute).Unix(),
 		Audience: cliTokenAudience,
@@ -71,7 +74,7 @@ func TestCLITokenRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.verifyCLIToken(token); err != nil {
+	if _, err := s.verifyCLIToken(context.Background(), token); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("GET", "/api/me", nil)
@@ -80,10 +83,16 @@ func TestCLITokenRoundTrip(t *testing.T) {
 	if !ok || id.Method != "cli" || id.User.Username != "alice" {
 		t.Fatalf("identify = %+v, %v", id, ok)
 	}
+	if err := s.CLITokens.Revoke(context.Background(), "token-1", time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.verifyCLIToken(context.Background(), token); err == nil {
+		t.Fatal("revoked token accepted")
+	}
 }
 
 func TestCLIAuthorizeRedirectsToLoopback(t *testing.T) {
-	s := &Server{CLISecret: []byte("cli-secret")}
+	s := newCLITestServer()
 	req := httptest.NewRequest("GET", "/api/cli/authorize?redirect_uri="+
 		"http%3A%2F%2F127.0.0.1%3A4321%2Fcallback&state=abc"+
 		"&code_challenge="+testPKCEChallenge+"&code_challenge_method=S256", nil)
@@ -102,8 +111,9 @@ func TestCLIAuthorizeRedirectsToLoopback(t *testing.T) {
 }
 
 func TestCLITokenEndpoint(t *testing.T) {
-	s := &Server{CLISecret: []byte("cli-secret")}
+	s := newCLITestServer()
 	code, err := s.signCLI(cliCodeClaims{
+		ID:                  "code-1",
 		User:                auth.User{Username: "alice"},
 		Expires:             time.Now().Add(time.Minute).Unix(),
 		Audience:            cliCodeAudience,
@@ -126,13 +136,20 @@ func TestCLITokenEndpoint(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.verifyCLIToken(response.Token); err != nil {
+	if _, err := s.verifyCLIToken(context.Background(), response.Token); err != nil {
 		t.Fatal(err)
+	}
+
+	req = httptest.NewRequest("POST", "/api/cli/token", strings.NewReader(string(body)))
+	rec = httptest.NewRecorder()
+	s.cliToken(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("replayed code status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestCLITokenEndpointRejectsWrongVerifier(t *testing.T) {
-	s := &Server{CLISecret: []byte("cli-secret")}
+	s := newCLITestServer()
 	code, err := s.signCLI(cliCodeClaims{
 		User:                auth.User{Username: "alice"},
 		Expires:             time.Now().Add(time.Minute).Unix(),
@@ -160,5 +177,35 @@ func TestValidPKCEValue(t *testing.T) {
 		if validPKCEValue(value) {
 			t.Fatalf("invalid verifier %q accepted", value)
 		}
+	}
+}
+
+func TestCLILogoutRevokesToken(t *testing.T) {
+	s := newCLITestServer()
+	token, err := s.signCLI(cliCodeClaims{
+		ID:       "logout-token",
+		User:     auth.User{Username: "alice"},
+		Expires:  time.Now().Add(time.Minute).Unix(),
+		Audience: cliTokenAudience,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/api/cli/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.cliLogout(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := s.verifyCLIToken(context.Background(), token); err == nil {
+		t.Fatal("logged-out token accepted")
+	}
+}
+
+func newCLITestServer() *Server {
+	return &Server{
+		CLISecret: []byte("cli-secret"),
+		CLITokens: clitoken.NewMemory(),
 	}
 }

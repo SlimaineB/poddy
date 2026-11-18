@@ -25,6 +25,7 @@ import (
 	"poddy/internal/auth"
 	"poddy/internal/backup"
 	"poddy/internal/bastion"
+	"poddy/internal/clitoken"
 	"poddy/internal/config"
 	"poddy/internal/dotfiles"
 	"poddy/internal/envstore"
@@ -96,6 +97,10 @@ func Run(ctx context.Context, args []string) error {
 			return fmt.Errorf("metadata: PostgreSQL schema is not ready; apply migrations or enable PODDY_DATABASE_AUTO_MIGRATE")
 		}
 		log.Printf("metadata: PostgreSQL control plane and audit enabled")
+	}
+	cliTokens := clitoken.Store(clitoken.NewMemory())
+	if pg, ok := metaStore.(*metadata.Postgres); ok {
+		cliTokens = pg.CLITokenStore()
 	}
 	var environmentStore envstore.Store
 	regionIdentity := region.Identity{User: auth.User{Username: "region", Subject: cfg.RegionName}, Admin: true}
@@ -526,6 +531,7 @@ func Run(ctx context.Context, args []string) error {
 		UserKeys:          userKeyStore,
 		DesktopSecret:     desktopSecret,
 		CLISecret:         desktopSecret,
+		CLITokens:         cliTokens,
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,

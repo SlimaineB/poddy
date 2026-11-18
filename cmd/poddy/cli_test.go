@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,5 +109,39 @@ func TestPKCEChallenge(t *testing.T) {
 	const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 	if got := pkceChallenge(verifier); got != challenge {
 		t.Fatalf("challenge = %q want %q", got, challenge)
+	}
+}
+
+func TestRunCLILogoutRevokesToken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	var authorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		if r.Method != http.MethodPost || r.URL.Path != "/api/cli/logout" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"revoked":true}`))
+	}))
+	defer server.Close()
+
+	if err := saveCLISettings(cliSettings{PortalURL: server.URL, Token: "secret"}); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runCLILogout(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", code, stderr.String())
+	}
+	if authorization != "Bearer secret" {
+		t.Fatalf("authorization = %q", authorization)
+	}
+	path, err := cliConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("config still exists: %v", err)
 	}
 }

@@ -199,7 +199,7 @@ func (s *Server) identify(r *http.Request) (*identity, bool) {
 
 	if len(s.CLISecret) > 0 {
 		if token := bearerToken(r); token != "" {
-			if claims, err := s.verifyCLIToken(token); err == nil {
+			if claims, err := s.verifyCLIToken(r.Context(), token); err == nil {
 				return &identity{Method: "cli", User: claims.User}, true
 			}
 		}
