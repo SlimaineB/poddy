@@ -42,7 +42,7 @@ poddy gives every developer a persistent Linux workspace on Kubernetes. They ope
 | **VS Code / Cursor Remote-SSH** | Install the Poddy extension once per machine. The portal handles keys and SSH config. |
 | **PyCharm / JetBrains Gateway** | Enable **Parse config file ~/.ssh/config** in Gateway. The SSH dialog provides the config. |
 | **JupyterLab** | Workspace template with a JupyterLab sidecar on port `8888`. |
-| **SSH / CLI** | The portal generates a `ProxyCommand` config, or use `poddy login`, `poddy ssh`, and `poddy port-forward`. |
+| **SSH / CLI** | The portal generates a `ProxyCommand` config, or use `poddy login`, `poddy ssh`, `poddy cp`, and `poddy port-forward`. |
 | **Ports and previews** | Open any listening TCP port through the authenticated portal proxy, or share it internally or publicly. |
 
 ## Quick start

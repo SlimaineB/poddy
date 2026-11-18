@@ -27,6 +27,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const cliWorkspaceHome = "/home/dev"
+
 type cliSettings struct {
 	PortalURL string `json:"portalUrl"`
 	Token     string `json:"token"`
@@ -62,7 +64,7 @@ type cliPortalConfig struct {
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: poddy <login|logout|status|list|config|ssh|port-forward> [options]")
+		fmt.Fprintln(stderr, "usage: poddy <login|logout|status|list|config|ssh|cp|port-forward> [options]")
 		return 2
 	}
 	switch args[0] {
@@ -78,6 +80,8 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return runCLIConfig(args[1:], stdout, stderr)
 	case "ssh":
 		return runCLISSH(args[1:], stdout, stderr)
+	case "cp":
+		return runCLICP(args[1:], stdout, stderr)
 	case "port-forward", "forward":
 		return runCLIPortForward(args[1:], stdout, stderr)
 	default:

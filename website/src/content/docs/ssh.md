@@ -203,6 +203,7 @@ poddy login --portal https://poddy.example.com
 poddy list
 poddy config --install
 poddy ssh alice-dev
+poddy cp alice-dev:/home/dev/dataset training-gpu:/home/dev/
 poddy port-forward alice-dev 8080:80
 ```
 
@@ -217,8 +218,14 @@ into `~/.ssh/config` without touching the rest of the file. `poddy ssh` creates
 a per-workspace key, requests a short-lived certificate when certificates are
 enabled, falls back to enrolling the public key, then runs the system `ssh`
 client. `poddy port-forward` uses the same tunnel and only forwards the requested
-local port. `poddy logout` revokes the token server-side and removes the local
-config.
+local port. `poddy cp` streams a `tar` archive between two workspaces through
+the same SSH/bastion path; it works across regions, does not store the data in
+the portal, and applies the same workspace access checks. Copying a directory is
+recursive, and an existing destination directory receives the source basename,
+matching `cp` semantics. Both workspaces must be running and have `tar`
+installed. Use `--key` to reuse one local private key; the CLI creates separate
+temporary copies so each workspace gets its own short-lived certificate.
+`poddy logout` revokes the token server-side and removes the local config.
 
 ## Helm configuration
 

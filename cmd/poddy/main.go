@@ -26,6 +26,8 @@ CLI:
   list                              List workspaces
   config                            Print or install the SSH config
   ssh <workspace> [-- command...]   Open an interactive SSH session
+  cp <workspace>:<path> <workspace>:<path>
+                                    Copy files or directories between workspaces
   port-forward <workspace> <local>:<remote>
                                     Forward a workspace TCP port
 
@@ -93,7 +95,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "version", "-version", "--version":
 		fmt.Fprintln(stdout, version)
 		return 0
-	case "login", "logout", "status", "list", "ls", "config", "ssh", "port-forward", "forward":
+	case "login", "logout", "status", "list", "ls", "config", "ssh", "cp", "port-forward", "forward":
 		return runCLI(args, stdout, stderr)
 	case "external-auth", "ext-auth":
 		return runExternalAuth(args[1:], stdout, stderr)
