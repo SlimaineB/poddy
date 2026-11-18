@@ -33,14 +33,17 @@ func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error 
 	if m.AgentImage == "" {
 		setEnv(container, envAgentURL, m.AgentURL)
 		setEnv(container, envAgentToken, token)
+		setEnv(container, envAgentTokenFile, agentTokenFile)
 		setEnv(container, envWorkspaceName, workspace)
 		removeEnv(container, envAgentSidecar)
 		removeContainer(pod, AgentContainerName)
+		mountAgentTokenState(pod, container)
 		return nil
 	}
 
 	removeEnv(container, envAgentURL)
 	removeEnv(container, envAgentToken)
+	removeEnv(container, envAgentTokenFile)
 	setEnv(container, envAgentSidecar, "true")
 	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, token)
 	return nil
@@ -50,8 +53,15 @@ func (m *Manager) agentSidecarImage() string {
 	return templates.RewriteImageRegistryWithMap(m.AgentImage, m.ImageRegistry, m.ImageRegistryMap)
 }
 
+const (
+	agentStateVolumeName = "poddy-agent-state"
+	agentStateMountPath  = "/var/lib/poddy"
+	agentTokenFile       = agentStateMountPath + "/agent-token"
+)
+
 func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, token string) {
 	container := agentSidecar(image, agentURL, workspace, token)
+	mountAgentTokenState(pod, &container)
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == AgentContainerName {
 			pod.Spec.Containers[i] = container
@@ -59,6 +69,39 @@ func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, token strin
 		}
 	}
 	pod.Spec.Containers = append(pod.Spec.Containers, container)
+}
+
+// mountAgentTokenState gives the agent a writable emptyDir so a token renewed
+// after a container restart survives in the same pod. A new pod always gets a
+// fresh token from the control plane.
+func mountAgentTokenState(pod *corev1.Pod, container *corev1.Container) {
+	if container == nil {
+		return
+	}
+	found := false
+	for i := range pod.Spec.Volumes {
+		if pod.Spec.Volumes[i].Name == agentStateVolumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+			Name: agentStateVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+	}
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == agentStateVolumeName {
+			return
+		}
+	}
+	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+		Name:      agentStateVolumeName,
+		MountPath: agentStateMountPath,
+	})
 }
 
 func agentSidecar(image, agentURL, workspace, token string) corev1.Container {
@@ -70,6 +113,7 @@ func agentSidecar(image, agentURL, workspace, token string) corev1.Container {
 		Env: []corev1.EnvVar{
 			{Name: envAgentURL, Value: agentURL},
 			{Name: envAgentToken, Value: token},
+			{Name: envAgentTokenFile, Value: agentTokenFile},
 			{Name: envWorkspaceName, Value: workspace},
 		},
 		SecurityContext: &corev1.SecurityContext{
@@ -127,6 +171,7 @@ func removeAgentEnv(pod *corev1.Pod) {
 	for i := range pod.Spec.Containers {
 		removeEnv(&pod.Spec.Containers[i], envAgentURL)
 		removeEnv(&pod.Spec.Containers[i], envAgentToken)
+		removeEnv(&pod.Spec.Containers[i], envAgentTokenFile)
 	}
 }
 

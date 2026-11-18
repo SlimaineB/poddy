@@ -58,6 +58,7 @@ type Server struct {
 	SSHCertTTL        time.Duration
 	UserKeys          *userkeys.Store
 	DesktopSecret     []byte
+	CLISecret         []byte
 	VSCodeExtension   extension.Metadata
 
 	OIDC            *auth.OIDC
@@ -108,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/dotfiles", s.setMyDotfiles)
 	mux.HandleFunc("DELETE /api/me/dotfiles", s.deleteMyDotfiles)
 	mux.HandleFunc("POST /api/me/ssh-certificate", s.issueSSHCertificate)
+	mux.HandleFunc("GET /api/cli/authorize", s.cliAuthorize)
+	mux.HandleFunc("POST /api/cli/token", s.cliToken)
 	mux.HandleFunc("GET /api/config", s.config)
 	mux.HandleFunc("GET /api/monitoring/overview", s.monitoringOverview)
 	mux.HandleFunc("GET /api/monitoring/history", s.monitoringHistory)

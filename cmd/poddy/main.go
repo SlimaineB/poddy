@@ -19,15 +19,26 @@ import (
 
 const usage = `poddy <command> [options]
 
-Commands:
+CLI:
+  login                             Sign in with a browser or API token
+  logout                            Remove the saved CLI session
+  status                            Show the signed-in user and portal
+  list                              List workspaces
+  config                            Print or install the SSH config
+  ssh <workspace> [-- command...]   Open an interactive SSH session
+  port-forward <workspace> <local>:<remote>
+                                    Forward a workspace TCP port
+
+Workspace helpers:
   external-auth status [provider]   Show external auth connection status
   external-auth login <provider>    Reconnect an external account
   external-auth token <provider>    Print a refreshed access token
   git-askpass <prompt>              Git askpass helper using the portal
   help                              Show this help
 
-The workspace must provide PODDY_PORTAL_URL, PODDY_WORKSPACE_NAME and
-PODDY_WORKSPACE_TOKEN.`
+Workspace helpers require PODDY_PORTAL_URL, PODDY_WORKSPACE_NAME and
+PODDY_WORKSPACE_TOKEN. The CLI uses PODDY_PORTAL_URL, PODDY_TOKEN and
+~/.config/poddy/config.json.`
 
 var version = "dev"
 
@@ -82,6 +93,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "version", "-version", "--version":
 		fmt.Fprintln(stdout, version)
 		return 0
+	case "login", "logout", "status", "list", "ls", "config", "ssh", "port-forward", "forward":
+		return runCLI(args, stdout, stderr)
 	case "external-auth", "ext-auth":
 		return runExternalAuth(args[1:], stdout, stderr)
 	case "git-askpass":

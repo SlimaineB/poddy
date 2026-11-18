@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"poddy/internal/access"
@@ -524,6 +525,7 @@ func Run(ctx context.Context, args []string) error {
 		SSHAllowUnmapped:  allowUnmapped,
 		UserKeys:          userKeyStore,
 		DesktopSecret:     desktopSecret,
+		CLISecret:         desktopSecret,
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
@@ -716,6 +718,7 @@ func RunBastion(ctx context.Context, args []string) error {
 	}
 	signer := tunnel.NewTokenSigner(agentKey)
 	broker := tunnel.NewBroker(signer)
+	configureAgentBroker(broker, cfg, manager)
 	defer broker.Close()
 
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keyring, cfg.SSHHostKey)
@@ -890,6 +893,25 @@ func loadSSHKeys(cfg config.Config, allowUnmapped bool) ([]string, *sshkeys.Dyna
 	return keys, keyring, editor, nil
 }
 
+func configureAgentBroker(broker *tunnel.Broker, cfg config.Config, manager *k8s.Manager) {
+	broker.TokenTTL = cfg.AgentTokenTTL
+	broker.Validate = func(workspace, owner string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		pod, err := manager.Get(ctx, workspace)
+		if err != nil {
+			return err
+		}
+		if pod.Status.Phase != corev1.PodRunning {
+			return fmt.Errorf("workspace is not running")
+		}
+		if !strings.EqualFold(k8s.Owner(pod), owner) {
+			return fmt.Errorf("workspace owner changed")
+		}
+		return nil
+	}
+}
+
 func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
@@ -898,6 +920,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 		return nil, fmt.Errorf("ssh bastion: -agent-addr is required when -ssh-require-agent=true")
 	}
 	broker := tunnel.NewBroker(signer)
+	configureAgentBroker(broker, cfg, manager)
 	sshBastion, err := bastion.New(cfg.SSHAddr, manager, keys, cfg.SSHHostKey)
 	if err != nil {
 		broker.Close()

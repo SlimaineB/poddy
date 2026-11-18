@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -22,6 +23,13 @@ import (
 	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 	"poddy/internal/tunnel"
+)
+
+const (
+	defaultMaxConnections      = 512
+	defaultMaxConnectionsPerIP = 32
+	handshakeTimeout           = 15 * time.Second
+	sshServerVersion           = "SSH-2.0-Poddy"
 )
 
 type Bastion struct {
@@ -35,6 +43,13 @@ type Bastion struct {
 	keys         sshkeys.Keyring
 	config       *ssh.ServerConfig
 	listener     net.Listener
+
+	MaxConnections      int
+	MaxConnectionsPerIP int
+
+	limitMu sync.Mutex
+	active  int
+	perIP   map[string]int
 }
 
 type directTCPIP struct {
@@ -53,8 +68,47 @@ func New(addr string, manager *k8s.Manager, keys sshkeys.Keyring, hostKeyPath st
 		return nil, err
 	}
 
-	b := &Bastion{Addr: addr, Manager: manager, keys: keys}
-	b.config = &ssh.ServerConfig{PublicKeyCallback: b.publicKeyCallback}
+	b := &Bastion{
+		Addr:                addr,
+		Manager:             manager,
+		keys:                keys,
+		MaxConnections:      defaultMaxConnections,
+		MaxConnectionsPerIP: defaultMaxConnectionsPerIP,
+		perIP:               map[string]int{},
+	}
+	b.config = &ssh.ServerConfig{
+		MaxAuthTries:      3,
+		ServerVersion:     sshServerVersion,
+		PublicKeyCallback: b.publicKeyCallback,
+		Config: ssh.Config{
+			KeyExchanges: []string{
+				"curve25519-sha256",
+				"curve25519-sha256@libssh.org",
+				"ecdh-sha2-nistp256",
+				"ecdh-sha2-nistp384",
+				"ecdh-sha2-nistp521",
+			},
+			Ciphers: []string{
+				"chacha20-poly1305@openssh.com",
+				"aes256-gcm@openssh.com",
+				"aes128-gcm@openssh.com",
+			},
+			MACs: []string{
+				"hmac-sha2-256-etm@openssh.com",
+				"hmac-sha2-512-etm@openssh.com",
+				"hmac-sha2-256",
+				"hmac-sha2-512",
+			},
+		},
+		PublicKeyAuthAlgorithms: []string{
+			ssh.KeyAlgoED25519,
+			ssh.KeyAlgoECDSA256,
+			ssh.KeyAlgoECDSA384,
+			ssh.KeyAlgoECDSA521,
+			ssh.KeyAlgoRSASHA256,
+			ssh.KeyAlgoRSASHA512,
+		},
+	}
 	b.config.AddHostKey(signer)
 	return b, nil
 }
@@ -119,8 +173,48 @@ func (b *Bastion) Serve() error {
 		if err != nil {
 			return err
 		}
-		go b.handle(conn)
+		ip := remoteIP(conn.RemoteAddr().String())
+		if !b.acquire(ip) {
+			_ = conn.Close()
+			continue
+		}
+		go func() {
+			defer b.release(ip)
+			b.handle(conn)
+		}()
 	}
+}
+
+func (b *Bastion) acquire(ip string) bool {
+	b.limitMu.Lock()
+	defer b.limitMu.Unlock()
+	max := b.MaxConnections
+	if max <= 0 {
+		max = defaultMaxConnections
+	}
+	perIPMax := b.MaxConnectionsPerIP
+	if perIPMax <= 0 {
+		perIPMax = defaultMaxConnectionsPerIP
+	}
+	if b.active >= max || b.perIP[ip] >= perIPMax {
+		return false
+	}
+	b.active++
+	b.perIP[ip]++
+	return true
+}
+
+func (b *Bastion) release(ip string) {
+	b.limitMu.Lock()
+	defer b.limitMu.Unlock()
+	if b.active > 0 {
+		b.active--
+	}
+	if b.perIP[ip] <= 1 {
+		delete(b.perIP, ip)
+		return
+	}
+	b.perIP[ip]--
 }
 
 func (b *Bastion) Close() error {
@@ -137,11 +231,13 @@ func (b *Bastion) Close() error {
 func (b *Bastion) handle(conn net.Conn) {
 	defer conn.Close()
 
+	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
 	serverConn, channels, requests, err := ssh.NewServerConn(conn, b.config)
 	if err != nil {
 		log.Printf("ssh bastion: handshake: %v", err)
 		return
 	}
+	_ = conn.SetDeadline(time.Time{})
 	defer serverConn.Close()
 	go ssh.DiscardRequests(requests)
 

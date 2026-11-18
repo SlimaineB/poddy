@@ -45,10 +45,15 @@ stores its state in `/home/dev/.openvscode-server` and runs as UID 1000, so it
 follows the same persistence rule.
 
 The portal signs a workspace-bound agent token and injects it into the agent
-sidecar as `PODDY_AGENT_TOKEN`, together with `PODDY_AGENT_URL` and
-`PODDY_WORKSPACE_NAME`. The bastion verifies the token with the shared
-`PODDY_AGENT_KEY`. Set `ssh.requireAgent=true` to reject connections when the
-agent is not connected.
+sidecar as `PODDY_AGENT_TOKEN`, together with `PODDY_AGENT_URL`,
+`PODDY_WORKSPACE_NAME`, and `PODDY_AGENT_TOKEN_FILE`. The token is signed with a
+key derived from the shared `PODDY_AGENT_KEY` and the workspace name, so a token
+for one workspace cannot be replayed against another. The bastion verifies the
+signature before accepting the tunnel. Tokens default to one hour
+(`ssh.agent.tokenTtl`), are renewed automatically over the established tunnel,
+and the latest token is persisted in the agent's emptyDir so a container restart
+within the same pod does not need a new workspace token. Set
+`ssh.requireAgent=true` to reject connections when the agent is not connected.
 
 Existing workspace pods must be stopped and started after upgrading so they
 receive the agent sidecar. Custom workspace images do not need to include
@@ -163,6 +168,30 @@ If `workspace` is omitted, the certificate can access any workspace owned by
 the certificate owner. If it is present, the bastion restricts the certificate
 to that workspace.
 
+## Poddy CLI
+
+The `poddy` binary includes a user CLI for laptops. It stores its session in
+`~/.config/poddy/config.json` (mode `0600`) and can use a browser login or an
+API token.
+
+```bash
+poddy login --portal https://poddy.example.com
+poddy list
+poddy config --install
+poddy ssh alice-dev
+poddy port-forward alice-dev 8080:80
+```
+
+`poddy login` starts a loopback callback and opens the portal. The portal
+returns a short-lived code that the CLI exchanges for a session token. Use
+`--token` or `PODDY_TOKEN` for automation. `poddy config` prints the same
+`ProxyCommand` configuration as the portal; `--install` merges a managed block
+into `~/.ssh/config` without touching the rest of the file. `poddy ssh` creates
+a per-workspace key, requests a short-lived certificate when certificates are
+enabled, falls back to enrolling the public key, then runs the system `ssh`
+client. `poddy port-forward` uses the same tunnel and only forwards the requested
+local port.
+
 ## Helm configuration
 
 ```yaml
@@ -177,7 +206,7 @@ ssh:
     # Defaults to the portal image, which contains /usr/local/bin/poddy-agent.
     image: ""
     port: 8091
-    tokenTtl: 168h
+    tokenTtl: 1h
     # url: ""  # defaults to http://<fullname>-agent.<namespace>.svc:<port>
 
   ca:
@@ -209,7 +238,11 @@ region bastion.
 
 Agent tokens are scoped to one workspace and are signed by the release that
 creates the workspace. Each region's manager and bastion share their own
-`ssh.agent` Secret; cross-region agent keys are not required.
+`ssh.agent` Secret; cross-region agent keys are not required. Tokens are
+short-lived and renew automatically while the agent stays connected.
+
+`poddy config` and `poddy ssh` read the region SSH endpoint from `/api/config`
+and the workspace list, so multi-region workspaces use the correct bastion.
 
 ## Security notes
 
@@ -220,19 +253,19 @@ creates the workspace. Each region's manager and bastion share their own
 - Rotating the CA or changing `ssh.requireAgent` updates the CA line only for
   workspaces created or restarted afterwards. Restart existing workspaces to
   apply the new line.
-- Agent tokens are bearer credentials. Anyone who can read a workspace pod or its StatefulSet template's
-  environment can impersonate that workspace's agent. Keep `pods/exec` and
-  secret access restricted. Tokens default to 7 days and are not refreshed in
-  place; restart long-running workspaces or raise `ssh.agent.tokenTtl` before
-  the token expires.
+- Agent tokens are bearer credentials scoped to one workspace. Anyone who can
+  read a running workspace pod or its StatefulSet template's environment can
+  impersonate that workspace's agent. Keep `pods/exec` and Secret access
+  restricted. Tokens default to one hour, are renewed over the tunnel, and are
+  workspace-scoped; a token cannot be retargeted at another workspace.
 - The workspace container is granted `SYS_RESOURCE` so `poddy-ssh-start` can
   lower `sshd`'s OOM score. The container already runs as root for `sshd`, and
   `dev` has passwordless sudo. If the portal image is private, add its pull
   Secret to `workspace.imagePullSecrets` so workspace nodes can start the
   agent sidecar.
 - `ssh.requireAgent=true` removes the Kubernetes port-forward fallback. Keep it
-  enabled in production and keep the bastion's `pods/portforward` permission
-  only for controlled rollback.
+  enabled in production. The Helm chart only grants the bastion
+  `pods/portforward` when `ssh.requireAgent=false`.
 - Administrator certificates (`poddy-admin=true`) can reach every workspace.
   Keep their TTL short. Administrator certificates are also subject to the
   workspace owner's approval; see

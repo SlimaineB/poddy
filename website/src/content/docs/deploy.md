@@ -617,7 +617,7 @@ button in the UI is not the security boundary.
 | `ssh.agent.image` | Agent sidecar image. Empty uses the portal image, which contains `/usr/local/bin/poddy-agent`. If private, add its pull Secret to `workspace.imagePullSecrets`. |
 | `ssh.agent.port` | Private ClusterIP port for the agent listener (default `8091`). |
 | `ssh.agent.url` | Agent URL injected into workspaces. Empty derives `http://<fullname>-agent.<namespace>.svc:<port>`. |
-| `ssh.agent.tokenTtl` | Workspace agent token lifetime (default `168h`). |
+| `ssh.agent.tokenTtl` | Workspace agent token lifetime (default `1h`). Tokens renew automatically over the tunnel and are scoped to one workspace. |
 | `ssh.agent.existingSecret` | Existing Secret with the shared agent HMAC key instead of the generated one. |
 | `ssh.certTtl` | Lifetime of issued SSH certificates (default `15m`). |
 | `ssh.ca.existingSecret` | Existing Secret with the SSH CA private key. Share it across the hub and regions. |

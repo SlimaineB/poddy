@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,7 @@ const defaultAgentTarget = "127.0.0.1:22"
 type AgentConfig struct {
 	URL       string
 	Token     string
+	TokenFile string
 	Workspace string
 	Target    string
 	Insecure  bool
@@ -32,6 +35,9 @@ type AgentConfig struct {
 type Agent struct {
 	config AgentConfig
 	dialer websocket.Dialer
+
+	tokenMu sync.RWMutex
+	token   string
 }
 
 func NewAgent(config AgentConfig) *Agent {
@@ -46,7 +52,13 @@ func NewAgent(config AgentConfig) *Agent {
 		// #nosec G402 -- Explicit opt-in for self-signed tunnel endpoints.
 		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	return &Agent{config: config, dialer: dialer}
+	token := config.Token
+	if raw, err := os.ReadFile(config.TokenFile); err == nil { // #nosec G304 -- Path is supplied by the pod template.
+		if value := strings.TrimSpace(string(raw)); value != "" {
+			token = value
+		}
+	}
+	return &Agent{config: config, dialer: dialer, token: token}
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -80,7 +92,7 @@ func (a *Agent) connect(ctx context.Context) error {
 		return err
 	}
 	header := http.Header{}
-	header.Set("Authorization", "Bearer "+strings.TrimSpace(a.config.Token))
+	header.Set("Authorization", "Bearer "+strings.TrimSpace(a.currentToken()))
 	if a.config.Workspace != "" {
 		header.Set("X-Poddy-Agent-Workspace", a.config.Workspace)
 	}
@@ -168,6 +180,27 @@ func (a *Agent) connect(ctx context.Context) error {
 			if target != nil {
 				_ = target.Close()
 			}
+		case frameToken:
+			if token := strings.TrimSpace(string(payload)); token != "" {
+				a.setToken(token)
+			}
+		}
+	}
+}
+
+func (a *Agent) currentToken() string {
+	a.tokenMu.RLock()
+	defer a.tokenMu.RUnlock()
+	return a.token
+}
+
+func (a *Agent) setToken(token string) {
+	a.tokenMu.Lock()
+	a.token = token
+	a.tokenMu.Unlock()
+	if path := strings.TrimSpace(a.config.TokenFile); path != "" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+			_ = os.WriteFile(path, []byte(token), 0o600)
 		}
 	}
 }

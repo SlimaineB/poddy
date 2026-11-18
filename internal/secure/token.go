@@ -80,6 +80,20 @@ func Sign(key, payload []byte) string {
 	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// Payload returns the unverified payload of a signed value. Callers must
+// still verify the signature before trusting any field.
+func Payload(value string) ([]byte, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 2 {
+		return nil, errInvalidSignature
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, errInvalidSignature
+	}
+	return payload, nil
+}
+
 // Verify checks a signed value and returns the original payload.
 func Verify(key []byte, value string) ([]byte, error) {
 	parts := strings.Split(value, ".")

@@ -92,7 +92,7 @@ name (without the leading `v`) is used.
 | `ssh.agent.enabled` | `true` | Run the bastion agent listener and inject agent URL/token into workspaces. |
 | `ssh.agent.port` | `8091` | Private ClusterIP port for the agent listener. |
 | `ssh.agent.url` | `""` | Agent URL injected into workspaces. Empty derives the in-cluster Service URL. |
-| `ssh.agent.tokenTtl` | `168h` | Workspace agent token lifetime. Restart long-running workspaces before it expires. |
+| `ssh.agent.tokenTtl` | `1h` | Workspace agent token lifetime. Tokens renew automatically over the tunnel and are scoped to one workspace. |
 | `ssh.agent.existingSecret` | `""` | Existing Secret with the shared agent HMAC key. |
 | `ssh.certTtl` | `15m` | Lifetime of issued SSH certificates. |
 | `ssh.ca.existingSecret` | `""` | Existing Secret with the SSH CA private key. Share it across hub and regions. |

@@ -2,10 +2,13 @@ package tunnel
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,6 +34,35 @@ func TestTokenSigner(t *testing.T) {
 	}
 	if _, err := signer.VerifyAgent("garbage"); err == nil {
 		t.Fatal("garbage token verified")
+	}
+}
+
+func TestAgentTokenIsWorkspaceScoped(t *testing.T) {
+	signer := NewTokenSigner("secret")
+	token, _, err := signer.SignAgent("demo", "alice@example.com", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		t.Fatalf("token = %q", token)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims AgentClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatal(err)
+	}
+	claims.Workspace = "other"
+	changed, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := base64.RawURLEncoding.EncodeToString(changed) + "." + parts[1]
+	if _, err := signer.VerifyAgent(forged); err == nil {
+		t.Fatal("token retargeted at another workspace was accepted")
 	}
 }
 

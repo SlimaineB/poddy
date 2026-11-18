@@ -17,6 +17,15 @@ import (
 type Broker struct {
 	signer *TokenSigner
 
+	// TokenTTL controls how often a connected agent receives a fresh token.
+	// Tokens only authenticate the tunnel; they do not limit an established
+	// stream.
+	TokenTTL time.Duration
+	// Validate is called before renewing a workspace token. It lets the
+	// control plane revoke a tunnel when the workspace is deleted or its
+	// owner changes.
+	Validate func(workspace, owner string) error
+
 	mu     sync.RWMutex
 	agents map[string]*session
 
@@ -64,18 +73,56 @@ func (b *Broker) ServeAgent(w http.ResponseWriter, r *http.Request, claims Agent
 	conn.SetReadLimit(maxFrameSize)
 
 	s := newSession(conn, claims.Workspace)
+	s.mu.Lock()
 	s.expires = time.Unix(claims.Expires, 0)
+	s.mu.Unlock()
 	b.register(s)
-
-	timer := time.AfterFunc(time.Until(s.expires), func() {
-		s.close(errors.New("agent token expired"))
-	})
-	defer timer.Stop()
+	go b.renew(s, claims)
 
 	err = b.run(s)
 	s.close(err)
 	b.unregister(s)
 	return err
+}
+
+func (b *Broker) renew(s *session, claims AgentClaims) {
+	if b.signer == nil {
+		return
+	}
+	ttl := b.TokenTTL
+	if ttl <= 0 {
+		ttl = defaultTokenTTL
+	}
+	interval := ttl / 2
+	if interval < time.Minute {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+			if b.Validate != nil {
+				if err := b.Validate(claims.Workspace, claims.Owner); err != nil {
+					s.close(fmt.Errorf("workspace tunnel revoked: %w", err))
+					return
+				}
+			}
+			token, expires, err := b.signer.SignAgent(claims.Workspace, claims.Owner, ttl)
+			if err != nil {
+				s.close(fmt.Errorf("cannot renew agent token: %w", err))
+				return
+			}
+			if err := s.writeFrame(frameToken, 0, []byte(token)); err != nil {
+				return
+			}
+			s.mu.Lock()
+			s.expires = expires
+			s.mu.Unlock()
+		}
+	}
 }
 
 func (b *Broker) register(s *session) {

@@ -1,7 +1,9 @@
 package tunnel
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +15,7 @@ import (
 
 const (
 	agentTokenKind  = "workspace-agent"
-	defaultTokenTTL = 7 * 24 * time.Hour
+	defaultTokenTTL = time.Hour
 )
 
 type AgentClaims struct {
@@ -60,12 +62,13 @@ func (t *TokenSigner) SignAgent(workspace, owner string, ttl time.Duration) (str
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	return secure.Sign(t.key, payload), expires, nil
+	return secure.Sign(t.workspaceKey(workspace), payload), expires, nil
 }
 
 func (t *TokenSigner) VerifyAgent(value string) (AgentClaims, error) {
 	var claims AgentClaims
-	payload, err := secure.Verify(t.key, strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	payload, err := secure.Payload(value)
 	if err != nil {
 		return claims, errors.New("invalid agent token")
 	}
@@ -78,8 +81,24 @@ func (t *TokenSigner) VerifyAgent(value string) (AgentClaims, error) {
 	if strings.TrimSpace(claims.Workspace) == "" || strings.TrimSpace(claims.Owner) == "" {
 		return claims, errors.New("invalid agent token claims")
 	}
+	payload, err = secure.Verify(t.workspaceKey(claims.Workspace), value)
+	if err != nil {
+		return claims, errors.New("invalid agent token")
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return claims, errors.New("invalid agent token")
+	}
 	if claims.Expires < time.Now().Unix() {
 		return claims, errors.New("agent token expired")
 	}
 	return claims, nil
+}
+
+// workspaceKey derives a distinct signing key per workspace. A token minted
+// for one workspace cannot be retargeted at another, even if the shared agent
+// secret leaks from a single workspace.
+func (t *TokenSigner) workspaceKey(workspace string) []byte {
+	mac := hmac.New(sha256.New, t.key)
+	_, _ = mac.Write([]byte("poddy-agent:" + strings.ToLower(strings.TrimSpace(workspace))))
+	return mac.Sum(nil)
 }

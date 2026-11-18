@@ -173,8 +173,10 @@ Then verify:
   applied when a workspace is created or restarted. Restart existing workspaces.
 - **Template changes**: stopped workspaces keep their preserved pod template.
   Delete and recreate a workspace to adopt template changes.
-- **Agent tokens**: workspace tokens default to 7 days and are not refreshed in
-  place. Restart long-running workspaces or raise `ssh.agent.tokenTtl`.
+- **Agent tokens**: workspace tokens default to one hour and are renewed over
+  the tunnel. A container restart reuses the persisted token; a new pod gets a
+  fresh token from the control plane. Rotate the `ssh.agent` Secret to revoke
+  all agent tokens.
 
 ### Roll back
 

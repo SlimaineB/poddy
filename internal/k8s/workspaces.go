@@ -63,6 +63,7 @@ const (
 	envGitPrompt       = "GIT_TERMINAL_PROMPT"
 	envAgentURL        = "PODDY_AGENT_URL"
 	envAgentToken      = "PODDY_AGENT_TOKEN" // #nosec G101 -- Environment variable name, not a credential.
+	envAgentTokenFile  = "PODDY_AGENT_TOKEN_FILE"
 	envAgentSidecar    = "PODDY_AGENT_SIDECAR"
 )
 

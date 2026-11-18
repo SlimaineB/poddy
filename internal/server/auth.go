@@ -95,7 +95,8 @@ func (s *Server) cookie(token string, secure bool) *http.Cookie {
 func isPublic(path string) bool {
 	if path == "/healthz" || path == "/login" || path == "/logout" || path == "/api/desktop/enroll" ||
 		strings.HasPrefix(path, "/api/internal/region/") || strings.HasPrefix(path, "/share/") ||
-		strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/oidc/") {
+		strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/oidc/") ||
+		path == "/api/cli/token" {
 		return true
 	}
 	if strings.HasPrefix(path, "/api/workspaces/") {
@@ -108,7 +109,8 @@ func wantsHTML(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	return isBrowserVSCodePath(r.URL.Path) || isBrowserJupyterPath(r.URL.Path) ||
+	return r.URL.Path == "/api/cli/authorize" ||
+		isBrowserVSCodePath(r.URL.Path) || isBrowserJupyterPath(r.URL.Path) ||
 		(!strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws")
 }
 
@@ -151,6 +153,14 @@ func safeNext(next string) string {
 	return next
 }
 
+func bearerToken(r *http.Request) string {
+	scheme, token, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return strings.TrimSpace(token)
+}
+
 func tokenEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
@@ -187,11 +197,19 @@ func (s *Server) identify(r *http.Request) (*identity, bool) {
 		}
 	}
 
+	if len(s.CLISecret) > 0 {
+		if token := bearerToken(r); token != "" {
+			if claims, err := s.verifyCLIToken(token); err == nil {
+				return &identity{Method: "cli", User: claims.User}, true
+			}
+		}
+	}
+
 	if s.Token != "" {
 		if token := r.URL.Query().Get("token"); token != "" && tokenEqual(token, s.Token) {
 			return &identity{Method: "token", User: auth.User{Username: "token"}}, true
 		}
-		if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "" && tokenEqual(token, s.Token) {
+		if token := bearerToken(r); token != "" && tokenEqual(token, s.Token) {
 			return &identity{Method: "token", User: auth.User{Username: "token"}}, true
 		}
 		if cookie, err := r.Cookie(cookieName); err == nil && tokenEqual(cookie.Value, s.Token) {

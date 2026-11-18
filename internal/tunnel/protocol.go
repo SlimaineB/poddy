@@ -16,6 +16,7 @@ const (
 	frameData   byte = 3
 	frameClose  byte = 4
 	frameError  byte = 5
+	frameToken  byte = 6
 
 	frameHeaderSize = 5
 	maxFrameSize    = 1 << 20

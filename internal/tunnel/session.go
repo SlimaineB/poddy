@@ -118,10 +118,13 @@ func (s *session) close(err error) {
 }
 
 func (s *session) expired() error {
-	if s.expires.IsZero() {
+	s.mu.Lock()
+	expires := s.expires
+	s.mu.Unlock()
+	if expires.IsZero() {
 		return nil
 	}
-	if time.Now().After(s.expires) {
+	if time.Now().After(expires) {
 		return fmt.Errorf("tunnel token expired")
 	}
 	return nil

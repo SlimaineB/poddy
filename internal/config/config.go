@@ -191,7 +191,7 @@ func Load(args []string) (Config, error) {
 		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
 		AgentImage:           os.Getenv("PODDY_AGENT_IMAGE"),
 		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
-		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", 7*24*time.Hour),
+		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", time.Hour),
 
 		VSCodeExtensionID:          env("PODDY_VSCODE_EXTENSION_ID", ext.ID),
 		VSCodeExtensionVersion:     env("PODDY_VSCODE_EXTENSION_VERSION", ext.Version),

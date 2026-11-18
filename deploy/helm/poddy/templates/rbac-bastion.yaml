@@ -10,9 +10,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  {{- if not .Values.ssh.requireAgent }}
   - apiGroups: [""]
     resources: ["pods/portforward"]
     verbs: ["get", "create"]
+  {{- end }}
   # Self-service SSH public keys are stored in a ConfigMap and reloaded while
   # the bastion is running.
   - apiGroups: [""]

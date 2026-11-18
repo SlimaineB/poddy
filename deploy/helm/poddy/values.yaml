@@ -392,7 +392,7 @@ ssh:
     # http://<release>-agent.<namespace>.svc:<port>.
     url: ""
     port: 8091
-    tokenTtl: 168h
+    tokenTtl: 1h
     # HMAC key shared by the portal and the bastion. Leave empty to let the
     # chart generate and preserve a random Secret.
     key: ""
