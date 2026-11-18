@@ -271,6 +271,11 @@ The bastion host key changed, usually after recreating the release without
 `ssh.existingHostKeySecret`. Confirm the change with your team before removing
 the old entry from `known_hosts`. For stable host keys, provide the Secret.
 
+The workspace host key is persisted in `/home/dev/.ssh` and also changes if the
+workspace home volume is lost or a custom template does not persist `/home/dev`.
+After verifying the new key, remove the stale entry with
+`ssh-keygen -R poddy-ssh-<workspace>`.
+
 ### SSH config works on Linux/macOS but not Windows
 
 A config saved only in WSL is invisible to Windows VS Code, Cursor, and

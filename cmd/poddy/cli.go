@@ -414,16 +414,11 @@ func runSSHCommand(args []string) int {
 }
 
 func cliSSHArgs(host, port, keyPath, workspace string, noCommand bool, forward string) []string {
-	nullFile := "/dev/null"
-	if runtime.GOOS == "windows" {
-		nullFile = "NUL"
-	}
 	proxy := fmt.Sprintf("ssh -W %%h:%%p -p %s -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR poddy@%s",
 		shellQuote(port), shellQuote(keyPath), shellQuote(host))
 	args := []string{
 		"-o", "ProxyCommand=" + proxy,
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=" + nullFile,
+		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "IdentitiesOnly=yes",
 		"-i", keyPath,
 		"dev@poddy-ssh-" + workspace,
@@ -530,8 +525,7 @@ func generateCLIConfig(portal cliPortalConfig, keyPath string) string {
 		out.WriteString("    ProxyCommand ssh -W %h:%p " + proxy + "\n")
 		out.WriteString("    IdentityFile " + key + "\n")
 		out.WriteString("    IdentitiesOnly yes\n")
-		out.WriteString("    StrictHostKeyChecking no\n")
-		out.WriteString("    UserKnownHostsFile /dev/null\n")
+		out.WriteString("    StrictHostKeyChecking accept-new\n")
 		out.WriteString("    LogLevel ERROR\n\n")
 	}
 	for _, region := range regions {

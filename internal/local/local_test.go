@@ -79,8 +79,11 @@ func TestWriteWindowsSSHConfig(t *testing.T) {
 	if !strings.Contains(content, "IdentityFile \"C:\\Users\\test\\.ssh\\poddy_id_ed25519\"") {
 		t.Fatalf("config = %s", content)
 	}
-	if !strings.Contains(content, "UserKnownHostsFile NUL") {
+	if !strings.Contains(content, "StrictHostKeyChecking accept-new") {
 		t.Fatalf("config = %s", content)
+	}
+	if strings.Contains(content, "UserKnownHostsFile NUL") || strings.Contains(content, "StrictHostKeyChecking no") {
+		t.Fatalf("config disables host key verification = %s", content)
 	}
 }
 

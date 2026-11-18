@@ -42,10 +42,14 @@ func TestGenerateCLIConfig(t *testing.T) {
 		"HostName ssh.example.com",
 		"Port 2222",
 		"IdentityFile /home/alice/.ssh/poddy_ed25519",
+		"StrictHostKeyChecking accept-new",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("config does not contain %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "StrictHostKeyChecking no") || strings.Contains(text, "UserKnownHostsFile /dev/null") {
+		t.Fatalf("config disables host key verification:\n%s", text)
 	}
 }
 
@@ -85,9 +89,13 @@ func TestCLISSHArgs(t *testing.T) {
 	for _, want := range []string{
 		"ProxyCommand=ssh -W %h:%p -p 2222 -i /home/alice/.ssh/key",
 		"dev@poddy-ssh-demo",
+		"StrictHostKeyChecking=accept-new",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("args do not contain %q: %v", want, args)
 		}
+	}
+	if strings.Contains(joined, "StrictHostKeyChecking=no") || strings.Contains(joined, "UserKnownHostsFile=") {
+		t.Fatalf("args disable host key verification: %v", args)
 	}
 }

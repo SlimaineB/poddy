@@ -101,7 +101,7 @@ func (l *Local) WriteSSHConfig(name string, port int) error {
 	if err != nil {
 		return err
 	}
-	return writeConfig(path, name, port, l.KeyPath, "/dev/null")
+	return writeConfig(path, name, port, l.KeyPath)
 }
 
 func (l *Local) WriteWindowsSSHConfig(name string, port int) error {
@@ -126,7 +126,7 @@ func (l *Local) WriteWindowsSSHConfig(name string, port int) error {
 	}
 	_ = restrictWindowsKey(l.WindowsKeyPath)
 
-	return writeConfig(l.WindowsConfig, name, port, l.WindowsKeyPath, "NUL")
+	return writeConfig(l.WindowsConfig, name, port, l.WindowsKeyPath)
 }
 
 func (l *Local) RemoveSSHConfig(name string) error {
@@ -337,7 +337,7 @@ func sshConfigPath() (string, error) {
 	return filepath.Join(home, ".ssh", "config"), nil
 }
 
-func writeConfig(path, name string, port int, keyPath, knownHosts string) error {
+func writeConfig(path, name string, port int, keyPath string) error {
 	body, err := os.ReadFile(path) // #nosec G304 -- Path is the local SSH config.
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -347,7 +347,7 @@ func writeConfig(path, name string, port int, keyPath, knownHosts string) error 
 	if content != "" {
 		content += "\n\n"
 	}
-	content += block(name, port, keyPath, knownHosts)
+	content += block(name, port, keyPath)
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -366,7 +366,7 @@ func removeFromConfig(path, name string) error {
 	return os.WriteFile(path, []byte(removeBlock(string(body), name)), 0o600)
 }
 
-func block(name string, port int, keyPath, knownHosts string) string {
+func block(name string, port int, keyPath string) string {
 	return fmt.Sprintf(`# >>> poddy:%s
 Host %s
     HostName 127.0.0.1
@@ -374,11 +374,10 @@ Host %s
     User dev
     IdentityFile "%s"
     IdentitiesOnly yes
-    StrictHostKeyChecking no
-    UserKnownHostsFile %s
+    StrictHostKeyChecking accept-new
     LogLevel ERROR
 # <<< poddy:%s
-`, name, Alias(name), port, keyPath, knownHosts, name)
+`, name, Alias(name), port, keyPath, name)
 }
 
 func removeBlock(content, name string) string {

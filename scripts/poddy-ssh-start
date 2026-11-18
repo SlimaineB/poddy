@@ -105,8 +105,18 @@ if [ "${PODDY_AGENT_SIDECAR:-}" != "true" ] && [ -x /usr/local/bin/poddy-agent ]
   ) &
 fi
 
-if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
-  ssh-keygen -A
+# Keep the host key in the persistent home so clients can pin it across pod
+# restarts. The portal's generated SSH config uses accept-new, which trusts the
+# first key and rejects a later change.
+HOST_KEY=/home/dev/.ssh/poddy_ssh_host_ed25519_key
+if [ ! -s "$HOST_KEY" ]; then
+  rm -f "$HOST_KEY" "$HOST_KEY.pub"
+  if ! ssh-keygen -q -t ed25519 -N '' -f "$HOST_KEY"; then
+    echo "poddy-ssh-start: cannot persist host key; using image default" >&2
+    ssh-keygen -A
+    exec /usr/sbin/sshd -D -e
+  fi
 fi
+chmod 600 "$HOST_KEY"
 
-exec /usr/sbin/sshd -D -e
+exec /usr/sbin/sshd -D -e -h "$HOST_KEY"

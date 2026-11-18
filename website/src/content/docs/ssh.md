@@ -258,6 +258,11 @@ and the workspace list, so multi-region workspaces use the correct bastion.
   impersonate that workspace's agent. Keep `pods/exec` and Secret access
   restricted. Tokens default to one hour, are renewed over the tunnel, and are
   workspace-scoped; a token cannot be retargeted at another workspace.
+- Workspace host keys are stored in the persistent home at
+  `/home/dev/.ssh/poddy_ssh_host_ed25519_key`, and generated SSH configs use
+  `StrictHostKeyChecking accept-new` instead of disabling verification. The
+  first connection pins the key; a later change is rejected. Custom templates
+  without a persistent `/home/dev` lose that pin across pod recreation.
 - The workspace container is granted `SYS_RESOURCE` so `poddy-ssh-start` can
   lower `sshd`'s OOM score. The container already runs as root for `sshd`, and
   `dev` has passwordless sudo. If the portal image is private, add its pull

@@ -156,11 +156,11 @@ cat >"$WORKDIR/ssh_config" <<EOF
 Host poddy-ssh-${WS_NAME}
     HostName poddy-ssh-${WS_NAME}
     User dev
-    ProxyCommand ssh -p ${SSH_PORT} -i ${KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %h:%p poddy@127.0.0.1
+    ProxyCommand ssh -p ${SSH_PORT} -i ${KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${WORKDIR}/known_hosts -W %h:%p poddy@127.0.0.1
     IdentityFile ${KEY}
     IdentitiesOnly yes
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile ${WORKDIR}/known_hosts
     LogLevel ERROR
 EOF
 

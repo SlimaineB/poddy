@@ -578,7 +578,6 @@ function browserJupyterURL(name) {
 }
 function sshConfigFor() {
   const keyPath = state.config.windowsSSHKeyPath || state.config.sshKeyPath || "~/.ssh/id_ed25519";
-  const nullFile = /Windows/i.test(navigator.userAgent) ? "NUL" : "/dev/null";
   const regions = Array.isArray(state.config.regions) && state.config.regions.length
     ? state.config.regions
     : [{ name: "", sshHost: state.config.sshHost, sshPort: state.config.sshPort }];
@@ -590,8 +589,8 @@ function sshConfigFor() {
     config += "    User dev\n";
     config += `    ProxyCommand ssh -W %h:%p ${proxy}\n`;
     config += `    IdentityFile ${keyPath}\n`;
-    config += "    IdentitiesOnly yes\n    StrictHostKeyChecking no\n";
-    config += `    UserKnownHostsFile ${nullFile}\n    LogLevel ERROR\n\n`;
+    config += "    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n";
+    config += "    LogLevel ERROR\n\n";
   }
   for (const region of regions) {
     const slug = region.name ? `${regionSlug(region.name)}-` : "";
