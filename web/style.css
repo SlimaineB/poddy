@@ -2081,7 +2081,40 @@ select {
   gap: 12px;
 }
 
-.schedule-grid [disabled] {
+.schedule-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schedule-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.schedule-day:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.schedule-day input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.schedule-grid [disabled],
+.schedule-days [disabled] {
   opacity: 0.55;
 }
 
@@ -5761,6 +5794,20 @@ body {
   margin-bottom: 18px;
 }
 
+.finops-tips {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.finops-tips strong {
+  color: var(--text);
+}
+
 .finops-message {
   margin: 0;
   padding: 10px 14px;
@@ -6937,6 +6984,13 @@ body {
 
 .card-waste-note.tone-danger .icon {
   color: var(--danger);
+}
+
+.card-waste-tip {
+  margin: -2px 0 0;
+  color: var(--text-subtle);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 [data-theme="dark"] .badge.waste.tone-warning {

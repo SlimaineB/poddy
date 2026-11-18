@@ -963,9 +963,34 @@ function syncScheduleFields(form, enabled) {
   }
 }
 
+const SCHEDULE_DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const SCHEDULE_DAY_LABELS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+
+function scheduleDaysFromForm(form) {
+  if (!form) return [];
+  return [...form.querySelectorAll(".schedule-days input:checked")].map((input) => input.value);
+}
+
+function setScheduleDays(form, days) {
+  if (!form) return;
+  const everyDay = !Array.isArray(days) || days.length === 0;
+  const selected = new Set(Array.isArray(days) ? days : []);
+  for (const input of form.querySelectorAll(".schedule-days input")) {
+    input.checked = everyDay || selected.has(input.value);
+  }
+}
+
+function formatScheduleDays(days) {
+  if (!Array.isArray(days) || !days.length || days.length === 7) return "Every day";
+  const selected = SCHEDULE_DAY_ORDER.filter((day) => days.includes(day));
+  if (selected.length === 5 && !selected.includes("sat") && !selected.includes("sun")) return "Weekdays";
+  if (selected.length === 2 && selected.includes("sat") && selected.includes("sun")) return "Weekends";
+  return selected.map((day) => SCHEDULE_DAY_LABELS[day] || day).join(", ");
+}
+
 function scheduleSummary(schedule) {
   if (!schedule || !schedule.enabled) return "";
-  return `${schedule.start}–${schedule.stop} ${schedule.timezone}`;
+  return `${formatScheduleDays(schedule.days)} ${schedule.start}–${schedule.stop} ${schedule.timezone}`;
 }
 
 function renderTemplateOptions() {

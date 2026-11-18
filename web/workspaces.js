@@ -275,6 +275,9 @@ function workspaceWasteInfo(workspace) {
   if (signals.includes("restarts")) add("Restarts detected: check crash loops before resizing.");
   if (signals.includes("oom")) add("OOM kills detected: raise the memory limit before adjusting requests.");
   if (!recommendations.length) add("Review this workspace's CPU and memory requests.");
+  if (!workspace.schedule || !workspace.schedule.enabled) {
+    add("Allow automatic shutdown outside working hours to release idle capacity when you are away.");
+  }
 
   const tone = signals.some((signal) => WORKSPACE_WASTE_DANGER.has(signal)) ? "danger" : "warning";
   return {
@@ -282,6 +285,7 @@ function workspaceWasteInfo(workspace) {
     label: tone === "danger" ? "Waste alert" : "Waste warning",
     signals,
     recommendations,
+    bestPractice: "Save more: right-size requests, schedule shutdown outside working hours, and remove unused volumes.",
   };
 }
 
@@ -395,7 +399,11 @@ function renderCard(workspace) {
     note.innerHTML = `${icon("alert")}<span></span>`;
     note.querySelector("span").textContent = waste.recommendations[0];
     note.title = waste.recommendations.join("\n");
-    meta.append(note);
+    const tip = document.createElement("p");
+    tip.className = "card-waste-tip";
+    tip.textContent = waste.bestPractice;
+    tip.title = waste.recommendations.join("\n");
+    meta.append(note, tip);
   }
 
   const actions = renderWorkspaceActions(workspace);
@@ -851,6 +859,7 @@ async function openCreate() {
   els.scheduleStart.value = "09:00";
   els.scheduleStop.value = "18:00";
   els.scheduleEnabled.checked = false;
+  setScheduleDays(els.createForm, []);
   syncScheduleFields(els.createForm, false);
   await loadExternalAuth();
   renderParams();
@@ -1612,6 +1621,7 @@ function renderScheduleForm(schedule) {
   populateTimezones(els.detailScheduleTimezone, schedule && schedule.timezone);
   els.detailScheduleStart.value = schedule && schedule.start ? schedule.start : "09:00";
   els.detailScheduleStop.value = schedule && schedule.stop ? schedule.stop : "18:00";
+  setScheduleDays(els.detailScheduleForm, schedule && schedule.days);
   syncScheduleFields(els.detailScheduleForm, enabled);
 }
 
@@ -1623,11 +1633,16 @@ async function saveSchedule(event) {
   const body = {
     enabled,
     timezone: els.detailScheduleTimezone.value,
+    days: scheduleDaysFromForm(els.detailScheduleForm),
     start: els.detailScheduleStart.value,
     stop: els.detailScheduleStop.value,
   };
   if (enabled && (!body.timezone || !body.start || !body.stop)) {
     toast("Choose a time zone and start/stop times.");
+    return;
+  }
+  if (enabled && !body.days.length) {
+    toast("Select at least one working day.");
     return;
   }
   const original = els.detailScheduleSave.innerHTML;

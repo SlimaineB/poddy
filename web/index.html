@@ -733,6 +733,19 @@
     <section id="finops-kpis" class="monitoring-kpis"></section>
     <div id="finops-messages" class="finops-messages"></div>
 
+    <section class="panel finops-panel finops-tips-panel">
+      <div class="panel-header">
+        <h2>Resource saving best practices</h2>
+        <span class="count">Quick wins</span>
+      </div>
+      <ul class="finops-tips">
+        <li><strong>Right-size requests.</strong> Keep CPU and memory requests close to real usage, not to the template maximum.</li>
+        <li><strong>Allow automatic shutdown.</strong> Set your working days and hours so idle workspaces stop outside them.</li>
+        <li><strong>Use smaller templates.</strong> Pick the smallest image and storage that still fits the job.</li>
+        <li><strong>Clean up.</strong> Delete unused workspaces, volumes, and stale snapshots instead of keeping them reserved.</li>
+      </ul>
+    </section>
+
     <section id="finops-overview-panel" class="panel finops-panel finops-overview-panel" hidden>
       <div class="panel-header">
         <h2>Capacity efficiency</h2>
@@ -898,11 +911,20 @@
           <div id="params" class="params"></div>
         </div>
         <fieldset class="schedule-fieldset">
-          <legend>Auto-stop schedule</legend>
+          <legend>Automatic shutdown</legend>
           <label class="checkbox-field">
             <input id="schedule-enabled" name="scheduleEnabled" type="checkbox">
-            Stop this workspace outside its active hours
+            Allow shutdown outside working hours
           </label>
+          <div class="schedule-days" role="group" aria-label="Working days">
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="mon" checked data-schedule-field><span>Mon</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="tue" checked data-schedule-field><span>Tue</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="wed" checked data-schedule-field><span>Wed</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="thu" checked data-schedule-field><span>Thu</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="fri" checked data-schedule-field><span>Fri</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="sat" checked data-schedule-field><span>Sat</span></label>
+            <label class="schedule-day"><input name="scheduleDays" type="checkbox" value="sun" checked data-schedule-field><span>Sun</span></label>
+          </div>
           <div class="schedule-grid">
             <div class="field">
               <label for="schedule-timezone">Time zone</label>
@@ -917,7 +939,7 @@
               <input id="schedule-stop" name="scheduleStop" type="time" value="18:00" data-schedule-field>
             </div>
           </div>
-          <p class="hint">Outside this window the pod is stopped. It starts again at the start time only if the schedule stopped it; a manual stop stays stopped.</p>
+          <p class="hint">The workspace stays running during the selected days and hours. Outside them the pod is stopped, then started again when working hours resume if the schedule stopped it. A manual stop stays stopped.</p>
         </fieldset>
       </div>
       <footer class="dialog-footer">
@@ -1057,15 +1079,24 @@
       <section class="detail-panel workspace-schedule">
         <header class="workspace-logs-header">
           <div>
-            <h3>Auto-stop schedule</h3>
-            <p>Keep this workspace running only during a daily time window.</p>
+            <h3>Automatic shutdown</h3>
+            <p>Keep this workspace running only during your working days and hours.</p>
           </div>
         </header>
         <form id="detail-schedule-form" class="schedule-form">
           <label class="checkbox-field">
             <input id="detail-schedule-enabled" type="checkbox">
-            Stop this workspace outside its active hours
+            Allow shutdown outside working hours
           </label>
+          <div class="schedule-days" role="group" aria-label="Working days">
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="mon" checked data-schedule-field><span>Mon</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="tue" checked data-schedule-field><span>Tue</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="wed" checked data-schedule-field><span>Wed</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="thu" checked data-schedule-field><span>Thu</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="fri" checked data-schedule-field><span>Fri</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="sat" checked data-schedule-field><span>Sat</span></label>
+            <label class="schedule-day"><input name="detailScheduleDays" type="checkbox" value="sun" checked data-schedule-field><span>Sun</span></label>
+          </div>
           <div class="schedule-grid">
             <div class="field">
               <label for="detail-schedule-timezone">Time zone</label>

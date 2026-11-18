@@ -23,12 +23,55 @@ const (
 
 // Schedule keeps a workspace running only inside a daily time window.
 // Start and stop are local times in the configured IANA timezone. A window
-// where start is after stop spans midnight.
+// where start is after stop spans midnight. Days is empty for every day.
 type Schedule struct {
-	Enabled  bool   `json:"enabled" yaml:"enabled"`
-	Timezone string `json:"timezone,omitempty" yaml:"timezone,omitempty"`
-	Start    string `json:"start,omitempty" yaml:"start,omitempty"`
-	Stop     string `json:"stop,omitempty" yaml:"stop,omitempty"`
+	Enabled  bool     `json:"enabled" yaml:"enabled"`
+	Timezone string   `json:"timezone,omitempty" yaml:"timezone,omitempty"`
+	Days     []string `json:"days,omitempty" yaml:"days,omitempty"`
+	Start    string   `json:"start,omitempty" yaml:"start,omitempty"`
+	Stop     string   `json:"stop,omitempty" yaml:"stop,omitempty"`
+}
+
+var (
+	scheduleWeekDays = []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+	scheduleDayKeys  = [7]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
+	scheduleDayAlias = map[string]string{
+		"monday": "mon", "tuesday": "tue", "wednesday": "wed", "thursday": "thu",
+		"friday": "fri", "saturday": "sat", "sunday": "sun",
+	}
+)
+
+func normalizeScheduleDays(days []string) ([]string, error) {
+	seen := map[string]bool{}
+	for _, raw := range days {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if alias, ok := scheduleDayAlias[value]; ok {
+			value = alias
+		}
+		if !scheduleDayValid(value) {
+			return nil, fmt.Errorf("invalid day %q: use mon, tue, wed, thu, fri, sat, or sun", raw)
+		}
+		seen[value] = true
+	}
+	if len(seen) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(seen))
+	for _, day := range scheduleWeekDays {
+		if seen[day] {
+			out = append(out, day)
+		}
+	}
+	return out, nil
+}
+
+func scheduleDayValid(day string) bool {
+	for _, candidate := range scheduleWeekDays {
+		if day == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // Normalize trims and validates the schedule. It accepts disabled schedules
@@ -37,6 +80,11 @@ func (s *Schedule) Normalize() error {
 	s.Timezone = strings.TrimSpace(s.Timezone)
 	s.Start = strings.TrimSpace(s.Start)
 	s.Stop = strings.TrimSpace(s.Stop)
+	days, err := normalizeScheduleDays(s.Days)
+	if err != nil {
+		return err
+	}
+	s.Days = days
 
 	if s.Start != "" {
 		start, err := time.Parse(clockLayout, s.Start)
@@ -71,7 +119,20 @@ func (s *Schedule) Normalize() error {
 
 // Empty reports whether the schedule carries no configuration.
 func (s Schedule) Empty() bool {
-	return !s.Enabled && s.Timezone == "" && s.Start == "" && s.Stop == ""
+	return !s.Enabled && s.Timezone == "" && len(s.Days) == 0 && s.Start == "" && s.Stop == ""
+}
+
+func (s Schedule) dayEnabled(day time.Weekday) bool {
+	if len(s.Days) == 0 {
+		return true
+	}
+	key := scheduleDayKeys[day]
+	for _, candidate := range s.Days {
+		if candidate == key {
+			return true
+		}
+	}
+	return false
 }
 
 // IsActive reports whether the workspace should be running at now.
@@ -97,9 +158,15 @@ func (s Schedule) IsActive(now time.Time) (bool, error) {
 	local := now.In(location)
 	current := local.Hour()*60 + local.Minute()
 	if start < stop {
-		return current >= start && current < stop, nil
+		return s.dayEnabled(local.Weekday()) && current >= start && current < stop, nil
 	}
-	return current >= start || current < stop, nil
+	if current >= start {
+		return s.dayEnabled(local.Weekday()), nil
+	}
+	if current < stop {
+		return s.dayEnabled(local.AddDate(0, 0, -1).Weekday()), nil
+	}
+	return false, nil
 }
 
 func clockMinutes(value string) (int, error) {
@@ -115,6 +182,9 @@ func cloneSchedule(schedule *Schedule) *Schedule {
 		return nil
 	}
 	copy := *schedule
+	if schedule.Days != nil {
+		copy.Days = append([]string(nil), schedule.Days...)
+	}
 	return &copy
 }
 

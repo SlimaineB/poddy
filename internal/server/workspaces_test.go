@@ -13,6 +13,7 @@ func TestWorkspaceScheduleAPI(t *testing.T) {
 	schedule := map[string]any{
 		"enabled":  true,
 		"timezone": "Europe/Paris",
+		"days":     []string{"mon", "tue", "wed", "thu", "fri"},
 		"start":    "09:00",
 		"stop":     "18:00",
 	}
@@ -27,7 +28,7 @@ func TestWorkspaceScheduleAPI(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
 		t.Fatal(err)
 	}
-	if ws.Schedule == nil || ws.Schedule.Timezone != "Europe/Paris" {
+	if ws.Schedule == nil || ws.Schedule.Timezone != "Europe/Paris" || len(ws.Schedule.Days) != 5 {
 		t.Fatalf("created schedule = %+v", ws.Schedule)
 	}
 
@@ -47,6 +48,7 @@ func TestWorkspaceScheduleAPI(t *testing.T) {
 	rec = request(t, s, http.MethodPut, "/api/workspaces/app/schedule", map[string]any{
 		"enabled":  true,
 		"timezone": "UTC",
+		"days":     []string{"sat", "sun"},
 		"start":    "22:00",
 		"stop":     "06:00",
 	})
@@ -56,7 +58,7 @@ func TestWorkspaceScheduleAPI(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &ws); err != nil {
 		t.Fatal(err)
 	}
-	if ws.Schedule == nil || ws.Schedule.Timezone != "UTC" || ws.Schedule.Start != "22:00" {
+	if ws.Schedule == nil || ws.Schedule.Timezone != "UTC" || ws.Schedule.Start != "22:00" || len(ws.Schedule.Days) != 2 {
 		t.Fatalf("updated schedule = %+v", ws.Schedule)
 	}
 

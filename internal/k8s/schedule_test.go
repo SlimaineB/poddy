@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -28,6 +29,12 @@ func TestScheduleNormalize(t *testing.T) {
 			schedule: Schedule{},
 			want:     Schedule{},
 		},
+		{
+			name:     "working days normalized",
+			schedule: Schedule{Enabled: true, Timezone: "UTC", Days: []string{"Friday", "mon", "mon", "wed"}, Start: "09:00", Stop: "18:00"},
+			want:     Schedule{Enabled: true, Timezone: "UTC", Days: []string{"mon", "wed", "fri"}, Start: "09:00", Stop: "18:00"},
+		},
+		{name: "invalid day", schedule: Schedule{Enabled: true, Timezone: "UTC", Days: []string{"funday"}, Start: "09:00", Stop: "18:00"}, wantErr: true},
 		{name: "bad timezone", schedule: Schedule{Enabled: true, Timezone: "Mars/Olympus", Start: "09:00", Stop: "18:00"}, wantErr: true},
 		{name: "bad start", schedule: Schedule{Enabled: true, Timezone: "UTC", Start: "9", Stop: "18:00"}, wantErr: true},
 		{name: "equal times", schedule: Schedule{Enabled: true, Timezone: "UTC", Start: "09:00", Stop: "09:00"}, wantErr: true},
@@ -46,7 +53,7 @@ func TestScheduleNormalize(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if schedule != tc.want {
+			if !reflect.DeepEqual(schedule, tc.want) {
 				t.Fatalf("schedule = %+v, want %+v", schedule, tc.want)
 			}
 		})
@@ -55,7 +62,10 @@ func TestScheduleNormalize(t *testing.T) {
 
 func TestScheduleIsActive(t *testing.T) {
 	normal := Schedule{Enabled: true, Timezone: "UTC", Start: "09:00", Stop: "18:00"}
+	weekdays := Schedule{Enabled: true, Timezone: "UTC", Days: []string{"mon", "tue", "wed", "thu", "fri"}, Start: "09:00", Stop: "18:00"}
 	overnight := Schedule{Enabled: true, Timezone: "UTC", Start: "22:00", Stop: "06:00"}
+	overnightMonday := Schedule{Enabled: true, Timezone: "UTC", Days: []string{"mon"}, Start: "22:00", Stop: "06:00"}
+	overnightSunday := Schedule{Enabled: true, Timezone: "UTC", Days: []string{"sun"}, Start: "22:00", Stop: "06:00"}
 	cases := []struct {
 		name     string
 		schedule Schedule
@@ -71,6 +81,14 @@ func TestScheduleIsActive(t *testing.T) {
 		{"overnight morning", overnight, time.Date(2026, 1, 15, 5, 59, 0, 0, time.UTC), true},
 		{"overnight at stop", overnight, time.Date(2026, 1, 15, 6, 0, 0, 0, time.UTC), false},
 		{"overnight daytime", overnight, time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC), false},
+		{"weekday active", weekdays, time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC), true},
+		{"weekday inactive", weekdays, time.Date(2026, 1, 17, 12, 0, 0, 0, time.UTC), false},
+		{"overnight start day", overnightMonday, time.Date(2026, 1, 19, 23, 0, 0, 0, time.UTC), true},
+		{"overnight next day", overnightMonday, time.Date(2026, 1, 20, 5, 0, 0, 0, time.UTC), true},
+		{"overnight next day after stop", overnightMonday, time.Date(2026, 1, 20, 7, 0, 0, 0, time.UTC), false},
+		{"overnight wrong start day", overnightMonday, time.Date(2026, 1, 20, 23, 0, 0, 0, time.UTC), false},
+		{"overnight monday from sunday", overnightMonday, time.Date(2026, 1, 19, 5, 0, 0, 0, time.UTC), false},
+		{"overnight sunday to monday", overnightSunday, time.Date(2026, 1, 19, 5, 0, 0, 0, time.UTC), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,7 +115,7 @@ func TestSetScheduleRunningAndStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Schedule == nil || *ws.Schedule != schedule {
+	if ws.Schedule == nil || !reflect.DeepEqual(*ws.Schedule, schedule) {
 		t.Fatalf("running schedule = %+v", ws.Schedule)
 	}
 	sts, err := m.GetStatefulSet(ctx, "app")
@@ -105,7 +123,7 @@ func TestSetScheduleRunningAndStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := stateFromStatefulSet(sts)
-	if state.Schedule == nil || *state.Schedule != schedule {
+	if state.Schedule == nil || !reflect.DeepEqual(*state.Schedule, schedule) {
 		t.Fatalf("annotation schedule = %+v", state.Schedule)
 	}
 
@@ -116,14 +134,14 @@ func TestSetScheduleRunningAndStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Schedule == nil || *ws.Schedule != schedule {
+	if ws.Schedule == nil || !reflect.DeepEqual(*ws.Schedule, schedule) {
 		t.Fatalf("stopped schedule = %+v", ws.Schedule)
 	}
 	state, err = m.State(ctx, "app")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Schedule == nil || *state.Schedule != schedule {
+	if state.Schedule == nil || !reflect.DeepEqual(*state.Schedule, schedule) {
 		t.Fatalf("state schedule = %+v", state.Schedule)
 	}
 
@@ -169,7 +187,7 @@ func TestReconcileSchedulesStopsAndStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := stateFromStatefulSet(sts)
-	if state.Schedule == nil || *state.Schedule != *schedule {
+	if state.Schedule == nil || !reflect.DeepEqual(*state.Schedule, *schedule) {
 		t.Fatalf("schedule lost after restart: %+v", state.Schedule)
 	}
 }

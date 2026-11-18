@@ -117,11 +117,16 @@ els.createForm.addEventListener("submit", async (event) => {
     const timezone = String(data.get("scheduleTimezone") || "").trim();
     const start = String(data.get("scheduleStart") || "").trim();
     const stop = String(data.get("scheduleStop") || "").trim();
+    const days = scheduleDaysFromForm(form);
     if (!timezone || !start || !stop) {
       setFormError(els.createError, "Choose a time zone and start/stop times.");
       return;
     }
-    body.schedule = { enabled: true, timezone, start, stop };
+    if (!days.length) {
+      setFormError(els.createError, "Select at least one working day.");
+      return;
+    }
+    body.schedule = { enabled: true, timezone, days, start, stop };
   }
 
   const original = els.createSubmit.innerHTML;
