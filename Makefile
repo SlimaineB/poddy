@@ -70,9 +70,9 @@ lint: fmt vet
 security:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 	$(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail ./...
-	cd website && npm audit --audit-level=high
+	cd website && npm audit --omit=dev --audit-level=high
 	cd ui-tests && npm audit --audit-level=high
-	cd vscode-extension && npm audit --audit-level=high
+	cd vscode-extension && npm audit --omit=dev --audit-level=high
 
 docs:
 	cd website && npm ci

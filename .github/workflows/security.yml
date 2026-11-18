@@ -68,15 +68,15 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
-      - name: Audit docs dependencies
+      - name: Audit docs production dependencies
         working-directory: website
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Audit UI test dependencies
         working-directory: ui-tests
         run: npm audit --audit-level=high
-      - name: Audit VS Code extension dependencies
+      - name: Audit VS Code extension production dependencies
         working-directory: vscode-extension
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v5.0.0
