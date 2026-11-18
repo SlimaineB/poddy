@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -563,12 +564,19 @@ func browserLogin(ctx context.Context, portal string, open bool, stderr io.Write
 	}
 	defer listener.Close()
 	redirect := "http://" + listener.Addr().String() + "/callback"
-	stateBytes := make([]byte, 24)
-	if _, err := rand.Read(stateBytes); err != nil {
+	state, err := randomCLIValue(24)
+	if err != nil {
 		return "", err
 	}
-	state := base64.RawURLEncoding.EncodeToString(stateBytes)
-	authURL := portal + "/api/cli/authorize?redirect_uri=" + url.QueryEscape(redirect) + "&state=" + url.QueryEscape(state)
+	verifier, err := randomCLIValue(32)
+	if err != nil {
+		return "", err
+	}
+	challenge := pkceChallenge(verifier)
+	authURL := portal + "/api/cli/authorize?redirect_uri=" + url.QueryEscape(redirect) +
+		"&state=" + url.QueryEscape(state) +
+		"&code_challenge=" + url.QueryEscape(challenge) +
+		"&code_challenge_method=S256"
 	fmt.Fprintf(stderr, "Open this URL to sign in:\n\n  %s\n\n", authURL)
 	if open {
 		if err := openBrowser(authURL); err != nil {
@@ -607,12 +615,25 @@ func browserLogin(ctx context.Context, portal string, open bool, stderr io.Write
 	case <-ctx.Done():
 		return "", ctx.Err()
 	case code := <-codes:
-		return exchangeCLICode(ctx, portal, code)
+		return exchangeCLICode(ctx, portal, code, verifier)
 	}
 }
 
-func exchangeCLICode(ctx context.Context, portal, code string) (string, error) {
-	body, _ := json.Marshal(map[string]string{"code": code})
+func randomCLIValue(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func pkceChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func exchangeCLICode(ctx context.Context, portal, code, verifier string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"code": code, "code_verifier": verifier})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, portal+"/api/cli/token", bytes.NewReader(body))
 	if err != nil {
 		return "", err

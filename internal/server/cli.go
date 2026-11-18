@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,12 +21,15 @@ const (
 	cliTokenTTL      = 7 * 24 * time.Hour
 	cliCodeAudience  = "poddy-cli-code"
 	cliTokenAudience = "poddy-cli-token"
+	cliPKCEMethod    = "S256"
 )
 
 type cliCodeClaims struct {
-	User     auth.User `json:"user"`
-	Expires  int64     `json:"exp"`
-	Audience string    `json:"aud"`
+	User                auth.User `json:"user"`
+	Expires             int64     `json:"exp"`
+	Audience            string    `json:"aud"`
+	CodeChallenge       string    `json:"code_challenge,omitempty"`
+	CodeChallengeMethod string    `json:"code_challenge_method,omitempty"`
 }
 
 type cliTokenClaims struct {
@@ -45,15 +51,23 @@ func (s *Server) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
 		return
 	}
+	challenge := strings.TrimSpace(r.URL.Query().Get("code_challenge"))
+	method := strings.TrimSpace(r.URL.Query().Get("code_challenge_method"))
+	if !validPKCEValue(challenge) || method != cliPKCEMethod {
+		http.Error(w, "invalid code_challenge", http.StatusBadRequest)
+		return
+	}
 	id, ok := s.currentIdentity(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	code, err := s.signCLI(cliCodeClaims{
-		User:     id.User,
-		Expires:  time.Now().Add(cliCodeTTL).Unix(),
-		Audience: cliCodeAudience,
+		User:                id.User,
+		Expires:             time.Now().Add(cliCodeTTL).Unix(),
+		Audience:            cliCodeAudience,
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: method,
 	})
 	if err != nil {
 		http.Error(w, "cannot create CLI code", http.StatusInternalServerError)
@@ -79,7 +93,8 @@ func (s *Server) cliToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Code string `json:"code"`
+		Code         string `json:"code"`
+		CodeVerifier string `json:"code_verifier"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -88,6 +103,16 @@ func (s *Server) cliToken(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, err := s.verifyCLI(req.Code, cliCodeAudience)
 	if err != nil {
+		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
+		return
+	}
+	if claims.CodeChallengeMethod != cliPKCEMethod || !validPKCEValue(req.CodeVerifier) {
+		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
+		return
+	}
+	sum := sha256.Sum256([]byte(req.CodeVerifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	if subtle.ConstantTimeCompare([]byte(challenge), []byte(claims.CodeChallenge)) != 1 {
 		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
 		return
 	}
@@ -135,7 +160,26 @@ func (s *Server) verifyCLI(value, audience string) (cliCodeClaims, error) {
 
 func (s *Server) verifyCLIToken(value string) (cliTokenClaims, error) {
 	claims, err := s.verifyCLI(value, cliTokenAudience)
-	return cliTokenClaims(claims), err
+	return cliTokenClaims{
+		User:     claims.User,
+		Expires:  claims.Expires,
+		Audience: claims.Audience,
+	}, err
+}
+
+func validPKCEValue(value string) bool {
+	if len(value) < 43 || len(value) > 128 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-', r == '.', r == '_', r == '~':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func validLoopbackRedirect(raw string) bool {

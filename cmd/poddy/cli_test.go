@@ -99,3 +99,11 @@ func TestCLISSHArgs(t *testing.T) {
 		t.Fatalf("args disable host key verification: %v", args)
 	}
 }
+
+func TestPKCEChallenge(t *testing.T) {
+	const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+	if got := pkceChallenge(verifier); got != challenge {
+		t.Fatalf("challenge = %q want %q", got, challenge)
+	}
+}
