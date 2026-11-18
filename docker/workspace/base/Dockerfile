@@ -1,4 +1,4 @@
-FROM golang:1.26.11 AS build
+FROM golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /poddy-agent ./cmd/poddy-agent \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /poddy ./cmd/poddy
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-server sudo git curl ca-certificates \

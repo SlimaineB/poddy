@@ -29,7 +29,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@vscode/vsce": "^4.1.0"
+    "@vscode/vsce": "^4.1.1"
   },
   "activationEvents": [
     "onUri"

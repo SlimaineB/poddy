@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Scan git history with gitleaks
@@ -37,8 +37,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.mod
           cache: true
@@ -51,7 +51,7 @@ jobs:
             -no-fail -fmt sarif -out sarif/gosec.sarif ./...
       - name: Upload gosec SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/gosec.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/gosec.sarif
           category: gosec
@@ -64,8 +64,8 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
       - name: Audit docs dependencies
@@ -91,7 +91,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: aquasecurity/setup-trivy@v0.3.1
         with:
           version: v0.76.2
@@ -129,31 +129,31 @@ jobs:
           EOF
       - name: Upload portal image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-portal.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/container-portal.sarif
           category: container-portal
       - name: Upload workspace base image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-base.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/container-base.sarif
           category: container-workspace-base
       - name: Upload Go workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-go.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/container-go.sarif
           category: container-workspace-go
       - name: Upload Node workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-node.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/container-node.sarif
           category: container-workspace-node
       - name: Upload Python workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-python.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/container-python.sarif
           category: container-workspace-python
@@ -166,8 +166,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/setup-helm@v5.1.0
         with:
           version: v3.16.4
       - uses: aquasecurity/setup-trivy@v0.3.1
@@ -218,19 +218,19 @@ jobs:
           failure-threshold: error
       - name: Upload Trivy IaC SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/trivy-iac.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/trivy-iac.sarif
           category: iac-trivy
       - name: Upload kube-linter SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/kube-linter.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/kube-linter.sarif
           category: iac-kube-linter
       - name: Upload Hadolint SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/hadolint.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           sarif_file: sarif/hadolint.sarif
           category: dockerfile-hadolint
