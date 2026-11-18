@@ -208,7 +208,7 @@ func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
@@ -253,5 +253,5 @@ func (s *Server) serveFile(w http.ResponseWriter, name string) {
 	}
 	w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(name)))
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(data)
+	_, _ = w.Write(data)
 }

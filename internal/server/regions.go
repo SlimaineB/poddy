@@ -43,7 +43,7 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "workspace not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("region lookup %s: %v", name, err)
+			log.Printf("region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 			http.Error(w, "region unavailable", http.StatusBadGateway)
 			return
 		}
@@ -67,7 +67,7 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "workspace not found", http.StatusNotFound)
 			return
 		}
-		log.Printf("region lookup %s: %v", name, err)
+		log.Printf("region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "region unavailable", http.StatusBadGateway)
 		return
 	}
@@ -210,7 +210,7 @@ func writeRegionError(w http.ResponseWriter, err error) {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	log.Printf("region request: %v", err)
+	log.Printf("region request: %v", strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	http.Error(w, "region unavailable", http.StatusBadGateway)
 }
 

@@ -29,6 +29,7 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     oidcCookie,
 		Value:    value,
@@ -38,7 +39,7 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
-	http.Redirect(w, r, authURL, http.StatusSeeOther)
+	http.Redirect(w, r, authURL, http.StatusSeeOther) // #nosec G710 -- Provider authorization URL from trusted configuration.
 }
 
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +113,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    value,
@@ -121,6 +123,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     oidcCookie,
 		Value:    "",
@@ -131,7 +134,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   secureRequest(r),
 	})
 	s.auditOIDC(r, "success", ownerID(user), "")
-	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther)
+	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther) // #nosec G710 -- Restricted to a local path.
 }
 
 func (s *Server) auditOIDC(r *http.Request, outcome, actor, message string) {

@@ -5,11 +5,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+
+	"poddy/internal/secure"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -58,8 +59,7 @@ type Store struct {
 func NewStore(client kubernetes.Interface, namespace, name, secret string) *Store {
 	var key []byte
 	if secret != "" {
-		sum := sha256.Sum256([]byte(secret))
-		key = sum[:]
+		key = secure.Key(secret)
 	}
 	if name == "" {
 		name = "poddy-external-auth"
@@ -182,6 +182,7 @@ func (s *Store) load(ctx context.Context) (tokenMap, error) {
 }
 
 func (s *Store) encode(data tokenMap) ([]byte, error) {
+	// #nosec G117 -- Tokens are marshaled intentionally for encrypted storage.
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return nil, err

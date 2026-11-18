@@ -21,6 +21,14 @@ const (
 	adminExtension     = "poddy-admin"
 )
 
+func unixTime(t time.Time) uint64 {
+	v := t.Unix()
+	if v < 0 {
+		return 0
+	}
+	return uint64(v)
+}
+
 type CA struct {
 	signer  ssh.Signer
 	private crypto.PrivateKey
@@ -31,7 +39,7 @@ func LoadOrGenerate(path string) (*CA, error) {
 	if strings.TrimSpace(path) == "" {
 		return Generate()
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- Path is a trusted CA file from configuration.
 	if err == nil {
 		return NewFromPEM(data)
 	}
@@ -136,8 +144,8 @@ func (c *CA) Sign(public ssh.PublicKey, principal, owner, workspace string, admi
 		CertType:        ssh.UserCert,
 		KeyId:           strings.TrimSpace(owner),
 		ValidPrincipals: []string{strings.TrimSpace(principal)},
-		ValidAfter:      uint64(now.Add(-time.Minute).Unix()),
-		ValidBefore:     uint64(now.Add(ttl).Unix()),
+		ValidAfter:      unixTime(now.Add(-time.Minute)),
+		ValidBefore:     unixTime(now.Add(ttl)),
 		Permissions: ssh.Permissions{
 			Extensions: map[string]string{},
 		},

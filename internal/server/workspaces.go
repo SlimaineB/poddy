@@ -108,7 +108,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		template, _ := details["template"].(string)
 		environment, envErr := s.workspaceEnvironment(r.Context(), owner, template, name)
 		if envErr != nil {
-			log.Printf("workspace environment %s: %v", name, envErr)
+			log.Printf("workspace environment %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(envErr.Error(), "\n", " "), "\r", " "))
 		} else {
 			details["environment"] = environment
 		}
@@ -117,7 +117,7 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 		storage, _ := details["storage"].(string)
 		quotaInfo, quotaErr := s.workspaceQuota(r.Context(), id, cfg, owner, cpu, memory, storage)
 		if quotaErr != nil {
-			log.Printf("workspace quota %s: %v", name, quotaErr)
+			log.Printf("workspace quota %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(quotaErr.Error(), "\n", " "), "\r", " "))
 		} else {
 			details["quota"] = quotaInfo
 		}
@@ -178,16 +178,16 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 
 	accessInfo, accessErr := s.workspaceAccessInfoFor(r.Context(), name, ws.Owner, id, cfg)
 	if accessErr != nil {
-		log.Printf("workspace access %s: %v", name, accessErr)
+		log.Printf("workspace access %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(accessErr.Error(), "\n", " "), "\r", " "))
 	}
 
 	environment, envErr := s.workspaceEnvironment(r.Context(), ws.Owner, ws.Template, ws.Name)
 	if envErr != nil {
-		log.Printf("workspace environment %s: %v", name, envErr)
+		log.Printf("workspace environment %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(envErr.Error(), "\n", " "), "\r", " "))
 	}
 	quotaInfo, quotaErr := s.workspaceQuota(r.Context(), id, cfg, ws.Owner, ws.CPU, ws.Memory, ws.Storage)
 	if quotaErr != nil {
-		log.Printf("workspace quota %s: %v", name, quotaErr)
+		log.Printf("workspace quota %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(quotaErr.Error(), "\n", " "), "\r", " "))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -467,10 +467,10 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	result = "success"
 	s.deleteWorkspaceMetadata(r.Context(), name)
 	if err := s.shareStore().DeleteWorkspace(r.Context(), name); err != nil {
-		log.Printf("workspace shares %s: delete: %v", name, err)
+		log.Printf("workspace shares %s: delete: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 	if err := s.accessStore().DeleteWorkspace(r.Context(), name); err != nil {
-		log.Printf("workspace access %s: delete: %v", name, err)
+		log.Printf("workspace access %s: delete: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 	if s.RegionMode && s.HubURL != "" {
 		hubClient := region.NewClient(region.Config{Name: s.RegionName, URL: s.HubURL, Key: s.RegionKey})
@@ -480,11 +480,11 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 			Region: s.RegionName,
 		}
 		if err := hubClient.DeleteEnvironment(r.Context(), name, identity); err != nil {
-			log.Printf("workspace environment %s: delete via hub: %v", name, err)
+			log.Printf("workspace environment %s: delete via hub: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		}
 	} else if s.Environment != nil {
 		if err := s.Environment.DeleteTarget(r.Context(), envstore.ScopeWorkspace, name); err != nil {
-			log.Printf("workspace environment %s: delete: %v", name, err)
+			log.Printf("workspace environment %s: delete: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

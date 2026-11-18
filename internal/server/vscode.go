@@ -41,7 +41,7 @@ func (f *Forwarder) EnsurePort(manager *k8s.Manager, name string, remotePort int
 	if t, ok := f.tunnels[key]; ok {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", t.port), 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return t.port, nil
 		}
 		t.stop()

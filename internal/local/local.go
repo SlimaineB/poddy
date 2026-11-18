@@ -85,7 +85,7 @@ func (l *Local) AuthorizedKeys() []string {
 		return keys
 	}
 	for _, name := range []string{"id_ed25519.pub", "id_rsa.pub"} {
-		data, err := os.ReadFile(filepath.Join(home, ".ssh", name))
+		data, err := os.ReadFile(filepath.Join(home, ".ssh", name)) // #nosec G304 -- Reads the local SSH public key.
 		if err != nil {
 			continue
 		}
@@ -120,6 +120,7 @@ func (l *Local) WriteWindowsSSHConfig(name string, port int) error {
 		return err
 	}
 	_ = os.Remove(l.WindowsKeyFile)
+	// #nosec G703 -- Path is the user-configured local SSH key path.
 	if err := os.WriteFile(l.WindowsKeyFile, key, 0o600); err != nil {
 		return err
 	}
@@ -155,7 +156,7 @@ func (l *Local) launch(editor, windowsEditor, label, name string) error {
 	args := []string{"--new-window", "--remote", "ssh-remote+" + Alias(name), HomePath}
 
 	if windowsEditor != "" {
-		cmd := exec.Command("cmd.exe", append([]string{"/c", windowsEditor}, args...)...)
+		cmd := exec.Command("cmd.exe", append([]string{"/c", windowsEditor}, args...)...) // #nosec G204 -- Editor is configured by the local user.
 		cmd.Dir = "/mnt/c"
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("launch Windows %s: %w", label, err)
@@ -167,7 +168,7 @@ func (l *Local) launch(editor, windowsEditor, label, name string) error {
 		return fmt.Errorf("%s is not installed", label)
 	}
 
-	cmd := exec.Command(editor, args...)
+	cmd := exec.Command(editor, args...) // #nosec G204 -- Editor is configured by the local user.
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("launch %s: %w", label, err)
 	}
@@ -267,13 +268,13 @@ func detectWindowsCode() string {
 }
 
 func runCmd(args ...string) ([]byte, error) {
-	cmd := exec.Command("cmd.exe", append([]string{"/c"}, args...)...)
+	cmd := exec.Command("cmd.exe", append([]string{"/c"}, args...)...) // #nosec G204 -- Arguments are configured by the local user.
 	cmd.Dir = "/mnt/c"
 	return cmd.Output()
 }
 
 func winToWSL(path string) string {
-	if out, err := exec.Command("wslpath", "-u", path).Output(); err == nil {
+	if out, err := exec.Command("wslpath", "-u", path).Output(); err == nil { // #nosec G204 -- Converts a local user-selected path.
 		if value := strings.TrimSpace(string(out)); value != "" {
 			return value
 		}
@@ -287,7 +288,7 @@ func winToWSL(path string) string {
 }
 
 func restrictWindowsKey(path string) error {
-	cmd := exec.Command("cmd.exe", "/c", "icacls", path, "/inheritance:r", "/grant:r", "%USERNAME%:F")
+	cmd := exec.Command("cmd.exe", "/c", "icacls", path, "/inheritance:r", "/grant:r", "%USERNAME%:F") // #nosec G204 -- Local user-selected SSH key path.
 	cmd.Dir = "/mnt/c"
 	return cmd.Run()
 }
@@ -295,7 +296,7 @@ func restrictWindowsKey(path string) error {
 func ensureKey(path string) (string, error) {
 	pubPath := path + ".pub"
 	if fileExists(path) && fileExists(pubPath) {
-		data, err := os.ReadFile(pubPath)
+		data, err := os.ReadFile(pubPath) // #nosec G304 -- Reads the local SSH public key.
 		if err != nil {
 			return "", err
 		}
@@ -322,7 +323,7 @@ func ensureKey(path string) (string, error) {
 	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(pubPath, []byte(public+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(pubPath, []byte(public+"\n"), 0o600); err != nil {
 		return "", err
 	}
 	return public, nil
@@ -337,7 +338,7 @@ func sshConfigPath() (string, error) {
 }
 
 func writeConfig(path, name string, port int, keyPath, knownHosts string) error {
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- Path is the local SSH config.
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -355,7 +356,7 @@ func writeConfig(path, name string, port int, keyPath, knownHosts string) error 
 }
 
 func removeFromConfig(path, name string) error {
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- Path is the local SSH config.
 	if os.IsNotExist(err) {
 		return nil
 	}

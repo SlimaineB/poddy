@@ -34,7 +34,7 @@ func Load(path string) (*Registry, error) {
 	if strings.TrimSpace(path) == "" {
 		return &Registry{}, nil
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- Path is supplied by trusted configuration.
 	if err != nil {
 		return nil, err
 	}

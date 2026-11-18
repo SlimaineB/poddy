@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"poddy/internal/tunnel"
@@ -29,7 +30,7 @@ func main() {
 		Target:    *target,
 		Insecure:  *insecure,
 	})
-	log.Printf("workspace agent starting for %s", *workspace)
+	log.Printf("workspace agent starting for %s", strings.ReplaceAll(strings.ReplaceAll(*workspace, "\n", " "), "\r", " "))
 	if err := agent.Run(ctx); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}

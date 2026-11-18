@@ -32,7 +32,7 @@ func collectKeys(editor *local.Local, raw, file string) ([]string, error) {
 		}
 	}
 	if file != "" {
-		data, err := os.ReadFile(file)
+		data, err := os.ReadFile(file) // #nosec G304 -- Path is supplied by trusted configuration.
 		if err != nil {
 			return nil, err
 		}

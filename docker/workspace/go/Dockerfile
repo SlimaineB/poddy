@@ -9,9 +9,9 @@ RUN arch="$(dpkg --print-architecture)" \
  && rm /tmp/go.tgz \
  && ln -s /usr/local/go/bin/go /usr/local/bin/go \
  && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
- && printf 'export PATH=$PATH:/usr/local/go/bin:/home/dev/go/bin\n' >> /home/dev/.bashrc \
- && printf 'export PATH=$PATH:/usr/local/go/bin:/home/dev/go/bin\n' >> /etc/skel/.bashrc \
- && printf 'export PATH=$PATH:/usr/local/go/bin:/home/dev/go/bin\n' > /etc/profile.d/golang.sh
+ && printf "export PATH=\$PATH:/usr/local/go/bin:/home/dev/go/bin\n" >> /home/dev/.bashrc \
+ && printf "export PATH=\$PATH:/usr/local/go/bin:/home/dev/go/bin\n" >> /etc/skel/.bashrc \
+ && printf "export PATH=\$PATH:/usr/local/go/bin:/home/dev/go/bin\n" > /etc/profile.d/golang.sh
 
 WORKDIR /home/dev
 EXPOSE 22

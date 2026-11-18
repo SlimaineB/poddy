@@ -131,7 +131,7 @@ func (s *Server) workspaceShare(w http.ResponseWriter, r *http.Request) {
 	store := s.shareStore()
 	if access == shareAccessOff {
 		if err := store.DeleteTarget(r.Context(), name, target); err != nil {
-			log.Printf("workspace share %s:%d: delete: %v", name, port, err)
+			log.Printf("workspace share %s:%d: delete: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), port, strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 			http.Error(w, "could not update share", http.StatusInternalServerError)
 			return
 		}
@@ -141,7 +141,7 @@ func (s *Server) workspaceShare(w http.ResponseWriter, r *http.Request) {
 
 	existing, ok, err := store.GetByTarget(r.Context(), name, target)
 	if err != nil {
-		log.Printf("workspace share %s:%d: get: %v", name, port, err)
+		log.Printf("workspace share %s:%d: get: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), port, strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "could not update share", http.StatusInternalServerError)
 		return
 	}
@@ -167,7 +167,7 @@ func (s *Server) workspaceShare(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: now,
 	}
 	if err := store.Set(r.Context(), share); err != nil {
-		log.Printf("workspace share %s:%d: save: %v", name, port, err)
+		log.Printf("workspace share %s:%d: save: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), port, strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "could not update share", http.StatusInternalServerError)
 		return
 	}
@@ -223,13 +223,14 @@ func (s *Server) handleShareLink(w http.ResponseWriter, r *http.Request, token s
 	case k8s.ShareAccessPublic:
 	case k8s.ShareAccessInternal:
 		if _, ok := s.currentIdentity(r); !ok {
-			http.Redirect(w, r, s.shareLoginURL(token), http.StatusSeeOther)
+			http.Redirect(w, r, s.shareLoginURL(token), http.StatusSeeOther) // #nosec G710 -- Local portal login URL.
 			return
 		}
 	default:
 		http.NotFound(w, r)
 		return
 	}
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     shareCookie,
 		Value:    share.Token,

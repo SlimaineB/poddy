@@ -107,7 +107,7 @@ func (s *Server) workspaceMetricsHistory(w http.ResponseWriter, r *http.Request)
 		r.URL.Query().Get("step"),
 	)
 	if err != nil {
-		log.Printf("monitoring history %s: %v", name, err)
+		log.Printf("monitoring history %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		if history.Reason == "" {
 			history.Reason = "Prometheus is unavailable"
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"poddy/internal/envstore"
 	"poddy/internal/rbac"
@@ -204,7 +205,7 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.Environment != nil {
 		if err := s.Environment.DeleteTarget(r.Context(), envstore.ScopeTeam, name); err != nil {
-			log.Printf("team environment %s: delete: %v", name, err)
+			log.Printf("team environment %s: delete: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

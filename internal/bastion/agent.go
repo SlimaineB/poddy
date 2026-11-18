@@ -43,7 +43,7 @@ func (b *Bastion) AgentHandler() http.Handler {
 		sourceIP := remoteIP(r.RemoteAddr)
 		b.recordEvent(claims.Workspace, claims.Owner, "workspace", sourceIP, "ssh.agent.connect", "success", "")
 		if err := b.Broker.ServeAgent(w, r, claims); err != nil {
-			log.Printf("ssh agent %s: %v", claims.Workspace, err)
+			log.Printf("ssh agent %s: %v", strings.ReplaceAll(strings.ReplaceAll(claims.Workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 			b.recordEvent(claims.Workspace, claims.Owner, "workspace", sourceIP, "ssh.agent.disconnect", "error", err.Error())
 			return
 		}

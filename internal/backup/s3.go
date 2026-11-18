@@ -155,7 +155,7 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("backup: download %s: %w", key, err)
 	}
 	if _, err := object.Stat(); err != nil {
-		object.Close()
+		_ = object.Close()
 		return nil, fmt.Errorf("backup: download %s: %w", key, err)
 	}
 	return object, nil

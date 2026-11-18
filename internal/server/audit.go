@@ -248,13 +248,13 @@ func (s *Server) syncWorkspace(ctx context.Context, name string) {
 	}
 	snapshot, err := s.Workspaces.Snapshot(ctx, name)
 	if err != nil {
-		log.Printf("metadata: snapshot workspace %s: %v", name, err)
+		log.Printf("metadata: snapshot workspace %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, metadataTimeout)
 	defer cancel()
 	if err := s.Metadata.SyncWorkspace(ctx, s.Workspaces.Namespace, snapshot); err != nil {
-		log.Printf("metadata: sync workspace %s: %v", name, err)
+		log.Printf("metadata: sync workspace %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 }
 
@@ -265,7 +265,7 @@ func (s *Server) deleteWorkspaceMetadata(ctx context.Context, name string) {
 	ctx, cancel := context.WithTimeout(ctx, metadataTimeout)
 	defer cancel()
 	if err := s.Metadata.DeleteWorkspace(ctx, s.Workspaces.Namespace, name); err != nil {
-		log.Printf("metadata: delete workspace %s: %v", name, err)
+		log.Printf("metadata: delete workspace %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 }
 

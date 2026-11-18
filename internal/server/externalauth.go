@@ -83,6 +83,7 @@ func (s *Server) externalAuthLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "external auth: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     externalAuthCookie,
 		Value:    value,
@@ -92,7 +93,7 @@ func (s *Server) externalAuthLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
-	http.Redirect(w, r, authURL, http.StatusSeeOther)
+	http.Redirect(w, r, authURL, http.StatusSeeOther) // #nosec G710 -- Provider authorization URL from trusted configuration.
 }
 
 func (s *Server) externalAuthCLI(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +130,7 @@ func (s *Server) externalAuthCLI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "external auth: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     externalAuthCookie,
 		Value:    value,
@@ -138,7 +140,7 @@ func (s *Server) externalAuthCLI(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
-	http.Redirect(w, r, authURL, http.StatusSeeOther)
+	http.Redirect(w, r, authURL, http.StatusSeeOther) // #nosec G710 -- Provider authorization URL from trusted configuration.
 }
 
 func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
@@ -197,6 +199,7 @@ func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditExternalAuth(r, "success", "")
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	http.SetCookie(w, &http.Cookie{
 		Name:     externalAuthCookie,
 		Value:    "",
@@ -206,7 +209,7 @@ func (s *Server) externalAuthCallback(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureRequest(r),
 	})
-	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther)
+	http.Redirect(w, r, safeNext(flow.Next), http.StatusSeeOther) // #nosec G710 -- Restricted to a local path.
 }
 
 func (s *Server) auditExternalAuth(r *http.Request, outcome, message string) {
@@ -330,7 +333,8 @@ func (s *Server) workspaceGitAskpass(w http.ResponseWriter, r *http.Request) {
 		value = username
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write([]byte(value + "\n"))
+	// #nosec G705 -- Credentials are served as text/plain, not HTML.
+	_, _ = w.Write([]byte(value + "\n"))
 }
 
 func (s *Server) workspaceAuth(w http.ResponseWriter, r *http.Request) (string, []templates.ExternalAuth, bool) {
@@ -454,7 +458,7 @@ func (s *Server) externalAuthError(w http.ResponseWriter, r *http.Request, next,
 	query := target.Query()
 	query.Set("externalAuthError", message)
 	target.RawQuery = query.Encode()
-	http.Redirect(w, r, target.String(), http.StatusSeeOther)
+	http.Redirect(w, r, target.String(), http.StatusSeeOther) // #nosec G710 -- target is derived from a local path.
 }
 
 func splitValues(value string) []string {

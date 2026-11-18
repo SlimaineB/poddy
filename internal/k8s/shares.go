@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	DefaultSharesSecret = "poddy-shares"
+	DefaultSharesSecret = "poddy-shares" // #nosec G101 -- Kubernetes Secret name, not a credential.
 	sharesDataKey       = "shares.json"
 
 	ShareAccessInternal = "internal"

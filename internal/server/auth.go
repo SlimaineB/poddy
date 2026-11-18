@@ -56,7 +56,8 @@ func (s *Server) auth(next http.Handler) http.Handler {
 					query := target.Query()
 					query.Del("token")
 					target.RawQuery = query.Encode()
-					http.Redirect(w, r, target.String(), http.StatusSeeOther)
+					// codeql[go/unvalidated-url-redirection] Only a relative request URI is used.
+					http.Redirect(w, r, target.RequestURI(), http.StatusSeeOther) // #nosec G710 -- Relative request URI only.
 					return
 				}
 			}
@@ -79,6 +80,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 }
 
 func (s *Server) cookie(token string, secure bool) *http.Cookie {
+	// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 	return &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
@@ -139,7 +141,11 @@ func isBrowserJupyterPath(path string) bool {
 }
 
 func safeNext(next string) string {
-	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+	if next == "" || next[0] != '/' {
+		return "/"
+	}
+	// codeql[go/bad-redirect-check] Explicitly rejects protocol-relative and backslash paths.
+	if len(next) > 1 && (next[1] == '/' || next[1] == '\\') {
 		return "/"
 	}
 	return next
@@ -198,6 +204,7 @@ func (s *Server) identify(r *http.Request) (*identity, bool) {
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	s.auditEvent(r, metadata.Event{Action: "auth.logout", Outcome: "success"})
 	for _, name := range []string{sessionCookie, cookieName, oidcCookie} {
+		// #nosec G124 -- HttpOnly, SameSite and conditional Secure are set below.
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    "",

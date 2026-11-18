@@ -39,7 +39,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 	s.auditEvent(r, metadata.Event{Action: "auth.login", Outcome: "success", Actor: "token", ActorType: "token"})
 	http.SetCookie(w, s.cookie(token, secureRequest(r)))
-	http.Redirect(w, r, next, http.StatusSeeOther)
+	// codeql[go/unvalidated-url-redirection] next is restricted to a local path by safeNext.
+	http.Redirect(w, r, next, http.StatusSeeOther) // #nosec G710 -- next is restricted to a local path.
 }
 
 func (s *Server) serveLogin(w http.ResponseWriter, next, message string, status int) {
@@ -50,7 +51,7 @@ func (s *Server) serveLogin(w http.ResponseWriter, next, message string, status 
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	tpl.Execute(w, loginData{
+	_ = tpl.Execute(w, loginData{
 		Next:         next,
 		Error:        message,
 		OIDC:         s.OIDC != nil,

@@ -501,5 +501,5 @@ func openBrowser(target string) error {
 		return errors.New("empty browser command")
 	}
 	args := append(fields[1:], target)
-	return exec.Command(fields[0], args...).Start()
+	return exec.Command(fields[0], args...).Start() // #nosec G204 -- Command is configured by the local user.
 }

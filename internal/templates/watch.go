@@ -55,8 +55,13 @@ func Watch(ctx context.Context, catalog *Catalog, dir string, interval time.Dura
 }
 
 func fingerprint(dir string) (string, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
 	hash := sha256.New()
-	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -68,19 +73,19 @@ func fingerprint(dir string) (string, error) {
 			!strings.HasSuffix(name, ".template.yaml") && !strings.HasSuffix(name, ".pod.yaml") {
 			return nil
 		}
-		info, err := os.Stat(path)
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		info, err := root.Stat(rel)
 		if err != nil {
 			return err
 		}
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
 		fmt.Fprintf(hash, "%s\x00", rel)
-		file, err := os.Open(path)
+		file, err := root.Open(rel)
 		if err != nil {
 			return err
 		}

@@ -105,4 +105,8 @@ if [ "${PODDY_AGENT_SIDECAR:-}" != "true" ] && [ -x /usr/local/bin/poddy-agent ]
   ) &
 fi
 
+if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+  ssh-keygen -A
+fi
+
 exec /usr/sbin/sshd -D -e

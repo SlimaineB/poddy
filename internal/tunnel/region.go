@@ -29,7 +29,7 @@ type RegionBroker struct {
 
 	mu       sync.RWMutex
 	sessions map[string][]*session
-	next     map[string]uint32
+	next     map[string]int
 
 	upgrader  websocket.Upgrader
 	onConnect func(region string)
@@ -39,7 +39,7 @@ func NewRegionBroker(auth RegionAuthFunc) *RegionBroker {
 	return &RegionBroker{
 		auth:     auth,
 		sessions: map[string][]*session{},
-		next:     map[string]uint32{},
+		next:     map[string]int{},
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   32 << 10,
@@ -87,7 +87,7 @@ func (b *RegionBroker) register(s *session) {
 	count := len(b.sessions[s.workspace])
 	onConnect := b.onConnect
 	b.mu.Unlock()
-	log.Printf("region tunnel connected: %s (%d session(s))", s.workspace, count)
+	log.Printf("region tunnel connected: %s (%d session(s))", strings.ReplaceAll(strings.ReplaceAll(s.workspace, "\n", " "), "\r", " "), count)
 	if onConnect != nil {
 		onConnect(s.workspace)
 	}
@@ -118,10 +118,10 @@ func (b *RegionBroker) unregister(s *session) {
 	}
 	b.mu.Unlock()
 	if remaining == 0 {
-		log.Printf("region tunnel disconnected: %s", s.workspace)
+		log.Printf("region tunnel disconnected: %s", strings.ReplaceAll(strings.ReplaceAll(s.workspace, "\n", " "), "\r", " "))
 		return
 	}
-	log.Printf("region tunnel session closed: %s (%d remaining)", s.workspace, remaining)
+	log.Printf("region tunnel session closed: %s (%d remaining)", strings.ReplaceAll(strings.ReplaceAll(s.workspace, "\n", " "), "\r", " "), remaining)
 }
 
 func (b *RegionBroker) run(s *session) error {
@@ -182,12 +182,12 @@ func (b *RegionBroker) Dial(ctx context.Context, region, target string) (net.Con
 	list := b.sessions[region]
 	var s *session
 	if len(list) > 0 {
-		start := int(b.next[region] % uint32(len(list)))
+		start := b.next[region] % len(list)
 		for i := 0; i < len(list); i++ {
 			candidate := list[(start+i)%len(list)]
 			if candidate.alive() {
 				s = candidate
-				b.next[region] = uint32(start + i + 1)
+				b.next[region] = start + i + 1
 				break
 			}
 		}
@@ -230,7 +230,7 @@ func (b *RegionBroker) Close() {
 		sessions = append(sessions, list...)
 	}
 	b.sessions = map[string][]*session{}
-	b.next = map[string]uint32{}
+	b.next = map[string]int{}
 	b.mu.Unlock()
 	for _, s := range sessions {
 		s.close(errClosed)
@@ -256,6 +256,7 @@ func NewRegionAgent(config RegionAgentConfig) *RegionAgent {
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if config.Insecure {
+		// #nosec G402 -- Explicit opt-in for self-signed tunnel endpoints.
 		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	return &RegionAgent{config: config, dialer: dialer}

@@ -382,7 +382,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, identity Ident
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if out == nil {
-			io.Copy(io.Discard, resp.Body)
+			_, _ = io.Copy(io.Discard, resp.Body)
 			return nil
 		}
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -441,7 +441,7 @@ func (c *Client) proxy(w http.ResponseWriter, r *http.Request, identity *Identit
 		req.Host = originalHost
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("region %s proxy %s: %v", c.cfg.Name, r.URL.Path, err)
+		log.Printf("region %s proxy %s: %v", strings.ReplaceAll(strings.ReplaceAll(c.cfg.Name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(r.URL.Path, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "region unavailable", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)

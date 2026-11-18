@@ -22,6 +22,7 @@ var (
 
 // Key derives a stable 32-byte AES key from an application secret.
 func Key(secret string) []byte {
+	// codeql[go/weak-sensitive-data-hashing] The secret is high-entropy key material, not a user password.
 	sum := sha256.Sum256([]byte(secret))
 	return sum[:]
 }

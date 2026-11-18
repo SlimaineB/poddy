@@ -3,7 +3,6 @@ package externalauth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,8 +105,7 @@ func NewManager(providers []Provider, store TokenStore, signingSecret string) *M
 			m.signKey = buf
 		}
 	} else {
-		sum := sha256.Sum256([]byte(signingSecret))
-		m.signKey = sum[:]
+		m.signKey = secure.Key(signingSecret)
 	}
 	return m
 }

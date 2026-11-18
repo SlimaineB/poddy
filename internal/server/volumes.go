@@ -570,7 +570,7 @@ func writeVolumeRegionError(w http.ResponseWriter, err error) {
 			return
 		}
 	}
-	log.Printf("region volume request: %v", err)
+	log.Printf("region volume request: %v", strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	http.Error(w, "region unavailable", http.StatusBadGateway)
 }
 

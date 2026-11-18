@@ -59,7 +59,7 @@ func (s *Server) workspacePorts(w http.ResponseWriter, r *http.Request) {
 
 	ports, err := s.Workspaces.ListeningPorts(r.Context(), name)
 	if err != nil {
-		log.Printf("workspace ports %s: %v", name, err)
+		log.Printf("workspace ports %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ports":   []workspacePort{},
 			"message": "Could not detect listening ports. Enter a port manually below.",
@@ -69,7 +69,7 @@ func (s *Server) workspacePorts(w http.ResponseWriter, r *http.Request) {
 
 	shares, err := s.shareStore().Load(r.Context())
 	if err != nil {
-		log.Printf("workspace shares %s: %v", name, err)
+		log.Printf("workspace shares %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		shares = map[string]k8s.Share{}
 	}
 	shareByPath := map[string]k8s.Share{}
@@ -149,7 +149,7 @@ func (s *Server) workspacePortProxy(w http.ResponseWriter, r *http.Request) {
 
 	localPort, err := s.Forwards.EnsurePort(s.Workspaces, name, port)
 	if err != nil {
-		log.Printf("workspace port %s:%d: port-forward: %v", name, port, err)
+		log.Printf("workspace port %s:%d: port-forward: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), port, strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "could not reach the port in the workspace", http.StatusBadGateway)
 		return
 	}
@@ -186,7 +186,7 @@ func (s *Server) workspacePortProxy(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("workspace port %s:%d: proxy: %v", name, port, err)
+		log.Printf("workspace port %s:%d: proxy: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), port, strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "could not reach the port in the workspace", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)
@@ -201,7 +201,7 @@ func (s *Server) workspacePortRedirect(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
-	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, target, http.StatusTemporaryRedirect) // #nosec G710 -- Target is a local request path.
 }
 
 func workspacePortURL(name string, port int) string {
@@ -217,9 +217,10 @@ func rewriteProxyLocation(resp *http.Response, prefix string) {
 	if location == "" {
 		return
 	}
-	if strings.HasPrefix(location, "//") {
+	if strings.HasPrefix(location, "//") || strings.HasPrefix(location, "/\\") {
 		return
 	}
+	// codeql[go/bad-redirect-check] Rejects protocol-relative and backslash-prefixed locations.
 	if strings.HasPrefix(location, "/") {
 		if location != prefix && !strings.HasPrefix(location, prefix+"/") {
 			resp.Header.Set("Location", prefix+location)

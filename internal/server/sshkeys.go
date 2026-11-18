@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"poddy/internal/userkeys"
 )
@@ -47,7 +48,7 @@ func (s *Server) listSSHKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := s.UserKeys.ListForOwner(r.Context(), ownerID(id.User))
 	if err != nil {
-		log.Printf("ssh keys: list for %s: %v", ownerID(id.User), err)
+		log.Printf("ssh keys: list for %s: %v", strings.ReplaceAll(strings.ReplaceAll(ownerID(id.User), "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "cannot load SSH keys", http.StatusInternalServerError)
 		return
 	}

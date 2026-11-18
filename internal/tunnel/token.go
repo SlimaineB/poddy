@@ -2,7 +2,6 @@ package tunnel
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,8 +36,7 @@ func NewTokenSigner(secret string) *TokenSigner {
 			key = buf
 		}
 	} else {
-		sum := sha256.Sum256([]byte(secret))
-		key = sum[:]
+		key = secure.Key(secret)
 	}
 	return &TokenSigner{key: key}
 }

@@ -182,7 +182,7 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		TerminalSizeQueue: sizes,
 	})
 	if err != nil {
-		out.Write([]byte("\r\n" + err.Error() + "\r\n"))
+		_, _ = out.Write([]byte("\r\n" + err.Error() + "\r\n"))
 	}
 }
 

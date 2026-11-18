@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -50,7 +51,7 @@ func (s *Server) browserJupyterRedirect(w http.ResponseWriter, r *http.Request) 
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
-	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, target, http.StatusTemporaryRedirect) // #nosec G710 -- Target is a local request path.
 }
 
 func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserIDEConfig) {
@@ -101,7 +102,7 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 
 	port, err := s.Forwards.EnsurePort(s.Workspaces, name, cfg.port)
 	if err != nil {
-		log.Printf("%s %s: port-forward: %v", cfg.label, name, err)
+		log.Printf("%s %s: port-forward: %v", strings.ReplaceAll(strings.ReplaceAll(cfg.label, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, cfg.label+" is unavailable", http.StatusBadGateway)
 		return
 	}
@@ -123,7 +124,7 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("%s %s: proxy: %v", cfg.label, name, err)
+		log.Printf("%s %s: proxy: %v", strings.ReplaceAll(strings.ReplaceAll(cfg.label, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, cfg.label+" is unavailable", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)

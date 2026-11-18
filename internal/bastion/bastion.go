@@ -399,7 +399,7 @@ func (b *Bastion) recordEvent(workspace, actor, actorType, sourceIP, action, out
 		SourceIP:   sourceIP,
 		Error:      message,
 	}); err != nil {
-		log.Printf("ssh bastion: audit %s: %v", workspace, err)
+		log.Printf("ssh bastion: audit %s: %v", strings.ReplaceAll(strings.ReplaceAll(workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 }
 
@@ -427,7 +427,7 @@ func loadHostKey(path string) (ssh.Signer, error) {
 		}
 	}
 
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G304 -- Path is supplied by trusted configuration.
 		return ssh.ParsePrivateKey(data)
 	}
 

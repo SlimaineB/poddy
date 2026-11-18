@@ -43,6 +43,7 @@ func NewAgent(config AgentConfig) *Agent {
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if config.Insecure {
+		// #nosec G402 -- Explicit opt-in for self-signed tunnel endpoints.
 		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	return &Agent{config: config, dialer: dialer}

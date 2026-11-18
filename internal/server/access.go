@@ -372,7 +372,7 @@ func (s *Server) markPresence(name, actor, kind string) {
 		Since:    now,
 		LastSeen: now,
 	}); err != nil {
-		log.Printf("presence %s/%s: %v", name, actor, err)
+		log.Printf("presence %s/%s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(actor, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 }
 
@@ -392,7 +392,7 @@ func (s *Server) trackPresence(name, actor, kind string) func() {
 	presence := k8s.Presence{Actor: actor, Kind: kind, Since: now, LastSeen: now}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := store.SetPresence(ctx, name, session, presence); err != nil {
-		log.Printf("presence %s/%s: %v", name, actor, err)
+		log.Printf("presence %s/%s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(actor, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
 	cancel()
 	done := make(chan struct{})
@@ -409,7 +409,7 @@ func (s *Server) trackPresence(name, actor, kind string) func() {
 				err := store.SetPresence(hbCtx, name, session, presence)
 				hbCancel()
 				if err != nil {
-					log.Printf("presence heartbeat %s/%s: %v", name, actor, err)
+					log.Printf("presence heartbeat %s/%s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(actor, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 				}
 			}
 		}
@@ -419,7 +419,7 @@ func (s *Server) trackPresence(name, actor, kind string) func() {
 		clearCtx, clearCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer clearCancel()
 		if err := store.ClearPresence(clearCtx, name, session); err != nil {
-			log.Printf("presence clear %s/%s: %v", name, actor, err)
+			log.Printf("presence clear %s/%s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(actor, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		}
 	}
 }

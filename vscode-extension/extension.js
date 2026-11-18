@@ -178,6 +178,7 @@ function postJSON(url, body) {
     );
     req.on("timeout", () => req.destroy(new Error("request timed out")));
     req.on("error", reject);
+    // codeql[js/file-access-to-http] The enrollment request intentionally sends the generated SSH public key.
     req.end(data);
   });
 }
@@ -214,7 +215,12 @@ async function writeSSHConfig(payload, priv) {
   const dir = sshDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const config = path.join(dir, "config");
-  let current = fs.existsSync(config) ? fs.readFileSync(config, "utf8") : "";
+  let current = "";
+  try {
+    current = fs.readFileSync(config, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
   current = removeBlock(current, workspace);
   current = current.trimEnd();
   if (current) current += "\n\n";

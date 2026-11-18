@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,13 @@ import (
 	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 )
+
+func unixSeconds(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(v)
+}
 
 type sshCertificateResponse struct {
 	Certificate string `json:"certificate"`
@@ -77,7 +85,7 @@ func (s *Server) issueSSHCertificate(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "workspace not found", http.StatusNotFound)
 					return
 				}
-				log.Printf("ssh certificate: region lookup %s: %v", workspace, regionErr)
+				log.Printf("ssh certificate: region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(regionErr.Error(), "\n", " "), "\r", " "))
 				http.Error(w, "region unavailable", http.StatusBadGateway)
 				return
 			}
@@ -90,20 +98,20 @@ func (s *Server) issueSSHCertificate(w http.ResponseWriter, r *http.Request) {
 	}
 	cert, err := s.SSHCA.Sign(public, sshca.WorkspacePrincipal, owner, workspace, s.isAdmin(id, cfg), ttl)
 	if err != nil {
-		log.Printf("ssh certificate: sign for %s: %v", owner, err)
+		log.Printf("ssh certificate: sign for %s: %v", strings.ReplaceAll(strings.ReplaceAll(owner, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 		http.Error(w, "cannot issue SSH certificate", http.StatusInternalServerError)
 		return
 	}
 
 	setAuditTarget(r, workspace)
 	setAuditDetail(r, "fingerprint", fingerprint)
-	setAuditDetail(r, "expiresAt", time.Unix(int64(cert.ValidBefore), 0).UTC().Format(time.RFC3339))
+	setAuditDetail(r, "expiresAt", time.Unix(unixSeconds(cert.ValidBefore), 0).UTC().Format(time.RFC3339))
 	writeJSON(w, http.StatusOK, sshCertificateResponse{
 		Certificate: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(cert))),
 		Principal:   sshca.WorkspacePrincipal,
 		Owner:       owner,
 		Workspace:   workspace,
-		ExpiresAt:   time.Unix(int64(cert.ValidBefore), 0).UTC().Format(time.RFC3339),
+		ExpiresAt:   time.Unix(unixSeconds(cert.ValidBefore), 0).UTC().Format(time.RFC3339),
 		Fingerprint: fingerprint,
 	})
 }

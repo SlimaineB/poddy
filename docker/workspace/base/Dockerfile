@@ -8,9 +8,10 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /poddy-agent ./cmd/podd
 
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
+# hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-server sudo git curl ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
  && useradd -m -s /bin/bash dev \
  && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev \
  && mkdir -p /run/sshd /home/dev/.ssh /workspace \

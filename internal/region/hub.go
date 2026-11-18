@@ -661,7 +661,7 @@ func (h *Hub) SyncSSHKeys(ctx context.Context, owner string, keys []string, iden
 				mu.Lock()
 				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
 				mu.Unlock()
-				log.Printf("region %s: sync SSH keys for %s: %v", cfg.Name, owner, err)
+				log.Printf("region %s: sync SSH keys for %s: %v", strings.ReplaceAll(strings.ReplaceAll(cfg.Name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(owner, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 			}
 		}(cfg, client)
 	}
