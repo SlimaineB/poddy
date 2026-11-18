@@ -188,7 +188,7 @@ func (m *Manager) startStatefulSet(ctx context.Context, sts *appsv1.StatefulSet)
 	if err := m.applyExternalAuth(ctx, pod, state.Owner, name, state.PortalURL, requirements); err != nil {
 		return Workspace{}, err
 	}
-	if err := m.applyAgentEnv(pod, name, state.Owner); err != nil {
+	if err := m.applyAgentEnv(ctx, pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
 	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {
@@ -252,7 +252,7 @@ func (m *Manager) startFromState(ctx context.Context, name string, state Workspa
 	if err := m.applyExternalAuth(ctx, pod, state.Owner, state.Name, state.PortalURL, requirements); err != nil {
 		return Workspace{}, err
 	}
-	if err := m.applyAgentEnv(pod, state.Name, state.Owner); err != nil {
+	if err := m.applyAgentEnv(ctx, pod, state.Name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
 	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {
@@ -329,7 +329,7 @@ func (m *Manager) restart(ctx context.Context, name string) (Workspace, error) {
 	if err := m.applyExternalAuth(ctx, pod, state.Owner, name, state.PortalURL, requirements); err != nil {
 		return Workspace{}, err
 	}
-	if err := m.applyAgentEnv(pod, name, state.Owner); err != nil {
+	if err := m.applyAgentEnv(ctx, pod, name, state.Owner); err != nil {
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
 	if err := m.applyDotfiles(ctx, pod, state.Owner); err != nil {

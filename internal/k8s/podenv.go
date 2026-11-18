@@ -13,7 +13,7 @@ import (
 	"poddy/internal/templates"
 )
 
-func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error {
+func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace, owner string) error {
 	applyOOMProtection(pod)
 
 	container := containerByName(pod, ContainerName)
@@ -24,15 +24,19 @@ func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error 
 		removeEnv(container, envAgentSidecar)
 		removeAgentEnv(pod)
 		removeContainer(pod, AgentContainerName)
-		return nil
+		return m.deleteAgentTokenSecret(ctx, workspace)
 	}
 	token, err := m.AgentToken(workspace, owner)
 	if err != nil {
 		return err
 	}
+	secretName := AgentTokenSecretName(workspace)
+	if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
+		return err
+	}
 	if m.AgentImage == "" {
 		setEnv(container, envAgentURL, m.AgentURL)
-		setEnv(container, envAgentToken, token)
+		setEnvFromSecret(container, envAgentToken, secretName, agentTokenSecretKey)
 		setEnv(container, envAgentTokenFile, agentTokenFile)
 		setEnv(container, envWorkspaceName, workspace)
 		removeEnv(container, envAgentSidecar)
@@ -45,7 +49,7 @@ func (m *Manager) applyAgentEnv(pod *corev1.Pod, workspace, owner string) error 
 	removeEnv(container, envAgentToken)
 	removeEnv(container, envAgentTokenFile)
 	setEnv(container, envAgentSidecar, "true")
-	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, token)
+	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName)
 	return nil
 }
 
@@ -59,8 +63,8 @@ const (
 	agentTokenFile       = agentStateMountPath + "/agent-token"
 )
 
-func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, token string) {
-	container := agentSidecar(image, agentURL, workspace, token)
+func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName string) {
+	container := agentSidecar(image, agentURL, workspace, secretName)
 	mountAgentTokenState(pod, &container)
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == AgentContainerName {
@@ -104,7 +108,7 @@ func mountAgentTokenState(pod *corev1.Pod, container *corev1.Container) {
 	})
 }
 
-func agentSidecar(image, agentURL, workspace, token string) corev1.Container {
+func agentSidecar(image, agentURL, workspace, secretName string) corev1.Container {
 	return corev1.Container{
 		Name:            AgentContainerName,
 		Image:           image,
@@ -112,7 +116,7 @@ func agentSidecar(image, agentURL, workspace, token string) corev1.Container {
 		Command:         []string{"/usr/local/bin/poddy-agent"},
 		Env: []corev1.EnvVar{
 			{Name: envAgentURL, Value: agentURL},
-			{Name: envAgentToken, Value: token},
+			secretEnv(envAgentToken, secretName, agentTokenSecretKey),
 			{Name: envAgentTokenFile, Value: agentTokenFile},
 			{Name: envWorkspaceName, Value: workspace},
 		},
@@ -329,6 +333,35 @@ func setEnv(container *corev1.Container, name, value string) {
 		}
 	}
 	container.Env = append(container.Env, corev1.EnvVar{Name: name, Value: value})
+}
+
+func setEnvFromSecret(container *corev1.Container, name, secretName, key string) {
+	valueFrom := &corev1.EnvVarSource{
+		SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+			Key:                  key,
+		},
+	}
+	for i := range container.Env {
+		if container.Env[i].Name == name {
+			container.Env[i].Value = ""
+			container.Env[i].ValueFrom = valueFrom
+			return
+		}
+	}
+	container.Env = append(container.Env, corev1.EnvVar{Name: name, ValueFrom: valueFrom})
+}
+
+func secretEnv(name, secretName, key string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: name,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+				Key:                  key,
+			},
+		},
+	}
 }
 
 func removeEnv(container *corev1.Container, name string) {

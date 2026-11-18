@@ -22,6 +22,19 @@ import (
 	"poddy/internal/templates"
 )
 
+func envSecretRef(pod *corev1.Pod, containerName, name string) (string, string) {
+	container := containerByName(pod, containerName)
+	if container == nil {
+		return "", ""
+	}
+	for _, item := range container.Env {
+		if item.Name == name && item.ValueFrom != nil && item.ValueFrom.SecretKeyRef != nil {
+			return item.ValueFrom.SecretKeyRef.Name, item.ValueFrom.SecretKeyRef.Key
+		}
+	}
+	return "", ""
+}
+
 func newTestManager() *Manager {
 	catalog, err := templates.Load("../templates/files")
 	if err != nil {
@@ -123,8 +136,19 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	if len(agent.Command) != 1 || agent.Command[0] != "/usr/local/bin/poddy-agent" {
 		t.Fatalf("agent command = %v", agent.Command)
 	}
-	if got := envValue(pod, AgentContainerName, envAgentToken); got != "agent-token" {
-		t.Fatalf("agent token = %q", got)
+	if got := envValue(pod, AgentContainerName, envAgentToken); got != "" {
+		t.Fatalf("agent token leaked into pod spec: %q", got)
+	}
+	secretName, key := envSecretRef(pod, AgentContainerName, envAgentToken)
+	if secretName != AgentTokenSecretName("app") || key != agentTokenSecretKey {
+		t.Fatalf("agent token ref = %q/%q", secretName, key)
+	}
+	secret, err := m.Client.CoreV1().Secrets("poddy").Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(secret.Data[agentTokenSecretKey]) != "agent-token" {
+		t.Fatalf("agent secret token = %q", secret.Data[agentTokenSecretKey])
 	}
 	if got := envValue(pod, AgentContainerName, envWorkspaceName); got != "app" {
 		t.Fatalf("agent workspace = %q", got)
@@ -148,7 +172,7 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	}
 	for _, container := range state.Spec.Containers {
 		for _, env := range container.Env {
-			if env.Name == envAgentToken && env.Value != "" {
+			if env.Name == envAgentToken && (env.Value != "" || env.ValueFrom == nil) {
 				t.Fatalf("agent token leaked into stopped state: %+v", container)
 			}
 		}
@@ -161,8 +185,18 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := envValue(restarted, AgentContainerName, envAgentToken); got != "agent-token" {
-		t.Fatalf("restarted agent token = %q", got)
+	if got := envValue(restarted, AgentContainerName, envAgentToken); got != "" {
+		t.Fatalf("restarted agent token leaked into pod spec: %q", got)
+	}
+	secretName, key = envSecretRef(restarted, AgentContainerName, envAgentToken)
+	if secretName != AgentTokenSecretName("app") || key != agentTokenSecretKey {
+		t.Fatalf("restarted agent token ref = %q/%q", secretName, key)
+	}
+	if err := m.Delete(ctx, "app"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Client.CoreV1().Secrets("poddy").Get(ctx, secretName, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("agent token secret still exists: %v", err)
 	}
 }
 
@@ -181,8 +215,12 @@ func TestCreateFallsBackToInWorkspaceAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := envValue(pod, ContainerName, envAgentToken); got != "agent-token" {
-		t.Fatalf("workspace agent token = %q", got)
+	if got := envValue(pod, ContainerName, envAgentToken); got != "" {
+		t.Fatalf("workspace agent token leaked into pod spec: %q", got)
+	}
+	secretName, key := envSecretRef(pod, ContainerName, envAgentToken)
+	if secretName != AgentTokenSecretName("app") || key != agentTokenSecretKey {
+		t.Fatalf("workspace agent token ref = %q/%q", secretName, key)
 	}
 	if hasContainer(pod, AgentContainerName) {
 		t.Fatal("unexpected agent sidecar")

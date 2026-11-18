@@ -44,11 +44,12 @@ in the create dialog when you use desktop VS Code. The browser IDE sidecar
 stores its state in `/home/dev/.openvscode-server` and runs as UID 1000, so it
 follows the same persistence rule.
 
-The portal signs a workspace-bound agent token and injects it into the agent
-sidecar as `PODDY_AGENT_TOKEN`, together with `PODDY_AGENT_URL`,
-`PODDY_WORKSPACE_NAME`, and `PODDY_AGENT_TOKEN_FILE`. The token is signed with a
-key derived from the shared `PODDY_AGENT_KEY` and the workspace name, so a token
-for one workspace cannot be replayed against another. The bastion verifies the
+The portal signs a workspace-bound agent token and stores it in a per-workspace
+Secret. The agent sidecar receives it as `PODDY_AGENT_TOKEN` through a
+`SecretKeyRef`, not as a plaintext value in the pod spec, together with
+`PODDY_AGENT_URL`, `PODDY_WORKSPACE_NAME`, and `PODDY_AGENT_TOKEN_FILE`. The
+token is signed with a key derived from the shared `PODDY_AGENT_KEY` and the
+workspace name, so a token for one workspace cannot be replayed against another. The bastion verifies the
 signature before accepting the tunnel. Tokens default to one hour
 (`ssh.agent.tokenTtl`), are renewed automatically over the established tunnel,
 and the latest token is persisted in the agent's emptyDir so a container restart
@@ -276,9 +277,8 @@ and the workspace list, so multi-region workspaces use the correct bastion.
   workspaces created or restarted afterwards. Restart existing workspaces to
   apply the new line.
 - Agent tokens are bearer credentials scoped to one workspace. Anyone who can
-  read a running workspace pod or its StatefulSet template's environment can
-  impersonate that workspace's agent. Keep `pods/exec` and Secret access
-  restricted. Tokens default to one hour, are renewed over the tunnel, and are
+  read a running workspace pod or its agent token Secret can impersonate that
+  workspace's agent. Keep `pods/exec` and Secret access restricted. Tokens default to one hour, are renewed over the tunnel, and are
   workspace-scoped; a token cannot be retargeted at another workspace.
 - Workspace host keys are stored in the persistent home at
   `/home/dev/.ssh/poddy_ssh_host_ed25519_key`, and generated SSH configs use

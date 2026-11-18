@@ -567,7 +567,7 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
 	}
 	if m.AgentURL != "" && m.AgentToken != nil && m.AgentImage != "" {
-		upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, "")
+		upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, AgentTokenSecretName(req.Name))
 	}
 	return resolvedCreate{
 		templateName: templateName,
@@ -680,6 +680,7 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 			_ = m.deletePVC(ctx, req.Name)
 		}
 		_ = m.deleteEnvironmentSecret(ctx, req.Name)
+		_ = m.deleteAgentTokenSecret(ctx, req.Name)
 	}
 	if err := m.applyEnvironment(ctx, pod, req.Owner, templateName, req.Name); err != nil {
 		cleanup()
@@ -701,7 +702,7 @@ func (m *Manager) create(ctx context.Context, req CreateRequest) (Workspace, err
 		cleanup()
 		return Workspace{}, err
 	}
-	if err := m.applyAgentEnv(pod, req.Name, req.Owner); err != nil {
+	if err := m.applyAgentEnv(ctx, pod, req.Name, req.Owner); err != nil {
 		cleanup()
 		return Workspace{}, fmt.Errorf("workspace agent: %w", err)
 	}
@@ -809,6 +810,9 @@ func (m *Manager) delete(ctx context.Context, name string) error {
 		return err
 	}
 	if err := m.deleteEnvironmentSecret(ctx, name); err != nil {
+		return err
+	}
+	if err := m.deleteAgentTokenSecret(ctx, name); err != nil {
 		return err
 	}
 	if stateExists {
