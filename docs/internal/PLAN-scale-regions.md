@@ -24,7 +24,7 @@ atterrit sur un pod précis. Deux réponses simples, sans mesh :
    les WSS ; le portail HA lui forwarde le trafic région via un Service
    interne. Les régions ne changent pas.
 
-Le mesh WireGuard/DERP de Coder répond à un autre besoin (P2P, latence,
+Un mesh WireGuard/DERP répond à un autre besoin (P2P, latence,
 multi-cloud). Ce n'est pas nécessaire pour ce modèle.
 
 ### Cible si aucun composant mono-replica n'est acceptable
@@ -145,7 +145,7 @@ Le tunnel actuel n'existe que pour éviter l'inbound vers les régions.
 ### Option C — non retenue : tunnels multi-hub / mesh
 
 - Chaque region manager ouvrirait un WSS vers chaque pod hub, ou un mesh
-  WireGuard/DERP type Coder.
+  WireGuard/DERP.
 - Suppose un accès L4/DNS vers tous les pods ou une infra DERP. Surdimensionné
   par rapport au modèle cible.
 - À ne réévaluer que si le multi-région devient central (P2P, latence,
@@ -214,35 +214,28 @@ Constats :
 | P2 | Sharding de `poddy-state` | moyen | dépasse la limite 1 MiB |
 | P3 | Tunnel gateway dédié | moyen | hub HA avec régions |
 
-## 4. Ce que fait Coder (référence)
+## 4. Architecture mesh de référence
 
-Coder a remplacé son ancien stack WebRTC par **Tailscale OSS sur WireGuard**
-(issue coder/coder#2779, 2022). Conséquences :
+Un control plane de référence a remplacé son ancien stack WebRTC par un mesh
+WireGuard. Conséquences :
 
 - Chaque workspace exécute un agent qui se connecte en sortant au control plane
-  (`CODER_ACCESS_URL`) et rejoint un tailnet. Les connexions sont directes
-  (P2P, NAT traversal via STUN) et basculent sur des **relais DERP** quand le
-  direct échoue. Tout est chiffré de bout en bout.
-- `coderd` embarque un serveur DERP. Pour la HA, `--derp-server-relay-url`
+  et rejoint un tailnet. Les connexions sont directes (P2P, NAT traversal via
+  STUN) et basculent sur des **relais DERP** quand le direct échoue. Tout est
+  chiffré de bout en bout.
+- Le control plane embarque un serveur DERP. Pour la HA, un paramètre de relais
   permet aux replicas de se relayer le trafic DERP entre eux.
-- Les **workspace proxies** (édition Premium) sont déployés près des users,
-  sans connexion à la base, et relaient SSH/HTTP/WebSocket vers les workspaces
-  via le tailnet. Comme c'est un mesh, n'importe quel proxy peut joindre
-  n'importe quel workspace : pas de session « possédée » par un pod.
-- Multi-région : un seul control plane, des workspace proxies régionaux et des
-  relais DERP. Les appels dashboard/API ne passent pas par les proxies.
-
-Références :
-
-- https://coder.com/docs/admin/networking
-- https://coder.com/docs/admin/infrastructure/architecture
-- https://coder.com/docs/admin/networking/workspace-proxies
-- https://github.com/coder/coder/issues/2779
+- Des **proxys de workspace** peuvent être déployés près des users, sans
+  connexion à la base, et relaient SSH/HTTP/WebSocket vers les workspaces via
+  le tailnet. Comme c'est un mesh, n'importe quel proxy peut joindre n'importe
+  quel workspace : pas de session « possédée » par un pod.
+- Multi-région : un seul control plane, des proxys régionaux et des relais
+  DERP. Les appels dashboard/API ne passent pas par les proxys.
 
 ### Implication pour poddy
 
 Le problème du tunnel « possédé par un pod hub » vient du modèle WSS centralisé.
-Coder l'évite par un mesh WireGuard + DERP. Deux stratégies possibles :
+Un mesh WireGuard + DERP l'évite. Deux stratégies possibles :
 
 1. Court/moyen terme : garder WSS mais isoler les tunnels dans un gateway
    (option B), ou accepter le hub mono-replica (option A).
