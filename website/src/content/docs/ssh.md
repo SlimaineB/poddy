@@ -47,14 +47,19 @@ follows the same persistence rule.
 The portal signs a workspace-bound agent token and stores it in a per-workspace
 Secret. The agent sidecar receives it as `PODDY_AGENT_TOKEN` through a
 `SecretKeyRef`, not as a plaintext value in the pod spec, together with
-`PODDY_AGENT_URL`, `PODDY_WORKSPACE_NAME`, and `PODDY_AGENT_TOKEN_FILE`. The
-token is signed with a key derived from the shared `PODDY_AGENT_KEY` and the
-workspace name, so a token for one workspace cannot be replayed against another. The bastion verifies the
-signature before accepting the tunnel. Tokens default to one hour
-(`ssh.agent.tokenTtl`), are renewed automatically over the established tunnel,
-and the latest token is persisted in the agent's emptyDir so a container restart
-within the same pod does not need a new workspace token. Set
-`ssh.requireAgent=true` to reject connections when the agent is not connected.
+`PODDY_AGENT_URL`, `PODDY_WORKSPACE_NAME`, `PODDY_AGENT_TOKEN_FILE`, and
+`PODDY_AGENT_REFRESH_FILE`. The Secret is also mounted read-only at
+`/var/run/poddy-agent/token`. The portal rewrites the Secret at half the token
+lifetime, kubelet projects the update into the running pod, and the agent reads
+the mounted file before every reconnect. Tokens default to one hour
+(`ssh.agent.tokenTtl`) and are also renewed automatically over the established
+tunnel, so a disconnect longer than one hour can recover without recreating the
+workspace. Set `ssh.requireAgent=true` to reject connections when the agent is
+not connected.
+
+The token is signed with a key derived from the shared `PODDY_AGENT_KEY` and
+the workspace name, so a token for one workspace cannot be replayed against
+another. The bastion verifies the signature before accepting the tunnel.
 
 Existing workspace pods must be stopped and started after upgrading so they
 receive the agent sidecar. Custom workspace images do not need to include
@@ -262,7 +267,8 @@ region bastion.
 Agent tokens are scoped to one workspace and are signed by the release that
 creates the workspace. Each region's manager and bastion share their own
 `ssh.agent` Secret; cross-region agent keys are not required. Tokens are
-short-lived and renew automatically while the agent stays connected.
+short-lived, are renewed while the agent stays connected, and are refreshed in
+the workspace Secret so a reconnecting agent picks up a valid token.
 
 `poddy config` and `poddy ssh` read the region SSH endpoint from `/api/config`
 and the workspace list, so multi-region workspaces use the correct bastion.
@@ -278,8 +284,10 @@ and the workspace list, so multi-region workspaces use the correct bastion.
   apply the new line.
 - Agent tokens are bearer credentials scoped to one workspace. Anyone who can
   read a running workspace pod or its agent token Secret can impersonate that
-  workspace's agent. Keep `pods/exec` and Secret access restricted. Tokens default to one hour, are renewed over the tunnel, and are
-  workspace-scoped; a token cannot be retargeted at another workspace.
+  workspace's agent. Keep `pods/exec` and Secret access restricted. Tokens
+  default to one hour, are renewed over the tunnel, are refreshed in the
+  workspace Secret, and are workspace-scoped; a token cannot be retargeted at
+  another workspace.
 - Workspace host keys are stored in the persistent home at
   `/home/dev/.ssh/poddy_ssh_host_ed25519_key`, and generated SSH configs use
   `StrictHostKeyChecking accept-new` instead of disabling verification. The

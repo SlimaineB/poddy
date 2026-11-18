@@ -5,18 +5,26 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const agentTokenSecretKey = "token"
+const (
+	agentTokenSecretKey   = "token"
+	agentTokenVolumeName  = "poddy-agent-token"
+	agentTokenMountPath   = "/var/run/poddy-agent"
+	agentTokenRefreshFile = agentTokenMountPath + "/token"
+)
 
-// AgentTokenSecretName returns the Secret holding the workspace's agent
-// bootstrap token. The token is injected with SecretKeyRef instead of being
-// written into the pod spec.
+// AgentTokenSecretName returns the Secret holding the workspace's agent token.
+// The token is injected with SecretKeyRef and mounted into the agent, instead
+// of being written into the pod spec.
 func AgentTokenSecretName(workspace string) string {
 	name := "pd-agent-" + workspace
 	if len(name) <= 63 {
@@ -73,4 +81,64 @@ func (m *Manager) deleteAgentTokenSecret(ctx context.Context, workspace string) 
 		return fmt.Errorf("delete agent token secret: %w", err)
 	}
 	return nil
+}
+
+// RunAgentTokenRefresh keeps workspace agent Secrets fresh so a reconnecting
+// agent can pick up a valid token from its mounted Secret instead of relying on
+// the token it persisted before the disconnect.
+func (m *Manager) RunAgentTokenRefresh(ctx context.Context) {
+	if m.AgentURL == "" || m.AgentToken == nil {
+		return
+	}
+	ttl := m.AgentTokenTTL
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	interval := ttl / 2
+	if interval < time.Minute {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	if err := m.RefreshAgentTokens(ctx); err != nil && ctx.Err() == nil {
+		log.Printf("refresh agent tokens: %v", err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := m.RefreshAgentTokens(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("refresh agent tokens: %v", err)
+			}
+		}
+	}
+}
+
+// RefreshAgentTokens signs a fresh token for every running workspace and
+// updates its Secret. The kubelet projects the update into the running pod, so
+// the agent can recover after a disconnect longer than the token lifetime.
+func (m *Manager) RefreshAgentTokens(ctx context.Context) error {
+	if m.AgentURL == "" || m.AgentToken == nil {
+		return nil
+	}
+	workspaces, err := m.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list workspaces: %w", err)
+	}
+	var problems []error
+	for _, workspace := range workspaces {
+		if workspace.Phase != "Running" || workspace.Owner == "" {
+			continue
+		}
+		token, err := m.AgentToken(workspace.Name, workspace.Owner)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("workspace %s: %w", workspace.Name, err))
+			continue
+		}
+		if err := m.ensureAgentTokenSecret(ctx, workspace.Name, token); err != nil {
+			problems = append(problems, fmt.Errorf("workspace %s: %w", workspace.Name, err))
+		}
+	}
+	return errors.Join(problems...)
 }

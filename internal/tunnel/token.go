@@ -94,6 +94,24 @@ func (t *TokenSigner) VerifyAgent(value string) (AgentClaims, error) {
 	return claims, nil
 }
 
+// tokenExpiry returns the expiry encoded in a token without verifying it. The
+// agent uses it only to choose the freshest credential it already trusts.
+func tokenExpiry(value string) time.Time {
+	value = strings.TrimSpace(value)
+	payload, err := secure.Payload(value)
+	if err != nil {
+		return time.Time{}
+	}
+	var claims AgentClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return time.Time{}
+	}
+	if claims.Expires <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(claims.Expires, 0)
+}
+
 // workspaceKey derives a distinct signing key per workspace. A token minted
 // for one workspace cannot be retargeted at another, even if the shared agent
 // secret leaks from a single workspace.

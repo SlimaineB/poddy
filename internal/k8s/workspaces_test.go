@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +154,10 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	if got := envValue(pod, AgentContainerName, envWorkspaceName); got != "app" {
 		t.Fatalf("agent workspace = %q", got)
 	}
+	if got := envValue(pod, AgentContainerName, envAgentRefreshFile); got != agentTokenRefreshFile {
+		t.Fatalf("agent refresh file = %q, want %q", got, agentTokenRefreshFile)
+	}
+	assertAgentTokenVolume(t, pod, "app")
 	if agent.SecurityContext == nil || agent.SecurityContext.RunAsNonRoot == nil || !*agent.SecurityContext.RunAsNonRoot {
 		t.Fatalf("agent security context = %+v", agent.SecurityContext)
 	}
@@ -228,6 +233,10 @@ func TestCreateFallsBackToInWorkspaceAgent(t *testing.T) {
 	if got := envValue(pod, ContainerName, envAgentSidecar); got != "" {
 		t.Fatalf("workspace agent sidecar marker = %q, want empty", got)
 	}
+	if got := envValue(pod, ContainerName, envAgentRefreshFile); got != agentTokenRefreshFile {
+		t.Fatalf("agent refresh file = %q, want %q", got, agentTokenRefreshFile)
+	}
+	assertAgentTokenVolume(t, pod, "app")
 }
 
 func TestAgentSidecarUsesImageRegistryMirror(t *testing.T) {
@@ -1168,5 +1177,79 @@ func TestMigrateLegacyStoppedState(t *testing.T) {
 	}
 	if _, err := m.Get(ctx, "old"); err != nil {
 		t.Fatalf("pod after start: %v", err)
+	}
+}
+
+func assertAgentTokenVolume(t *testing.T, pod *corev1.Pod, workspace string) {
+	t.Helper()
+	found := false
+	for _, volume := range pod.Spec.Volumes {
+		if volume.Name != agentTokenVolumeName {
+			continue
+		}
+		found = true
+		if volume.Secret == nil || volume.Secret.SecretName != AgentTokenSecretName(workspace) {
+			t.Fatalf("agent token volume = %+v", volume)
+		}
+	}
+	if !found {
+		t.Fatal("agent token volume missing")
+	}
+	for _, container := range pod.Spec.Containers {
+		for _, mount := range container.VolumeMounts {
+			if mount.Name == agentTokenVolumeName {
+				if mount.MountPath != agentTokenMountPath || !mount.ReadOnly {
+					t.Fatalf("agent token mount = %+v", mount)
+				}
+				return
+			}
+		}
+	}
+	t.Fatal("agent token mount missing")
+}
+
+func TestRefreshAgentTokens(t *testing.T) {
+	m := newTestManager()
+	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
+	m.AgentTokenTTL = time.Hour
+	calls := 0
+	m.AgentToken = func(workspace, owner string) (string, error) {
+		calls++
+		if workspace != "app" || owner != "alice@example.com" {
+			t.Fatalf("token request = %q/%q", workspace, owner)
+		}
+		return fmt.Sprintf("agent-token-%d", calls), nil
+	}
+	ctx := context.Background()
+	if _, err := m.Create(ctx, CreateRequest{Name: "app", Owner: "alice@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Client.CoreV1().Pods("poddy").Get(ctx, PodName("app"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Status.Phase = corev1.PodRunning
+	if _, err := m.Client.CoreV1().Pods("poddy").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	secretName := AgentTokenSecretName("app")
+	secret, err := m.Client.CoreV1().Secrets("poddy").Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret.Data[agentTokenSecretKey] = []byte("stale")
+	if _, err := m.Client.CoreV1().Secrets("poddy").Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RefreshAgentTokens(ctx); err != nil {
+		t.Fatal(err)
+	}
+	secret, err = m.Client.CoreV1().Secrets("poddy").Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(secret.Data[agentTokenSecretKey]); got == "stale" || got == "" {
+		t.Fatalf("agent token was not refreshed: %q", got)
 	}
 }

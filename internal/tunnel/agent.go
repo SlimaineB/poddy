@@ -21,12 +21,13 @@ import (
 const defaultAgentTarget = "127.0.0.1:22"
 
 type AgentConfig struct {
-	URL       string
-	Token     string
-	TokenFile string
-	Workspace string
-	Target    string
-	Insecure  bool
+	URL         string
+	Token       string
+	TokenFile   string
+	RefreshFile string
+	Workspace   string
+	Target      string
+	Insecure    bool
 	// AllowedTarget overrides the target validator. It is mainly useful for
 	// tests; production agents only accept loopback port 22.
 	AllowedTarget func(string) bool
@@ -52,12 +53,7 @@ func NewAgent(config AgentConfig) *Agent {
 		// #nosec G402 -- Explicit opt-in for self-signed tunnel endpoints.
 		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	token := config.Token
-	if raw, err := os.ReadFile(config.TokenFile); err == nil { // #nosec G304 -- Path is supplied by the pod template.
-		if value := strings.TrimSpace(string(raw)); value != "" {
-			token = value
-		}
-	}
+	token := freshestToken(config.Token, readTokenFile(config.TokenFile), readTokenFile(config.RefreshFile))
 	return &Agent{config: config, dialer: dialer, token: token}
 }
 
@@ -87,6 +83,7 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 func (a *Agent) connect(ctx context.Context) error {
+	a.refreshToken()
 	endpoint, err := agentEndpoint(a.config.URL)
 	if err != nil {
 		return err
@@ -186,6 +183,46 @@ func (a *Agent) connect(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func readTokenFile(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- Path is supplied by the pod template.
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func freshestToken(candidates ...string) string {
+	best := ""
+	var bestExpiry time.Time
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		expiry := tokenExpiry(candidate)
+		if best == "" || expiry.After(bestExpiry) {
+			best = candidate
+			bestExpiry = expiry
+		}
+	}
+	return best
+}
+
+func (a *Agent) refreshToken() {
+	token := readTokenFile(a.config.RefreshFile)
+	if token == "" {
+		return
+	}
+	if freshestToken(a.currentToken(), token) != token {
+		return
+	}
+	a.setToken(token)
 }
 
 func (a *Agent) currentToken() string {

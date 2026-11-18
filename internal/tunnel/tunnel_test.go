@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -173,5 +175,61 @@ func TestAgentRejectsTargetsOutsideLoopbackPort22(t *testing.T) {
 		if !agent.allowed(target) {
 			t.Fatalf("target %q should be allowed", target)
 		}
+	}
+}
+
+func TestAgentPrefersFreshestMountedToken(t *testing.T) {
+	signer := NewTokenSigner("secret")
+	short, _, err := signer.SignAgent("demo", "alice@example.com", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	long, _, err := signer.SignAgent("demo", "alice@example.com", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	longest, _, err := signer.SignAgent("demo", "alice@example.com", 2*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state-token")
+	refreshFile := filepath.Join(dir, "secret-token")
+	if err := os.WriteFile(stateFile, []byte(short), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refreshFile, []byte(long), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := NewAgent(AgentConfig{
+		Token:       short,
+		TokenFile:   stateFile,
+		RefreshFile: refreshFile,
+		Workspace:   "demo",
+	})
+	if got := agent.currentToken(); got != long {
+		t.Fatalf("initial token = %q, want freshest mounted token", got)
+	}
+
+	if err := os.WriteFile(refreshFile, []byte(longest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent.refreshToken()
+	if got := agent.currentToken(); got != longest {
+		t.Fatalf("refreshed token = %q, want latest mounted token", got)
+	}
+	if raw, err := os.ReadFile(stateFile); err != nil || strings.TrimSpace(string(raw)) != longest {
+		t.Fatalf("state token = %q, err = %v", raw, err)
+	}
+}
+
+func TestFreshestTokenFallsBackToOpaqueToken(t *testing.T) {
+	if got := freshestToken("", "opaque"); got != "opaque" {
+		t.Fatalf("freshestToken() = %q", got)
+	}
+	if got := freshestToken("opaque", ""); got != "opaque" {
+		t.Fatalf("freshestToken() = %q", got)
 	}
 }

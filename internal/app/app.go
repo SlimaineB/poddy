@@ -302,6 +302,7 @@ func Run(ctx context.Context, args []string) error {
 		token, _, err := agentSigner.SignAgent(workspace, owner, cfg.AgentTokenTTL)
 		return token, err
 	}
+	manager.AgentTokenTTL = cfg.AgentTokenTTL
 	if agentURL == "" {
 		log.Printf("workspace agent tunnel disabled; SSH falls back to Kubernetes port-forward")
 	}
@@ -311,6 +312,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	manager.StartInformers(ctx)
 
+	go manager.RunAgentTokenRefresh(ctx)
 	go manager.RunScheduleLoop(ctx, k8s.DefaultScheduleInterval)
 	log.Printf("workspace schedules enabled (every %s)", k8s.DefaultScheduleInterval)
 

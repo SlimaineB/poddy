@@ -23,6 +23,7 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	if m.AgentURL == "" || m.AgentToken == nil {
 		removeEnv(container, envAgentSidecar)
 		removeAgentEnv(pod)
+		removeAgentTokenSecretMount(pod)
 		removeContainer(pod, AgentContainerName)
 		return m.deleteAgentTokenSecret(ctx, workspace)
 	}
@@ -38,16 +39,20 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 		setEnv(container, envAgentURL, m.AgentURL)
 		setEnvFromSecret(container, envAgentToken, secretName, agentTokenSecretKey)
 		setEnv(container, envAgentTokenFile, agentTokenFile)
+		setEnv(container, envAgentRefreshFile, agentTokenRefreshFile)
 		setEnv(container, envWorkspaceName, workspace)
 		removeEnv(container, envAgentSidecar)
 		removeContainer(pod, AgentContainerName)
 		mountAgentTokenState(pod, container)
+		mountAgentTokenSecret(pod, container, workspace)
 		return nil
 	}
 
 	removeEnv(container, envAgentURL)
 	removeEnv(container, envAgentToken)
 	removeEnv(container, envAgentTokenFile)
+	removeEnv(container, envAgentRefreshFile)
+	removeAgentTokenSecretMountFromContainer(container)
 	setEnv(container, envAgentSidecar, "true")
 	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName)
 	return nil
@@ -66,6 +71,7 @@ const (
 func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName string) {
 	container := agentSidecar(image, agentURL, workspace, secretName)
 	mountAgentTokenState(pod, &container)
+	mountAgentTokenSecret(pod, &container, workspace)
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == AgentContainerName {
 			pod.Spec.Containers[i] = container
@@ -108,6 +114,71 @@ func mountAgentTokenState(pod *corev1.Pod, container *corev1.Container) {
 	})
 }
 
+// mountAgentTokenSecret projects the token Secret into the pod so kubelet
+// refreshes the file when the control plane rewrites the Secret.
+func mountAgentTokenSecret(pod *corev1.Pod, container *corev1.Container, workspace string) {
+	if container == nil {
+		return
+	}
+	found := false
+	for i := range pod.Spec.Volumes {
+		if pod.Spec.Volumes[i].Name == agentTokenVolumeName {
+			pod.Spec.Volumes[i].VolumeSource = corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  AgentTokenSecretName(workspace),
+					DefaultMode: ptr.To[int32](0o444),
+				},
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+			Name: agentTokenVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  AgentTokenSecretName(workspace),
+					DefaultMode: ptr.To[int32](0o444),
+				},
+			},
+		})
+	}
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == agentTokenVolumeName {
+			return
+		}
+	}
+	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+		Name:      agentTokenVolumeName,
+		ReadOnly:  true,
+		MountPath: agentTokenMountPath,
+	})
+}
+
+func removeAgentTokenSecretMount(pod *corev1.Pod) {
+	kept := pod.Spec.Volumes[:0]
+	for _, volume := range pod.Spec.Volumes {
+		if volume.Name != agentTokenVolumeName {
+			kept = append(kept, volume)
+		}
+	}
+	pod.Spec.Volumes = kept
+	for i := range pod.Spec.Containers {
+		removeAgentTokenSecretMountFromContainer(&pod.Spec.Containers[i])
+	}
+}
+
+func removeAgentTokenSecretMountFromContainer(container *corev1.Container) {
+	kept := container.VolumeMounts[:0]
+	for _, mount := range container.VolumeMounts {
+		if mount.Name != agentTokenVolumeName {
+			kept = append(kept, mount)
+		}
+	}
+	container.VolumeMounts = kept
+}
+
 func agentSidecar(image, agentURL, workspace, secretName string) corev1.Container {
 	return corev1.Container{
 		Name:            AgentContainerName,
@@ -118,6 +189,7 @@ func agentSidecar(image, agentURL, workspace, secretName string) corev1.Containe
 			{Name: envAgentURL, Value: agentURL},
 			secretEnv(envAgentToken, secretName, agentTokenSecretKey),
 			{Name: envAgentTokenFile, Value: agentTokenFile},
+			{Name: envAgentRefreshFile, Value: agentTokenRefreshFile},
 			{Name: envWorkspaceName, Value: workspace},
 		},
 		SecurityContext: &corev1.SecurityContext{
@@ -176,6 +248,7 @@ func removeAgentEnv(pod *corev1.Pod) {
 		removeEnv(&pod.Spec.Containers[i], envAgentURL)
 		removeEnv(&pod.Spec.Containers[i], envAgentToken)
 		removeEnv(&pod.Spec.Containers[i], envAgentTokenFile)
+		removeEnv(&pod.Spec.Containers[i], envAgentRefreshFile)
 	}
 }
 
@@ -278,15 +351,17 @@ func externalAuthEnvNames(pod *corev1.Pod) []string {
 
 func stripExternalAuthEnv(spec *corev1.PodSpec, names []string) {
 	remove := map[string]bool{
-		envPortalURL:       true,
-		envWorkspaceName:   true,
-		envWorkspaceToken:  true,
-		envExternalAuthIDs: true,
-		envGitAskpass:      true,
-		envGitPrompt:       true,
-		envAgentURL:        true,
-		envAgentToken:      true,
-		envAgentSidecar:    true,
+		envPortalURL:        true,
+		envWorkspaceName:    true,
+		envWorkspaceToken:   true,
+		envExternalAuthIDs:  true,
+		envGitAskpass:       true,
+		envGitPrompt:        true,
+		envAgentURL:         true,
+		envAgentToken:       true,
+		envAgentTokenFile:   true,
+		envAgentRefreshFile: true,
+		envAgentSidecar:     true,
 	}
 	for _, name := range names {
 		remove[name] = true

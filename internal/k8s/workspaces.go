@@ -55,16 +55,17 @@ const (
 	annotationEnvironmentEnv  = "poddy.io/environment-env"
 	annotationApps            = "poddy.io/apps"
 
-	envPortalURL       = "PODDY_PORTAL_URL"
-	envWorkspaceName   = "PODDY_WORKSPACE_NAME"
-	envWorkspaceToken  = "PODDY_WORKSPACE_TOKEN" // #nosec G101 -- Environment variable name, not a credential.
-	envExternalAuthIDs = "PODDY_EXTERNAL_AUTH_IDS"
-	envGitAskpass      = "GIT_ASKPASS"
-	envGitPrompt       = "GIT_TERMINAL_PROMPT"
-	envAgentURL        = "PODDY_AGENT_URL"
-	envAgentToken      = "PODDY_AGENT_TOKEN" // #nosec G101 -- Environment variable name, not a credential.
-	envAgentTokenFile  = "PODDY_AGENT_TOKEN_FILE"
-	envAgentSidecar    = "PODDY_AGENT_SIDECAR"
+	envPortalURL        = "PODDY_PORTAL_URL"
+	envWorkspaceName    = "PODDY_WORKSPACE_NAME"
+	envWorkspaceToken   = "PODDY_WORKSPACE_TOKEN" // #nosec G101 -- Environment variable name, not a credential.
+	envExternalAuthIDs  = "PODDY_EXTERNAL_AUTH_IDS"
+	envGitAskpass       = "GIT_ASKPASS"
+	envGitPrompt        = "GIT_TERMINAL_PROMPT"
+	envAgentURL         = "PODDY_AGENT_URL"
+	envAgentToken       = "PODDY_AGENT_TOKEN" // #nosec G101 -- Environment variable name, not a credential.
+	envAgentTokenFile   = "PODDY_AGENT_TOKEN_FILE"
+	envAgentRefreshFile = "PODDY_AGENT_REFRESH_FILE"
+	envAgentSidecar     = "PODDY_AGENT_SIDECAR"
 )
 
 var (
@@ -157,6 +158,7 @@ type Manager struct {
 	AgentURL            string
 	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
+	AgentTokenTTL       time.Duration
 
 	stateOnce sync.Once
 	state     *StateStore
