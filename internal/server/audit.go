@@ -21,12 +21,21 @@ type auditContextKey struct{}
 
 type auditInfo struct {
 	targetName string
+	actor      string
+	actorType  string
 	details    map[string]any
 }
 
 func setAuditTarget(r *http.Request, name string) {
 	if info, ok := r.Context().Value(auditContextKey{}).(*auditInfo); ok {
 		info.targetName = name
+	}
+}
+
+func setAuditActor(r *http.Request, actor, actorType string) {
+	if info, ok := r.Context().Value(auditContextKey{}).(*auditInfo); ok {
+		info.actor = actor
+		info.actorType = actorType
 	}
 }
 
@@ -65,6 +74,8 @@ func (s *Server) audit(next http.Handler) http.Handler {
 		s.auditEvent(r, metadata.Event{
 			Action:     action,
 			Outcome:    outcome,
+			Actor:      info.actor,
+			ActorType:  info.actorType,
 			TargetType: targetType,
 			TargetName: target,
 			Workspace:  workspaceTarget(targetType, target),
@@ -130,6 +141,12 @@ func auditRoute(r *http.Request) (string, string) {
 		return "user_quota.delete", "user"
 	case "POST /api/external-auth/{id}/disconnect":
 		return "external_auth.disconnect", "provider"
+	case "GET /api/cli/authorize":
+		return "auth.cli.authorize", "user"
+	case "POST /api/cli/token":
+		return "auth.cli.token", "user"
+	case "POST /api/cli/logout":
+		return "auth.cli.logout", "user"
 	}
 	return "", ""
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"poddy/internal/auth"
+	"poddy/internal/clitoken"
 	"poddy/internal/metadata"
 )
 
@@ -228,5 +229,53 @@ func TestAuditReadUnavailableWithoutPostgres(t *testing.T) {
 	rec := requestAs(t, s, admin, http.MethodGet, "/api/audit", nil)
 	if rec.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuditCLITokenAndLogout(t *testing.T) {
+	s := newTestServer("")
+	s.CLISecret = []byte("cli-secret")
+	s.CLITokens = clitoken.NewMemory()
+	store := &recordingMetadata{}
+	s.Metadata = store
+
+	code, err := s.signCLI(cliCodeClaims{
+		ID:                  "audit-code",
+		User:                auth.User{Username: "local"},
+		Expires:             time.Now().Add(time.Minute).Unix(),
+		Audience:            cliCodeAudience,
+		CodeChallenge:       testPKCEChallenge,
+		CodeChallengeMethod: cliPKCEMethod,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := request(t, s, http.MethodPost, "/api/cli/token", map[string]string{
+		"code":          code,
+		"code_verifier": testPKCEVerifier,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("token status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	event := store.last()
+	if event.Action != "auth.cli.token" || event.Outcome != "success" || event.Actor != "local" {
+		t.Fatalf("token audit = %+v", event)
+	}
+	var response struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+
+	req := newRequest(http.MethodPost, "/api/cli/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+response.Token)
+	rec = doRequest(s, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	event = store.last()
+	if event.Action != "auth.cli.logout" || event.Outcome != "success" || event.Actor != "local" {
+		t.Fatalf("logout audit = %+v", event)
 	}
 }

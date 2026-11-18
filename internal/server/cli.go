@@ -69,6 +69,7 @@ func (s *Server) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	setAuditActor(r, ownerID(id.User), "user")
 	codeID, err := newCLIID()
 	if err != nil {
 		http.Error(w, "cannot create CLI code", http.StatusInternalServerError)
@@ -136,6 +137,7 @@ func (s *Server) cliToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid or expired CLI code", http.StatusUnauthorized)
 		return
 	}
+	setAuditActor(r, ownerID(claims.User), "user")
 	tokenID, err := newCLIID()
 	if err != nil {
 		http.Error(w, "cannot create CLI token", http.StatusInternalServerError)
@@ -231,6 +233,7 @@ func (s *Server) cliLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	setAuditActor(r, ownerID(claims.User), "user")
 	if s.CLITokens == nil {
 		http.Error(w, "CLI token revocation is not configured", http.StatusNotImplemented)
 		return
