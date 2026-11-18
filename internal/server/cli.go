@@ -50,6 +50,9 @@ func (s *Server) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "CLI login is not configured", http.StatusNotImplemented)
 		return
 	}
+	if s.cliRateLimited(w, r, false) {
+		return
+	}
 	redirect := strings.TrimSpace(r.URL.Query().Get("redirect_uri"))
 	if !validLoopbackRedirect(redirect) {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
@@ -100,6 +103,9 @@ func (s *Server) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 func (s *Server) cliToken(w http.ResponseWriter, r *http.Request) {
 	if len(s.CLISecret) == 0 {
 		http.Error(w, "CLI login is not configured", http.StatusNotImplemented)
+		return
+	}
+	if s.cliRateLimited(w, r, true) {
 		return
 	}
 	var req struct {

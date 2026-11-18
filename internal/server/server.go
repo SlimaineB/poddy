@@ -87,8 +87,11 @@ type Server struct {
 	ExternalAuthURL          string
 	ExternalAuthRedirectBase string
 
-	presenceMu   sync.Mutex
-	presenceLast map[string]time.Time
+	presenceMu          sync.Mutex
+	presenceLast        map[string]time.Time
+	cliLimitMu          sync.Mutex
+	cliAuthorizeLimiter *rateLimiter
+	cliTokenLimiter     *rateLimiter
 }
 
 func (s *Server) Handler() http.Handler {
