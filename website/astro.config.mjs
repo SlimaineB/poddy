@@ -97,7 +97,7 @@ export default defineConfig({
             { label: 'OIDC / SSO', slug: 'oidc' },
             { label: 'Okta SSO', slug: 'okta' },
             { label: 'RBAC and ownership', slug: 'rbac' },
-            { label: 'SSH access', slug: 'ssh' },
+            { label: 'SSH and CLI', slug: 'ssh' },
             { label: 'Workspace access', slug: 'workspace-access' },
           ],
         },

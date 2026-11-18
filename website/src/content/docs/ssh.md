@@ -174,6 +174,24 @@ The `poddy` binary includes a user CLI for laptops. It stores its session in
 `~/.config/poddy/config.json` (mode `0600`) and can use a browser login or an
 API token.
 
+### Install
+
+Download `poddy_<version>_<os>_<arch>` from the
+[latest GitHub release](https://github.com/SlimaineB/poddy/releases/latest).
+macOS and Linux builds are available for `amd64` and `arm64`; Windows builds
+end in `.exe`. Verify the download with the release `checksums.txt`, then put
+the binary on your `PATH`:
+
+```bash
+chmod +x poddy_v0.1.8_darwin_arm64
+sudo mv poddy_v0.1.8_darwin_arm64 /usr/local/bin/poddy
+poddy version
+```
+
+From a source checkout, build it with `go build -o poddy ./cmd/poddy`. The
+workspace image also includes `poddy`, but laptop users should install the
+release binary.
+
 ```bash
 poddy login --portal https://poddy.example.com
 poddy list
