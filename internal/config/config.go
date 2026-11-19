@@ -167,7 +167,7 @@ func Load(args []string) (Config, error) {
 		BackupS3SecretKey: os.Getenv("PODDY_BACKUP_S3_SECRET_KEY"),
 		BackupS3Prefix:    env("PODDY_BACKUP_S3_PREFIX", "poddy-backups"),
 		BackupS3UseSSL:    envBool("PODDY_BACKUP_S3_USE_SSL", true),
-		BackupHelperImage: env("PODDY_BACKUP_HELPER_IMAGE", "busybox:1.36"),
+		BackupHelperImage: env("PODDY_BACKUP_HELPER_IMAGE", "docker.io/library/busybox:1.36"),
 
 		DatabaseURL:            os.Getenv("PODDY_DATABASE_URL"),
 		DatabaseAutoMigrate:    envBool("PODDY_DATABASE_AUTO_MIGRATE", true),

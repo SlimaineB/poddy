@@ -44,14 +44,14 @@ The remaining sections show the equivalent commands manually.
 | Image loading | `k3d image import` | `kind load docker-image` |
 
 Use a pinned kind node image for reproducible tests. With kind v0.33.0, the
-default `kindest/node:v1.37.0` did not start on WSL2 kernel 6.18 and failed
+default `docker.io/kindest/node:v1.37.0` did not start on WSL2 kernel 6.18 and failed
 with:
 
 ```text
 could not find a log line that matches "Reached target .*Multi-User System.*|detected cgroup v1"
 ```
 
-`kindest/node:v1.35.0` started normally and matches the Kubernetes version used
+`docker.io/kindest/node:v1.35.0` started normally and matches the Kubernetes version used
 by the k3d test closely enough for application validation.
 
 ## 1. Create the clusters
@@ -71,7 +71,7 @@ kind:
 ```bash
 kind create cluster \
   --name poddy-kind-test \
-  --image kindest/node:v1.35.0 \
+  --image docker.io/kindest/node:v1.35.0 \
   --kubeconfig /tmp/poddy-kind.kubeconfig \
   --wait 300s
 ```
@@ -89,17 +89,17 @@ comparison:
 ```bash
 docker pull ghcr.io/slimaineb/poddy:latest
 docker pull ghcr.io/slimaineb/poddy-workspace-base:latest
-docker pull postgres:16-alpine
+docker pull docker.io/library/postgres:16-alpine
 
 k3d image import -c poddy-k3d-test \
   ghcr.io/slimaineb/poddy:latest \
   ghcr.io/slimaineb/poddy-workspace-base:latest \
-  postgres:16-alpine
+  docker.io/library/postgres:16-alpine
 
 kind load docker-image --name poddy-kind-test \
   ghcr.io/slimaineb/poddy:latest \
   ghcr.io/slimaineb/poddy-workspace-base:latest \
-  postgres:16-alpine
+  docker.io/library/postgres:16-alpine
 ```
 
 ## 3. Run the validation
@@ -188,7 +188,7 @@ the manifest to use the cluster default.
 ### Kind node never becomes Ready
 
 Pin a known-good node image, for example
-`--image kindest/node:v1.35.0`, and recreate the cluster. Delete the failed
+`--image docker.io/kindest/node:v1.35.0`, and recreate the cluster. Delete the failed
 cluster first:
 
 ```bash

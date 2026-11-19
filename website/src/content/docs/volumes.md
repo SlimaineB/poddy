@@ -52,7 +52,7 @@ Backups and restores require:
   limit.
 
 Poddy runs a short-lived helper pod for each backup or restore. The helper
-image must contain `sh`, `tar`, and `gzip`; the default `busybox:1.36` is
+image must contain `sh`, `tar`, and `gzip`; the default `docker.io/library/busybox:1.36` is
 sufficient. The helper mounts the PVC, runs as root with only the
 `CHOWN`, `DAC_OVERRIDE`, `DAC_READ_SEARCH`, and `FOWNER` capabilities, and does
 not receive a service account token. The portal Role already allows creating
@@ -63,7 +63,7 @@ and deleting pods and exec'ing into them.
 ```yaml
 backup:
   enabled: true
-  helperImage: busybox:1.36
+  helperImage: docker.io/library/busybox:1.36
   s3:
     # A scheme is optional. When present it controls useSSL.
     endpoint: https://minio.example.com:9000
@@ -210,6 +210,6 @@ volume's region.
 | `409 wait for the workspace to be running or stopped` | The workspace is pending, terminating, or failed; wait for it to settle before backing up. |
 | `409 live backup is not supported for ReadWriteOncePod volumes` | Stop the workspace; live backup cannot mount an RWOP volume a second time. |
 | Live backup fails to schedule or mount | Check that the workspace node has room for the helper pod and that the CSI driver allows a second read-only mount on the same node. |
-| Helper pod stuck in `ErrImagePull` | Set `backup.helperImage` to an image available to the cluster, or allow the node to pull `busybox:1.36`. |
+| Helper pod stuck in `ErrImagePull` | Set `backup.helperImage` to an image available to the cluster, or allow the node to pull `docker.io/library/busybox:1.36`. |
 | Archive is empty or very small | The helper cannot read the volume. Check PVC ownership and that the helper pod mounted the expected claim. |
 | Restore cannot overwrite files | Enable **Delete existing files before restoring**, or ensure the helper can write the existing file ownership. |

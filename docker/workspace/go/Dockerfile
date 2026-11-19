@@ -1,4 +1,6 @@
-ARG BASE_IMAGE=poddy/workspace-base:latest
+# syntax=docker/dockerfile:1
+
+ARG BASE_IMAGE=ghcr.io/slimaineb/poddy-workspace-base:latest
 FROM ${BASE_IMAGE}
 
 ARG GO_VERSION=1.26.11

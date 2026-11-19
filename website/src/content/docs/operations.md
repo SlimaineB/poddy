@@ -85,7 +85,7 @@ Enable S3 backups when you need self-service backup and restore from the
 ```yaml
 backup:
   enabled: true
-  helperImage: busybox:1.36
+  helperImage: docker.io/library/busybox:1.36
   s3:
     endpoint: https://minio.example.com:9000
     region: us-east-1

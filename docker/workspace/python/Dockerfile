@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG BASE_IMAGE=ghcr.io/slimaineb/poddy-workspace-base:latest
 FROM ${BASE_IMAGE}
 

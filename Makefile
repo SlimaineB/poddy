@@ -22,7 +22,7 @@ KUBECONFIG  := /tmp/opencode/k3s.yaml
 
 K3D_CLUSTER       ?= poddy-k3d-test
 KIND_CLUSTER      ?= poddy-kind-test
-KIND_NODE_IMAGE   ?= kindest/node:v1.35.0
+KIND_NODE_IMAGE   ?= docker.io/kindest/node:v1.35.0
 K3D_KUBECONFIG    ?= /tmp/poddy-k3d.kubeconfig
 KIND_KUBECONFIG   ?= /tmp/poddy-kind.kubeconfig
 K3D_PORTAL_PORT   ?= 18080
@@ -33,7 +33,7 @@ LOCAL_IMAGE_REPO  ?= poddy
 LOCAL_IMAGE_TAG   ?= local
 LOCAL_IMAGE       := $(LOCAL_IMAGE_REPO):$(LOCAL_IMAGE_TAG)
 WORKSPACE_IMAGE   ?= $(REGISTRY)/poddy-workspace-base:latest
-POSTGRES_IMAGE    ?= postgres:16-alpine
+POSTGRES_IMAGE    ?= docker.io/library/postgres:16-alpine
 
 HUB_RELEASE := poddy
 HUB_NS      := poddy-system

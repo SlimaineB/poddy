@@ -145,7 +145,7 @@ the volume root contains `lost+found`.
 spec:
   containers:
     - name: postgres
-      image: postgres:16
+      image: docker.io/library/postgres:16
       env:
         - name: POSTGRES_DB
           value: poddy
@@ -417,7 +417,7 @@ disabled by default.
 ```yaml
 backup:
   enabled: true
-  helperImage: busybox:1.36
+  helperImage: docker.io/library/busybox:1.36
   s3:
     endpoint: https://minio.example.com:9000
     region: us-east-1

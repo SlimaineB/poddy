@@ -49,7 +49,7 @@ development, build and import your own tags into k3s:
 
 ```bash
 docker build -f docker/workspace/base/Dockerfile -t poddy/workspace-base:latest .
-docker build -f docker/workspace/go/Dockerfile -t poddy/workspace:latest .
+docker build --build-arg BASE_IMAGE=poddy/workspace-base:latest -f docker/workspace/go/Dockerfile -t poddy/workspace:latest .
 docker build --build-arg BASE_IMAGE=poddy/workspace-base:latest -f docker/workspace/node/Dockerfile -t poddy/workspace-node:latest .
 docker build --build-arg BASE_IMAGE=poddy/workspace-base:latest -f docker/workspace/python/Dockerfile -t poddy/workspace-python:latest .
 

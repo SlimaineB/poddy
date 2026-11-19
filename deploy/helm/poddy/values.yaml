@@ -88,7 +88,7 @@ backup:
   enabled: false
   # Image used by temporary backup/restore pods. It must contain sh, tar, and
   # gzip (busybox is sufficient).
-  helperImage: busybox:1.36
+  helperImage: docker.io/library/busybox:1.36
   s3:
     # Endpoint without a scheme, for example minio.example.com:9000 or
     # s3.us-east-1.amazonaws.com. A scheme is accepted and controls useSSL.

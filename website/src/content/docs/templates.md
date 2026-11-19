@@ -350,7 +350,12 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 - `dev` user (UID 1000), passwordless sudo
 - `/home/dev` home directory owned by `dev:dev`
 - `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys`, lowers `sshd`'s OOM score, installs the `/usr/local/bin/poddy-shell` wrapper, and starts `sshd`
+- `/usr/local/bin/poddy` and `/usr/local/bin/poddy-agent` — the workspace CLI helpers and outbound agent
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
+
+The workspace binaries live in `/usr/local/bin`, not in `/home/dev`. The Go
+template uses `/home/dev/go` only as `GOPATH`; the Go toolchain is installed in
+`/usr/local/go`.
 
 The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can override it.
 If you override the command, `sshd` no longer gets the OOM protection from

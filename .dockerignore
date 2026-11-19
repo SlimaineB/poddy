@@ -9,3 +9,9 @@ poddy
 *.test
 node_modules
 .astro
+site
+.env
+.env.*
+.DS_Store
+coverage
+test-results

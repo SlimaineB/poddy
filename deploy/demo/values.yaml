@@ -117,7 +117,7 @@ workspaceNamespace: poddy-workspaces
 
 backup:
   enabled: true
-  helperImage: busybox:1.36
+  helperImage: docker.io/library/busybox:1.36
   s3:
     endpoint: minio.poddy-system.svc.cluster.local:9000
     region: us-east-1

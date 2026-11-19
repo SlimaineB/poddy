@@ -24,7 +24,7 @@ import (
 const (
 	backupAppName      = "poddy-backup"
 	backupContainer    = "helper"
-	defaultHelperImage = "busybox:1.36"
+	defaultHelperImage = "docker.io/library/busybox:1.36"
 	backupMountPath    = "/data"
 )
 
