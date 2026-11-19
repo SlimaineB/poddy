@@ -287,10 +287,38 @@
               "type": "boolean"
             },
             "minAvailable": {
-              "type": "integer",
-              "minimum": 0
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
+              ]
+            },
+            "unhealthyPodEvictionPolicy": {
+              "enum": [
+                "IfHealthyBudget",
+                "AlwaysAllow"
+              ]
             }
           }
+        },
+        "drainDelay": {
+          "type": "string"
+        },
+        "drainTimeout": {
+          "type": "string"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -798,6 +826,51 @@
               "type": "string"
             }
           }
+        }
+      }
+    },
+    "minReadySeconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "portal": {
+      "type": "object",
+      "properties": {
+        "addr": {
+          "type": "string"
+        },
+        "shutdownDrainDelay": {
+          "type": "string"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minAvailable": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "unhealthyPodEvictionPolicy": {
+          "enum": [
+            "IfHealthyBudget",
+            "AlwaysAllow"
+          ]
         }
       }
     }

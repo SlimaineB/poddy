@@ -30,10 +30,16 @@ bastion:
   # When empty, replicaCount > 1 spreads bastions across nodes with
   # ScheduleAnyway. Set this to enforce zone/host policies in production.
   topologySpreadConstraints: []
+  # New SSH connections are rejected as soon as SIGTERM arrives. The listener
+  # then stays open for drainDelay so Kubernetes can remove the endpoint before
+  # it closes.
+  drainDelay: 3s
   # Existing SSH sessions stay alive during a graceful pod shutdown for this
-  # long. Keep this below terminationGracePeriodSeconds.
+  # long. Keep drainDelay + drainTimeout below terminationGracePeriodSeconds.
   drainTimeout: 20s
   terminationGracePeriodSeconds: 30
+  # Treat a new bastion as available only after it has been ready for this long.
+  minReadySeconds: 5
   probes:
     readiness:
       initialDelaySeconds: 2
@@ -45,9 +51,11 @@ bastion:
       periodSeconds: 20
       timeoutSeconds: 2
       failureThreshold: 3
+  # Created automatically when replicaCount > 1. Set enabled=false to opt out.
   podDisruptionBudget:
-    enabled: false
+    enabled: true
     minAvailable: 1
+    unhealthyPodEvictionPolicy: AlwaysAllow
 
 image:
   repository: ghcr.io/your-org/poddy
@@ -476,6 +484,11 @@ monitoring:
 
 portal:
   addr: ":8080"
+  # On SIGTERM the portal fails readiness, rejects new requests with 503, and
+  # waits this long for endpoints to drain before closing the HTTP listener.
+  shutdownDrainDelay: 3s
+  # Keep this above shutdownDrainDelay plus the 10s HTTP shutdown timeout.
+  terminationGracePeriodSeconds: 30
 
 vscodeExtension:
   id: ""
@@ -548,12 +561,15 @@ affinity: {}
 # ScheduleAnyway. Set this to enforce zone/host policies in production.
 topologySpreadConstraints: []
 priorityClassName: ""
+# Treat a new portal as available only after it has been ready for this long.
+minReadySeconds: 5
 
-# Enable for production HA. PDBs are not created automatically, and
+# Created automatically when replicaCount > 1. Set enabled=false to opt out.
 # minAvailable must leave room for at least one healthy replica.
 podDisruptionBudget:
-  enabled: false
+  enabled: true
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
 
 extraEnv: []
 extraArgs: []

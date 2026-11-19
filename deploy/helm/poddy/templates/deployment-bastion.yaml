@@ -8,6 +8,7 @@ metadata:
     {{- include "poddy.bastion.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.bastion.replicaCount }}
+  minReadySeconds: {{ .Values.bastion.minReadySeconds }}
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
@@ -63,6 +64,7 @@ spec:
             - -ssh-allow-unmapped-keys={{ .Values.ssh.allowUnmappedKeys }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
             - -ssh-require-agent={{ .Values.ssh.requireAgent }}
+            - -ssh-drain-delay={{ .Values.bastion.drainDelay }}
             - -ssh-drain-timeout={{ .Values.bastion.drainTimeout }}
             {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
             - -agent-addr=:{{ .Values.ssh.agent.port }}

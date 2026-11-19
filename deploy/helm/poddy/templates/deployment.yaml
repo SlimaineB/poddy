@@ -46,6 +46,7 @@ metadata:
     {{- include "poddy.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
@@ -85,6 +86,7 @@ spec:
     spec:
       serviceAccountName: {{ include "poddy.serviceAccountName" . }}
       automountServiceAccountToken: true
+      terminationGracePeriodSeconds: {{ .Values.portal.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -104,6 +106,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - -addr={{ .Values.portal.addr }}
+            - -shutdown-drain-delay={{ .Values.portal.shutdownDrainDelay }}
             {{- if $metricsEnabled }}
             - -metrics-addr=:{{ $metricsPort }}
             {{- end }}
@@ -466,7 +469,7 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             {{- toYaml .Values.probes.readiness | nindent 12 }}
           livenessProbe:

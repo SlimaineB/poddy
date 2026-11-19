@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"poddy/internal/auth"
@@ -92,6 +93,8 @@ type Server struct {
 	cliLimitMu          sync.Mutex
 	cliAuthorizeLimiter *rateLimiter
 	cliTokenLimiter     *rateLimiter
+
+	draining atomic.Bool
 }
 
 func (s *Server) Handler() http.Handler {
@@ -100,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /terminal", s.terminalPage)
 	mux.Handle("GET /static/", noCache(http.StripPrefix("/static/", http.FileServer(http.FS(s.WebFS)))))
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("GET /oidc/login", s.oidcLogin)
@@ -205,7 +209,27 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /share/{token}", s.shareLink)
 	mux.HandleFunc("GET /share/{region}/{token}", s.regionShareLink)
 	mux.HandleFunc("GET /ws", s.terminal)
-	return s.metricsMiddleware(s.auth(s.audit(mux)))
+	return s.drainMiddleware(s.metricsMiddleware(s.auth(s.audit(mux))))
+}
+
+func (s *Server) StartDraining() {
+	s.draining.Store(true)
+}
+
+func (s *Server) Draining() bool {
+	return s.draining.Load()
+}
+
+func (s *Server) drainMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || !s.Draining() {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Connection", "close")
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "draining", http.StatusServiceUnavailable)
+	})
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +241,14 @@ func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte("ok"))
+}
+
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	if s.Draining() {
+		http.Error(w, "draining", http.StatusServiceUnavailable)
+		return
+	}
 	_, _ = w.Write([]byte("ok"))
 }
 

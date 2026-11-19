@@ -560,7 +560,13 @@ func Run(ctx context.Context, args []string) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("poddy listening on %s (namespace %s)", cfg.Addr, cfg.Namespace)
-	return serve(ctx, httpServer)
+	return serve(ctx, httpServer, func() {
+		srv.StartDraining()
+		if cfg.ShutdownDrainDelay > 0 {
+			log.Printf("poddy draining for %s", cfg.ShutdownDrainDelay)
+			time.Sleep(cfg.ShutdownDrainDelay)
+		}
+	})
 }
 
 func newEditor(cfg config.Config) *local.Local {
@@ -734,6 +740,7 @@ func RunBastion(ctx context.Context, args []string) error {
 		return fmt.Errorf("ssh bastion: %w", err)
 	}
 	sshBastion.Broker = broker
+	sshBastion.DrainDelay = cfg.SSHDrainDelay
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = sshCA
 	sshBastion.Access = accessStore
@@ -948,6 +955,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	}
 	sshBastion.Audit = audit
 	sshBastion.Broker = broker
+	sshBastion.DrainDelay = cfg.SSHDrainDelay
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = ca
 	sshBastion.Access = accessStore
@@ -1028,7 +1036,7 @@ func startMetrics(ctx context.Context, addr string, handler http.Handler) (*http
 	return srv, nil
 }
 
-func serve(ctx context.Context, srv *http.Server) error {
+func serve(ctx context.Context, srv *http.Server, drain func()) error {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.ListenAndServe()
@@ -1036,6 +1044,9 @@ func serve(ctx context.Context, srv *http.Server) error {
 
 	select {
 	case <-ctx.Done():
+		if drain != nil {
+			drain()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {

@@ -262,10 +262,16 @@ both restore paths independently.
 The portal and bastion scale independently:
 
 - **Portal** (`replicaCount`) is stateless and can run multiple replicas behind a
-  Service or LoadBalancer. Session cookies are signed.
+  Service or LoadBalancer. Session cookies are signed. On shutdown it fails
+  readiness, rejects new requests during `portal.shutdownDrainDelay`, then
+  closes the HTTP listener.
 - **Bastion** (`bastion.replicaCount`) scales on SSH connections. It uses a shared
   host key so clients see the same host key across replicas. Set
-  `ssh.existingHostKeySecret` when running more than one bastion replica.
+  `ssh.existingHostKeySecret` when running more than one bastion replica. It
+  rejects new connections immediately on shutdown and drains existing sessions
+  for `bastion.drainTimeout`.
+- **PDBs** are created automatically for the portal and bastion when their
+  replica count is above one.
 - **Local mode** runs both processes in one binary, which is convenient for
   development but not how Helm deploys them.
 

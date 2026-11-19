@@ -263,13 +263,20 @@ Also log:
 - **Portal replicas**: stateless for HTTP if every replica shares the OIDC session
   key and the external-auth/share/environment encryption key. When regions are
   configured, keep the hub at one replica or use sticky routing because region
-  tunnel sessions live in the hub process.
+  tunnel sessions live in the hub process. On shutdown, the portal fails
+  readiness, rejects new requests for `portal.shutdownDrainDelay`, then closes
+  the HTTP listener; keep `portal.terminationGracePeriodSeconds` above the drain
+  delay plus the HTTP shutdown timeout.
 - **Bastion replicas**: set `bastion.replicaCount` and provide a shared SSH host
   key with `ssh.existingHostKeySecret`. Otherwise host-key warnings appear after
-  scaling or restarts. On shutdown, the bastion keeps existing SSH sessions for
-  `bastion.drainTimeout`; keep `bastion.terminationGracePeriodSeconds` above it.
-- **PDBs**: enable `podDisruptionBudget` and
-  `bastion.podDisruptionBudget` when running more than one replica.
+  scaling or restarts. The bastion rejects new SSH connections immediately on
+  `SIGTERM`, keeps existing sessions for `bastion.drainTimeout`, and closes the
+  listener after `bastion.drainDelay`; keep
+  `bastion.terminationGracePeriodSeconds` above the drain delay plus timeout.
+- **PDBs**: portal and bastion PDBs are created automatically when the matching
+  replica count is above one. Set `podDisruptionBudget.enabled=false` or
+  `bastion.podDisruptionBudget.enabled=false` to opt out. `minAvailable` must
+  leave room for at least one healthy replica during drains.
 - **Database**: use a managed or HA PostgreSQL, not a single demo pod. Size
   connections for the portal and bastion replicas.
 - **Kubernetes client**: the default is 50 QPS / 100 burst. Raise

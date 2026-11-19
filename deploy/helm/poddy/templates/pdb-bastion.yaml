@@ -1,4 +1,4 @@
-{{- if and .Values.ssh.enabled .Values.bastion.enabled .Values.bastion.podDisruptionBudget.enabled }}
+{{- if and .Values.ssh.enabled .Values.bastion.enabled .Values.bastion.podDisruptionBudget.enabled (gt (int .Values.bastion.replicaCount) 1) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -8,6 +8,9 @@ metadata:
     {{- include "poddy.bastion.labels" . | nindent 4 }}
 spec:
   minAvailable: {{ .Values.bastion.podDisruptionBudget.minAvailable }}
+  {{- with .Values.bastion.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  unhealthyPodEvictionPolicy: {{ . }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "poddy.bastion.selectorLabels" . | nindent 6 }}

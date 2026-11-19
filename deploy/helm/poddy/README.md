@@ -81,10 +81,12 @@ name (without the leading `v`) is used.
 | `replicaCount` | `1` | Portal replicas. Scales independently from the bastion. |
 | `bastion.enabled` | `true` | Deploy the SSH bastion as a separate Deployment. |
 | `bastion.replicaCount` | `1` | Bastion replicas. >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.drainDelay` | `3s` | Reject new SSH connections immediately, then keep the listener open for this long so endpoints drain. |
 | `bastion.drainTimeout` | `20s` | Keep existing SSH sessions during graceful shutdown. |
-| `bastion.terminationGracePeriodSeconds` | `30` | Pod grace period; keep above `drainTimeout`. |
+| `bastion.terminationGracePeriodSeconds` | `30` | Pod grace period; keep above `drainDelay + drainTimeout`. |
+| `bastion.minReadySeconds` | `5` | Delay before a new bastion pod is considered available. |
 | `bastion.resources` | `{}` | Bastion resource requests/limits. |
-| `bastion.podDisruptionBudget.enabled` | `false` | Create a PDB for the bastion. |
+| `bastion.podDisruptionBudget.enabled` | `true` | Create a bastion PDB automatically when `bastion.replicaCount > 1`; set `false` to opt out. |
 | `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |
 | `image.tag` | `latest` | Portal and bastion image tag. |
 | `imagePullSecrets` | `[]` | Secrets for portal/bastion images (use `workspace.imagePullSecrets` for workspaces). |
@@ -208,9 +210,16 @@ name (without the leading `v`) is used.
 | `podSecurityContext` | non-root 65532 | Pod security context. |
 | `securityContext` | hardened | Container security context. |
 | `resources` | 50m/64Mi req, 500m/256Mi lim | Portal resource limits. |
-| `podDisruptionBudget.enabled` | `false` | Enable PDB. |
+| `portal.shutdownDrainDelay` | `3s` | Fail readiness and reject new HTTP requests for this long before closing the listener. |
+| `portal.terminationGracePeriodSeconds` | `30` | Portal pod grace period; keep above `shutdownDrainDelay` plus the HTTP shutdown timeout. |
+| `minReadySeconds` | `5` | Delay before a new portal pod is considered available. |
+| `podDisruptionBudget.enabled` | `true` | Create a portal PDB automatically when `replicaCount > 1`; set `false` to opt out. |
+| `podDisruptionBudget.minAvailable` | `1` | Pods guaranteed available during voluntary disruptions. |
+| `podDisruptionBudget.unhealthyPodEvictionPolicy` | `AlwaysAllow` | Allow eviction of unhealthy pods even when the PDB budget is exhausted. |
 | `topologySpreadConstraints` | `[]` | Portal spread constraints; defaults to host spread when `replicaCount > 1`. |
 | `bastion.topologySpreadConstraints` | `[]` | Bastion spread constraints; defaults to host spread when `bastion.replicaCount > 1`. |
+| `bastion.podDisruptionBudget.minAvailable` | `1` | Bastion pods guaranteed available during voluntary disruptions. |
+| `bastion.podDisruptionBudget.unhealthyPodEvictionPolicy` | `AlwaysAllow` | Allow eviction of unhealthy bastion pods even when the PDB budget is exhausted. |
 
 ## Workspace templates
 
@@ -375,6 +384,9 @@ The portal and bastion use the same image but run as separate Deployments:
 
 ```yaml
 replicaCount: 3
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
 
 bastion:
   enabled: true

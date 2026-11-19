@@ -111,3 +111,32 @@ func TestDrainStopsListener(t *testing.T) {
 		t.Fatal("Drain left the SSH listener open")
 	}
 }
+
+func TestDrainStartsRejectingBeforeDelay(t *testing.T) {
+	keys, err := sshkeys.Parse(nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := New("127.0.0.1:0", nil, keys, filepath.Join(t.TempDir(), "host-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.DrainDelay = time.Hour
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- b.Drain(ctx) }()
+
+	deadline := time.Now().Add(time.Second)
+	for !b.Draining() {
+		if time.Now().After(deadline) {
+			t.Fatal("Drain did not start rejecting connections immediately")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Drain() = %v, want context cancellation", err)
+	}
+}

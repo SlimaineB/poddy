@@ -266,7 +266,7 @@ poddy is designed for small and medium engineering teams, not as a multi-tenant 
 - **Kubernetes API**: every workspace list/create/stop/start is an API call. Large numbers of workspaces or frequent polling from many users increase API load.
 - **ConfigMap size**: `poddy-rbac` and `poddy-users` are mirrors of PostgreSQL and stay well under the 1 MiB per-ConfigMap limit. PostgreSQL holds the authoritative records. Workspace specs live in StatefulSets, not ConfigMaps.
 - **Bastion connections**: each SSH session opens a multiplexed stream to the workspace agent. When `ssh.requireAgent=false`, the bastion falls back to a Kubernetes port-forward. Size `bastion.resources` for concurrent SSH sessions.
-- **HA**: portal replicas are stateless except for the OIDC session key, the external-auth/share encryption key, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Enable the portal and bastion PDBs for node drains. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
+- **HA**: portal replicas are stateless except for the OIDC session key, the external-auth/share encryption key, and region tunnel sessions. Bastion replicas need a shared host key. Use stable Secrets when scaling either Deployment above one replica. When `replicaCount` or `bastion.replicaCount` is above one and `topologySpreadConstraints` is empty, the chart adds a `kubernetes.io/hostname` spread with `ScheduleAnyway`. Portal and bastion PDBs are created automatically when the matching replica count is above one. When `regions` is configured, keep the hub at one replica or use sticky routing because tunnel sessions live in the hub process.
 
 For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team using one release/namespace per team, or add API caching and pagination. PostgreSQL is the source of truth for RBAC, OIDC users, external auth tokens, share links, workspace access, quotas, environment variables, and dotfiles; it is also a metadata mirror and audit read path for workspaces and templates. Kubernetes remains the runtime source of truth for workspaces and templates.
 
@@ -290,7 +290,7 @@ For more than roughly 1,000 concurrent users or 1,000+ workspaces, shard by team
 | Desktop tickets | Signed ticket | yes when every replica uses the same stable key |
 | Region tunnels | Hub process memory | no; keep the hub at one replica or use sticky routing |
 
-Set `replicaCount` above one only with the session key and a stable external-auth/share encryption key in Secrets. Enable the portal and bastion PodDisruptionBudgets, and give bastion replicas a shared SSH host key. See [PostgreSQL metadata and audit](postgres-schema.md) for the tables and their retention.
+Set `replicaCount` above one only with the session key and a stable external-auth/share encryption key in Secrets. Portal and bastion PodDisruptionBudgets are created automatically above one replica, and bastion replicas need a shared SSH host key. See [PostgreSQL metadata and audit](postgres-schema.md) for the tables and their retention.
 
 ### Kubernetes client rate limits
 
@@ -304,9 +304,9 @@ at the same time; a high QPS with a low burst still throttles short spikes.
 
 ### Replicas and namespaces
 
-- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
-- **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key. Existing SSH sessions drain for `bastion.drainTimeout` on graceful shutdown; keep `bastion.terminationGracePeriodSeconds` above that.
-- **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
+- **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. On graceful shutdown the portal fails readiness, rejects new requests for `portal.shutdownDrainDelay`, then closes the HTTP listener. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
+- **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key. The bastion rejects new SSH connections immediately, drains existing sessions for `bastion.drainTimeout`, and closes the listener after `bastion.drainDelay`; keep `bastion.terminationGracePeriodSeconds` above both.
+- **PDBs**: PDBs are created automatically when `replicaCount` or `bastion.replicaCount` is above one. Opt out with `podDisruptionBudget.enabled=false` or `bastion.podDisruptionBudget.enabled=false`. `minAvailable` must leave room for at least one healthy replica during drains.
 - **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads use PostgreSQL; region managers proxy audit reads through the hub.
 - **DNS overrides**: set `hostAliases` to add `/etc/hosts` entries to the portal and bastion pods, for example when OIDC or a database hostname is not resolvable through cluster DNS.
 
@@ -604,8 +604,9 @@ button in the UI is not the security boundary.
 | `ssh.enabled` | Enable SSH metadata and certificate issuance (default true). |
 | `bastion.enabled` | Deploy the bastion as a separate Deployment (default true). Set false for a hub that only issues certificates. |
 | `bastion.replicaCount` | Bastion replicas (default 1). >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.drainDelay` | Reject new SSH connections, then wait for endpoint removal (default `3s`). |
 | `bastion.drainTimeout` | Keep existing SSH sessions during graceful shutdown (default `20s`). |
-| `bastion.terminationGracePeriodSeconds` | Pod grace period for draining (default `30`). Keep it above `drainTimeout`. |
+| `bastion.terminationGracePeriodSeconds` | Pod grace period for draining (default `30`). Keep it above `drainDelay + drainTimeout`. |
 | `bastion.resources` | Resource requests/limits for the bastion pod. |
 | `ssh.addr` | Listen address inside the bastion pod (default `:2222`). |
 | `ssh.publicHost` | **Required** when enabled. Hostname/IP users connect to. |

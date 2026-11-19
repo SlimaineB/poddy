@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -51,8 +52,9 @@ type Bastion struct {
 	MaxConnections      int
 	MaxConnectionsPerIP int
 
-	connMu sync.Mutex
-	conns  map[net.Conn]struct{}
+	connMu   sync.Mutex
+	conns    map[net.Conn]struct{}
+	draining atomic.Bool
 
 	limitMu sync.Mutex
 	active  int
@@ -182,6 +184,10 @@ func (b *Bastion) Serve() error {
 		if err != nil {
 			return err
 		}
+		if b.Draining() {
+			_ = conn.Close()
+			continue
+		}
 		ip := remoteIP(conn.RemoteAddr().String())
 		if !b.acquire(ip) {
 			_ = conn.Close()
@@ -211,6 +217,10 @@ func (b *Bastion) untrackConn(conn net.Conn) {
 	b.connMu.Unlock()
 }
 
+func (b *Bastion) Draining() bool {
+	return b != nil && b.draining.Load()
+}
+
 func (b *Bastion) closeConnections() {
 	b.connMu.Lock()
 	conns := make([]net.Conn, 0, len(b.conns))
@@ -229,13 +239,14 @@ func (b *Bastion) activeConnections() int {
 	return b.active
 }
 
-// Drain stops accepting new SSH connections, rejects new agent tunnels, and
-// keeps existing SSH sessions alive until they finish or ctx expires. A short
-// delay lets Kubernetes remove the pod endpoint before the listener closes.
+// Drain rejects new SSH connections and agent tunnels immediately, then keeps
+// existing SSH sessions alive until they finish or ctx expires. A short delay
+// before closing the listener lets Kubernetes remove the pod endpoint.
 func (b *Bastion) Drain(ctx context.Context) error {
 	if b == nil {
 		return nil
 	}
+	b.draining.Store(true)
 	if b.DrainDelay > 0 {
 		timer := time.NewTimer(b.DrainDelay)
 		select {

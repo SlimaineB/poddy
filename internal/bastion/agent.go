@@ -13,6 +13,11 @@ import (
 
 func (b *Bastion) AgentHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if b.Draining() {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
 		if b.Broker == nil {
 			http.Error(w, "agent tunnel is not configured", http.StatusNotFound)
 			return

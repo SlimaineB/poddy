@@ -107,15 +107,15 @@ Poddy limits the outage in three ways:
   adds jitter so many workspaces do not reconnect at the same instant.
 - Agent tunnels use WebSocket ping/pong heartbeats. A dead or half-open tunnel
   is detected within 20 seconds instead of waiting for a TCP timeout.
-- On `SIGTERM`, the bastion stops accepting new connections after a short
-  endpoint-removal delay, keeps existing SSH sessions until
-  `bastion.drainTimeout`, then closes them. New agent tunnels are also rejected
-  during the drain.
+- On `SIGTERM`, the bastion rejects new SSH connections and agent tunnels
+  immediately, keeps existing SSH sessions until `bastion.drainTimeout`, and
+  closes the listener after `bastion.drainDelay` so Kubernetes can remove the
+  endpoint first.
 
 For production, run at least two bastion replicas with a shared
-`ssh.existingHostKeySecret`, enable `bastion.podDisruptionBudget`, and keep
-`bastion.terminationGracePeriodSeconds` above `drainTimeout` plus the 3-second
-endpoint-removal delay. The rolling update strategy already uses
+`ssh.existingHostKeySecret`. The bastion PDB is created automatically above one
+replica, and `bastion.terminationGracePeriodSeconds` must stay above
+`drainDelay + drainTimeout`. The rolling update strategy already uses
 `maxUnavailable: 0`, so a healthy replacement starts before an old pod is
 terminated. A hard crash still drops sessions that were attached to that pod;
 replicas reduce the blast radius but cannot migrate an open SSH connection.
@@ -257,6 +257,8 @@ temporary copies so each workspace gets its own short-lived certificate.
 
 ```yaml
 bastion:
+  # Reject new connections immediately, then wait for endpoint removal.
+  drainDelay: 3s
   # Existing SSH sessions survive graceful pod shutdown for this long.
   drainTimeout: 20s
   terminationGracePeriodSeconds: 30

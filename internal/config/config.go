@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	Addr                      string
+	ShutdownDrainDelay        time.Duration
 	MetricsAddr               string
 	MonitoringEnabled         bool
 	MonitoringLive            bool
@@ -85,6 +86,7 @@ type Config struct {
 	SSHUserKeysConfigMap string
 	SSHRequireAgent      bool
 	SSHCertTTL           time.Duration
+	SSHDrainDelay        time.Duration
 	SSHDrainTimeout      time.Duration
 	SSHCAKeyFile         string
 	AgentAddr            string
@@ -118,6 +120,7 @@ func Load(args []string) (Config, error) {
 	ext := extension.Default()
 	cfg := Config{
 		Addr:                      env("PODDY_ADDR", ":8090"),
+		ShutdownDrainDelay:        envDuration("PODDY_SHUTDOWN_DRAIN_DELAY", 3*time.Second),
 		MetricsAddr:               os.Getenv("PODDY_METRICS_ADDR"),
 		MonitoringEnabled:         envBool("PODDY_MONITORING_ENABLED", true),
 		MonitoringLive:            envBool("PODDY_MONITORING_LIVE", true),
@@ -187,6 +190,7 @@ func Load(args []string) (Config, error) {
 		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
 		SSHRequireAgent:      envBool("PODDY_SSH_REQUIRE_AGENT", false),
 		SSHCertTTL:           envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
+		SSHDrainDelay:        envDuration("PODDY_SSH_DRAIN_DELAY", 3*time.Second),
 		SSHDrainTimeout:      envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
 		SSHCAKeyFile:         os.Getenv("PODDY_SSH_CA_KEY_FILE"),
 		AgentAddr:            os.Getenv("PODDY_AGENT_ADDR"),
@@ -218,6 +222,7 @@ func Load(args []string) (Config, error) {
 
 	fs := flag.NewFlagSet("poddy", flag.ContinueOnError)
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "listen address")
+	fs.DurationVar(&cfg.ShutdownDrainDelay, "shutdown-drain-delay", cfg.ShutdownDrainDelay, "how long to fail readiness and reject new requests before closing the HTTP listener on shutdown")
 	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", cfg.MetricsAddr, "Prometheus metrics listen address (empty disables metrics)")
 	fs.BoolVar(&cfg.MonitoringEnabled, "monitoring-enabled", cfg.MonitoringEnabled, "enable workspace monitoring APIs and UI")
 	fs.BoolVar(&cfg.MonitoringLive, "monitoring-live", cfg.MonitoringLive, "enable live CPU and memory metrics from metrics-server")
@@ -282,6 +287,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.SSHUserKeysConfigMap, "ssh-user-keys-configmap", cfg.SSHUserKeysConfigMap, "ConfigMap storing self-service SSH keys")
 	fs.BoolVar(&cfg.SSHRequireAgent, "ssh-require-agent", cfg.SSHRequireAgent, "require an outbound workspace agent tunnel for SSH (disables Kubernetes port-forward fallback)")
 	fs.DurationVar(&cfg.SSHCertTTL, "ssh-cert-ttl", cfg.SSHCertTTL, "lifetime of issued SSH certificates")
+	fs.DurationVar(&cfg.SSHDrainDelay, "ssh-drain-delay", cfg.SSHDrainDelay, "how long to reject new SSH connections before closing the bastion listener on shutdown")
 	fs.DurationVar(&cfg.SSHDrainTimeout, "ssh-drain-timeout", cfg.SSHDrainTimeout, "how long to keep the bastion alive for existing SSH sessions during shutdown")
 	fs.StringVar(&cfg.SSHCAKeyFile, "ssh-ca-key-file", cfg.SSHCAKeyFile, "path to the SSH certificate authority private key")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", cfg.AgentAddr, "listen address for the workspace agent tunnel (empty disables it)")

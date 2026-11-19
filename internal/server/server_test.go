@@ -209,6 +209,29 @@ func TestHealthIsPublic(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
+	rec = request(t, s, http.MethodGet, "/readyz", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ready status = %d", rec.Code)
+	}
+}
+
+func TestDrainingFailsReadinessAndNewRequests(t *testing.T) {
+	s := newTestServer("secret")
+	s.StartDraining()
+
+	if rec := request(t, s, http.MethodGet, "/healthz", nil); rec.Code != http.StatusOK {
+		t.Fatalf("health status = %d", rec.Code)
+	}
+	if rec := request(t, s, http.MethodGet, "/readyz", nil); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready status = %d", rec.Code)
+	}
+	rec := request(t, s, http.MethodGet, "/api/workspaces", nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("request status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Connection"); got != "close" {
+		t.Fatalf("connection header = %q", got)
+	}
 }
 
 func TestUnauthorizedShowsLogin(t *testing.T) {
