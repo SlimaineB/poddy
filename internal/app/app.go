@@ -746,10 +746,11 @@ func RunBastion(ctx context.Context, args []string) error {
 	defer sshBastion.Close()
 
 	if cfg.AgentAddr != "" {
-		agentServer, err := startAgentServer(ctx, cfg.AgentAddr, sshBastion.AgentHandler())
+		agentServer, err := startAgentServer(cfg.AgentAddr, sshBastion.AgentHandler())
 		if err != nil {
 			return err
 		}
+		sshBastion.AgentServer = agentServer
 		defer agentServer.Close()
 	}
 
@@ -761,6 +762,17 @@ func RunBastion(ctx context.Context, args []string) error {
 
 	select {
 	case <-ctx.Done():
+		if cfg.SSHDrainTimeout > 0 {
+			drainCtx, cancel := context.WithTimeout(context.Background(), cfg.SSHDrainTimeout)
+			err := sshBastion.Drain(drainCtx)
+			cancel()
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				log.Printf("ssh bastion: drain timeout reached; closed remaining SSH sessions")
+			case err != nil && !errors.Is(err, context.Canceled):
+				log.Printf("ssh bastion drain: %v", err)
+			}
+		}
 		return nil
 	case err := <-errCh:
 		if errors.Is(err, net.ErrClosed) {
@@ -944,10 +956,12 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 		return nil, fmt.Errorf("ssh bastion: %w", err)
 	}
 	if cfg.AgentAddr != "" {
-		if _, err := startAgentServer(ctx, cfg.AgentAddr, sshBastion.AgentHandler()); err != nil {
+		agentServer, err := startAgentServer(cfg.AgentAddr, sshBastion.AgentHandler())
+		if err != nil {
 			_ = sshBastion.Close()
 			return nil, err
 		}
+		sshBastion.AgentServer = agentServer
 	}
 	go func() {
 		log.Printf("ssh bastion listening on %s", cfg.SSHAddr)

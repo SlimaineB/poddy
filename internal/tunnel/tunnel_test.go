@@ -233,3 +233,78 @@ func TestFreshestTokenFallsBackToOpaqueToken(t *testing.T) {
 		t.Fatalf("freshestToken() = %q", got)
 	}
 }
+
+func TestNextAgentBackoff(t *testing.T) {
+	got := agentInitialBackoff
+	for _, want := range []time.Duration{
+		500 * time.Millisecond,
+		time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		5 * time.Second,
+		5 * time.Second,
+	} {
+		got = nextAgentBackoff(got)
+		if got != want {
+			t.Fatalf("nextAgentBackoff() = %v, want %v", got, want)
+		}
+	}
+	if got := nextAgentBackoff(0); got != agentInitialBackoff {
+		t.Fatalf("nextAgentBackoff(0) = %v, want %v", got, agentInitialBackoff)
+	}
+}
+
+func TestAgentJitterBounds(t *testing.T) {
+	for _, base := range []time.Duration{agentInitialBackoff, time.Second, agentMaxBackoff} {
+		for i := 0; i < 100; i++ {
+			if jitter := agentJitter(base); jitter < 0 || jitter > base/2 {
+				t.Fatalf("agentJitter(%v) = %v, want [0,%v]", base, jitter, base/2)
+			}
+		}
+	}
+	if got := agentJitter(0); got != 0 {
+		t.Fatalf("agentJitter(0) = %v, want 0", got)
+	}
+}
+
+func TestAgentHeartbeatKeepsTunnelAlive(t *testing.T) {
+	signer := NewTokenSigner("secret")
+	broker := NewBroker(signer)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, err := broker.Authenticate(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		_ = broker.ServeAgent(w, r, claims)
+	}))
+	defer server.Close()
+	defer broker.Close()
+
+	token, _, err := signer.SignAgent("demo", "alice@example.com", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agent := NewAgent(AgentConfig{
+		URL:          server.URL,
+		Token:        token,
+		Workspace:    "demo",
+		PingInterval: 10 * time.Millisecond,
+		PongWait:     50 * time.Millisecond,
+	})
+	go func() { _ = agent.Run(ctx) }()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !broker.Connected("demo") {
+		if time.Now().After(deadline) {
+			t.Fatal("agent did not connect")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if !broker.Connected("demo") {
+		t.Fatal("heartbeat did not keep the tunnel alive")
+	}
+}

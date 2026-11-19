@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,7 @@ import (
 const (
 	defaultMaxConnections      = 512
 	defaultMaxConnectionsPerIP = 32
+	defaultDrainDelay          = 3 * time.Second
 	handshakeTimeout           = 15 * time.Second
 	sshServerVersion           = "SSH-2.0-Poddy"
 )
@@ -43,9 +45,14 @@ type Bastion struct {
 	keys         sshkeys.Keyring
 	config       *ssh.ServerConfig
 	listener     net.Listener
+	AgentServer  *http.Server
+	DrainDelay   time.Duration
 
 	MaxConnections      int
 	MaxConnectionsPerIP int
+
+	connMu sync.Mutex
+	conns  map[net.Conn]struct{}
 
 	limitMu sync.Mutex
 	active  int
@@ -74,7 +81,9 @@ func New(addr string, manager *k8s.Manager, keys sshkeys.Keyring, hostKeyPath st
 		keys:                keys,
 		MaxConnections:      defaultMaxConnections,
 		MaxConnectionsPerIP: defaultMaxConnectionsPerIP,
+		DrainDelay:          defaultDrainDelay,
 		perIP:               map[string]int{},
+		conns:               map[net.Conn]struct{}{},
 	}
 	b.config = &ssh.ServerConfig{
 		MaxAuthTries:      3,
@@ -178,10 +187,84 @@ func (b *Bastion) Serve() error {
 			_ = conn.Close()
 			continue
 		}
+		b.trackConn(conn)
 		go func() {
 			defer b.release(ip)
+			defer b.untrackConn(conn)
 			b.handle(conn)
 		}()
+	}
+}
+
+func (b *Bastion) trackConn(conn net.Conn) {
+	b.connMu.Lock()
+	if b.conns == nil {
+		b.conns = map[net.Conn]struct{}{}
+	}
+	b.conns[conn] = struct{}{}
+	b.connMu.Unlock()
+}
+
+func (b *Bastion) untrackConn(conn net.Conn) {
+	b.connMu.Lock()
+	delete(b.conns, conn)
+	b.connMu.Unlock()
+}
+
+func (b *Bastion) closeConnections() {
+	b.connMu.Lock()
+	conns := make([]net.Conn, 0, len(b.conns))
+	for conn := range b.conns {
+		conns = append(conns, conn)
+	}
+	b.connMu.Unlock()
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+}
+
+func (b *Bastion) activeConnections() int {
+	b.limitMu.Lock()
+	defer b.limitMu.Unlock()
+	return b.active
+}
+
+// Drain stops accepting new SSH connections, rejects new agent tunnels, and
+// keeps existing SSH sessions alive until they finish or ctx expires. A short
+// delay lets Kubernetes remove the pod endpoint before the listener closes.
+func (b *Bastion) Drain(ctx context.Context) error {
+	if b == nil {
+		return nil
+	}
+	if b.DrainDelay > 0 {
+		timer := time.NewTimer(b.DrainDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			b.closeConnections()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if b.listener != nil {
+		_ = b.listener.Close()
+	}
+	if b.AgentServer != nil {
+		_ = b.AgentServer.Shutdown(ctx)
+	}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if b.activeConnections() == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			b.closeConnections()
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -222,8 +305,12 @@ func (b *Bastion) Close() error {
 	if b.listener != nil {
 		err = b.listener.Close()
 	}
+	b.closeConnections()
 	if b.Broker != nil {
 		b.Broker.Close()
+	}
+	if b.AgentServer != nil {
+		_ = b.AgentServer.Close()
 	}
 	return err
 }

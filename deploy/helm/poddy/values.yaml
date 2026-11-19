@@ -30,6 +30,10 @@ bastion:
   # When empty, replicaCount > 1 spreads bastions across nodes with
   # ScheduleAnyway. Set this to enforce zone/host policies in production.
   topologySpreadConstraints: []
+  # Existing SSH sessions stay alive during a graceful pod shutdown for this
+  # long. Keep this below terminationGracePeriodSeconds.
+  drainTimeout: 20s
+  terminationGracePeriodSeconds: 30
   probes:
     readiness:
       initialDelaySeconds: 2

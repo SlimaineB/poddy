@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -120,7 +119,7 @@ func localHTTPTarget(addr string) string {
 	return net.JoinHostPort(host, port)
 }
 
-func startAgentServer(ctx context.Context, addr string, handler http.Handler) (*http.Server, error) {
+func startAgentServer(addr string, handler http.Handler) (*http.Server, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("agent tunnel: %w", err)
@@ -134,10 +133,6 @@ func startAgentServer(ctx context.Context, addr string, handler http.Handler) (*
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("agent tunnel: %v", err)
 		}
-	}()
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
 	}()
 	return srv, nil
 }

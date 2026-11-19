@@ -266,7 +266,8 @@ Also log:
   tunnel sessions live in the hub process.
 - **Bastion replicas**: set `bastion.replicaCount` and provide a shared SSH host
   key with `ssh.existingHostKeySecret`. Otherwise host-key warnings appear after
-  scaling or restarts.
+  scaling or restarts. On shutdown, the bastion keeps existing SSH sessions for
+  `bastion.drainTimeout`; keep `bastion.terminationGracePeriodSeconds` above it.
 - **PDBs**: enable `podDisruptionBudget` and
   `bastion.podDisruptionBudget` when running more than one replica.
 - **Database**: use a managed or HA PostgreSQL, not a single demo pod. Size

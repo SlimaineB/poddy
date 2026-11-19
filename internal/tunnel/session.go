@@ -45,6 +45,17 @@ func (s *session) writeFrame(kind byte, id uint32, payload []byte) error {
 	return s.conn.WriteMessage(websocket.BinaryMessage, encodeFrame(kind, id, payload))
 }
 
+func (s *session) writePing() error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	select {
+	case <-s.done:
+		return errClosed
+	default:
+	}
+	return s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
+}
+
 func (s *session) addStream(id uint32) *stream {
 	s.mu.Lock()
 	defer s.mu.Unlock()

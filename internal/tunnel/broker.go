@@ -71,6 +71,10 @@ func (b *Broker) ServeAgent(w http.ResponseWriter, r *http.Request, claims Agent
 		return err
 	}
 	conn.SetReadLimit(maxFrameSize)
+	_ = conn.SetReadDeadline(time.Now().Add(defaultAgentPong))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(defaultAgentPong))
+	})
 
 	s := newSession(conn, claims.Workspace)
 	s.mu.Lock()
@@ -78,11 +82,28 @@ func (b *Broker) ServeAgent(w http.ResponseWriter, r *http.Request, claims Agent
 	s.mu.Unlock()
 	b.register(s)
 	go b.renew(s, claims)
+	go b.ping(s)
 
 	err = b.run(s)
 	s.close(err)
 	b.unregister(s)
 	return err
+}
+
+func (b *Broker) ping(s *session) {
+	ticker := time.NewTicker(defaultAgentPing)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+			if err := s.writePing(); err != nil {
+				s.close(err)
+				return
+			}
+		}
+	}
 }
 
 func (b *Broker) renew(s *session, claims AgentClaims) {

@@ -81,6 +81,8 @@ name (without the leading `v`) is used.
 | `replicaCount` | `1` | Portal replicas. Scales independently from the bastion. |
 | `bastion.enabled` | `true` | Deploy the SSH bastion as a separate Deployment. |
 | `bastion.replicaCount` | `1` | Bastion replicas. >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.drainTimeout` | `20s` | Keep existing SSH sessions during graceful shutdown. |
+| `bastion.terminationGracePeriodSeconds` | `30` | Pod grace period; keep above `drainTimeout`. |
 | `bastion.resources` | `{}` | Bastion resource requests/limits. |
 | `bastion.podDisruptionBudget.enabled` | `false` | Create a PDB for the bastion. |
 | `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |

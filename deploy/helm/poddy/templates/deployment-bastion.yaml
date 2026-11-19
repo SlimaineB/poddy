@@ -36,6 +36,7 @@ spec:
     spec:
       serviceAccountName: {{ include "poddy.bastion.serviceAccountName" . }}
       automountServiceAccountToken: true
+      terminationGracePeriodSeconds: {{ .Values.bastion.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -62,6 +63,7 @@ spec:
             - -ssh-allow-unmapped-keys={{ .Values.ssh.allowUnmappedKeys }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
             - -ssh-require-agent={{ .Values.ssh.requireAgent }}
+            - -ssh-drain-timeout={{ .Values.bastion.drainTimeout }}
             {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
             - -agent-addr=:{{ .Values.ssh.agent.port }}
             {{- end }}

@@ -85,6 +85,7 @@ type Config struct {
 	SSHUserKeysConfigMap string
 	SSHRequireAgent      bool
 	SSHCertTTL           time.Duration
+	SSHDrainTimeout      time.Duration
 	SSHCAKeyFile         string
 	AgentAddr            string
 	AgentURL             string
@@ -186,6 +187,7 @@ func Load(args []string) (Config, error) {
 		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
 		SSHRequireAgent:      envBool("PODDY_SSH_REQUIRE_AGENT", false),
 		SSHCertTTL:           envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
+		SSHDrainTimeout:      envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
 		SSHCAKeyFile:         os.Getenv("PODDY_SSH_CA_KEY_FILE"),
 		AgentAddr:            os.Getenv("PODDY_AGENT_ADDR"),
 		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
@@ -280,6 +282,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.SSHUserKeysConfigMap, "ssh-user-keys-configmap", cfg.SSHUserKeysConfigMap, "ConfigMap storing self-service SSH keys")
 	fs.BoolVar(&cfg.SSHRequireAgent, "ssh-require-agent", cfg.SSHRequireAgent, "require an outbound workspace agent tunnel for SSH (disables Kubernetes port-forward fallback)")
 	fs.DurationVar(&cfg.SSHCertTTL, "ssh-cert-ttl", cfg.SSHCertTTL, "lifetime of issued SSH certificates")
+	fs.DurationVar(&cfg.SSHDrainTimeout, "ssh-drain-timeout", cfg.SSHDrainTimeout, "how long to keep the bastion alive for existing SSH sessions during shutdown")
 	fs.StringVar(&cfg.SSHCAKeyFile, "ssh-ca-key-file", cfg.SSHCAKeyFile, "path to the SSH certificate authority private key")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", cfg.AgentAddr, "listen address for the workspace agent tunnel (empty disables it)")
 	fs.StringVar(&cfg.AgentURL, "agent-url", cfg.AgentURL, "URL injected into workspaces for the agent tunnel")

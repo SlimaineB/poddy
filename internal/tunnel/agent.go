@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,7 +19,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const defaultAgentTarget = "127.0.0.1:22"
+const (
+	defaultAgentTarget = "127.0.0.1:22"
+
+	agentInitialBackoff    = 250 * time.Millisecond
+	agentMaxBackoff        = 5 * time.Second
+	agentBackoffResetAfter = 5 * time.Second
+	defaultAgentPing       = 5 * time.Second
+	defaultAgentPong       = 20 * time.Second
+)
 
 type AgentConfig struct {
 	URL         string
@@ -28,6 +37,11 @@ type AgentConfig struct {
 	Workspace   string
 	Target      string
 	Insecure    bool
+	// PingInterval and PongWait control the WebSocket heartbeat. The agent
+	// pings the bastion and expects a pong within PongWait so a half-open
+	// connection reconnects quickly.
+	PingInterval time.Duration
+	PongWait     time.Duration
 	// AllowedTarget overrides the target validator. It is mainly useful for
 	// tests; production agents only accept loopback port 22.
 	AllowedTarget func(string) bool
@@ -45,6 +59,12 @@ func NewAgent(config AgentConfig) *Agent {
 	if strings.TrimSpace(config.Target) == "" {
 		config.Target = defaultAgentTarget
 	}
+	if config.PingInterval <= 0 {
+		config.PingInterval = defaultAgentPing
+	}
+	if config.PongWait <= 0 {
+		config.PongWait = defaultAgentPong
+	}
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 		Proxy:            http.ProxyFromEnvironment,
@@ -58,7 +78,7 @@ func NewAgent(config AgentConfig) *Agent {
 }
 
 func (a *Agent) Run(ctx context.Context) error {
-	backoff := time.Second
+	backoff := agentInitialBackoff
 	for {
 		start := time.Now()
 		err := a.connect(ctx)
@@ -68,18 +88,35 @@ func (a *Agent) Run(ctx context.Context) error {
 		if err != nil {
 			log.Printf("workspace agent: %v", err)
 		}
-		if time.Since(start) > 30*time.Second {
-			backoff = time.Second
+		if time.Since(start) > agentBackoffResetAfter {
+			backoff = agentInitialBackoff
 		}
+		delay := backoff + agentJitter(backoff)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
+		case <-time.After(delay):
 		}
-		if backoff < 30*time.Second {
-			backoff *= 2
-		}
+		backoff = nextAgentBackoff(backoff)
 	}
+}
+
+func nextAgentBackoff(current time.Duration) time.Duration {
+	if current <= 0 {
+		return agentInitialBackoff
+	}
+	next := current * 2
+	if next > agentMaxBackoff {
+		return agentMaxBackoff
+	}
+	return next
+}
+
+func agentJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int64N(int64(d/2) + 1))
 }
 
 func (a *Agent) connect(ctx context.Context) error {
@@ -102,6 +139,10 @@ func (a *Agent) connect(ctx context.Context) error {
 	}
 	defer conn.Close()
 	conn.SetReadLimit(maxFrameSize)
+	_ = conn.SetReadDeadline(time.Now().Add(a.config.PongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(a.config.PongWait))
+	})
 
 	targets := map[uint32]net.Conn{}
 	var mu sync.Mutex
@@ -111,6 +152,9 @@ func (a *Agent) connect(ctx context.Context) error {
 		defer writeMu.Unlock()
 		return conn.WriteMessage(websocket.BinaryMessage, encodeFrame(kind, id, payload))
 	}
+	pingCtx, stopPing := context.WithCancel(ctx)
+	defer stopPing()
+	go a.ping(pingCtx, conn, &writeMu)
 	defer func() {
 		mu.Lock()
 		for _, target := range targets {
@@ -180,6 +224,25 @@ func (a *Agent) connect(ctx context.Context) error {
 		case frameToken:
 			if token := strings.TrimSpace(string(payload)); token != "" {
 				a.setToken(token)
+			}
+		}
+	}
+}
+
+func (a *Agent) ping(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex) {
+	ticker := time.NewTicker(a.config.PingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			writeMu.Lock()
+			err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
+			writeMu.Unlock()
+			if err != nil {
+				_ = conn.Close()
+				return
 			}
 		}
 	}

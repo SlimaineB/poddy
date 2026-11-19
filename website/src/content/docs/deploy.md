@@ -305,7 +305,7 @@ at the same time; a high QPS with a low burst still throttles short spikes.
 ### Replicas and namespaces
 
 - **Portal replicas**: Set `replicaCount > 1` for HTTP/API load. Workspace stop/start/restart/delete operations use Kubernetes Lease locks, so replicas do not overwrite each other's state. Use a stable OIDC session key when OIDC is enabled, and set `desktop.secret` (or `externalAuth.key`) for stable desktop IDE tickets. When `regions` is configured, keep the hub at one replica or use sticky routing so region tunnel sessions stay reachable.
-- **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key.
+- **Bastion replicas**: Set `bastion.replicaCount` independently. **Must** provide `ssh.existingHostKeySecret` when it is greater than 1, so all bastion replicas share the same host key. Existing SSH sessions drain for `bastion.drainTimeout` on graceful shutdown; keep `bastion.terminationGracePeriodSeconds` above that.
 - **PDBs**: set `podDisruptionBudget.enabled=true` and `bastion.podDisruptionBudget.enabled=true` when running more than one replica. PDBs are not created automatically, and `minAvailable` must leave room for at least one healthy replica during drains.
 - **Audit access**: grant `rbac.auditors` to security operators who need the read-only **Audit** page. Audit reads use PostgreSQL; region managers proxy audit reads through the hub.
 - **DNS overrides**: set `hostAliases` to add `/etc/hosts` entries to the portal and bastion pods, for example when OIDC or a database hostname is not resolvable through cluster DNS.
@@ -604,6 +604,8 @@ button in the UI is not the security boundary.
 | `ssh.enabled` | Enable SSH metadata and certificate issuance (default true). |
 | `bastion.enabled` | Deploy the bastion as a separate Deployment (default true). Set false for a hub that only issues certificates. |
 | `bastion.replicaCount` | Bastion replicas (default 1). >1 requires `ssh.existingHostKeySecret`. |
+| `bastion.drainTimeout` | Keep existing SSH sessions during graceful shutdown (default `20s`). |
+| `bastion.terminationGracePeriodSeconds` | Pod grace period for draining (default `30`). Keep it above `drainTimeout`. |
 | `bastion.resources` | Resource requests/limits for the bastion pod. |
 | `ssh.addr` | Listen address inside the bastion pod (default `:2222`). |
 | `ssh.publicHost` | **Required** when enabled. Hostname/IP users connect to. |

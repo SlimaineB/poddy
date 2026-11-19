@@ -94,6 +94,32 @@ The workspace image must run `scripts/poddy-ssh-start` as its entrypoint for
 the OOM protection to take effect. A template that overrides the workspace
 command keeps the agent sidecar but must set the OOM score itself.
 
+## Bastion failures and reconnects
+
+The workspace and its agent stay running when a bastion pod fails. Active SSH
+sessions are terminated because the TCP connection is anchored to that bastion
+process; SSH has no session resumption. New SSH connections fail while
+`ssh.requireAgent=true` until the workspace agent reconnects.
+
+Poddy limits the outage in three ways:
+
+- The agent retries quickly with exponential backoff capped at 5 seconds and
+  adds jitter so many workspaces do not reconnect at the same instant.
+- Agent tunnels use WebSocket ping/pong heartbeats. A dead or half-open tunnel
+  is detected within 20 seconds instead of waiting for a TCP timeout.
+- On `SIGTERM`, the bastion stops accepting new connections after a short
+  endpoint-removal delay, keeps existing SSH sessions until
+  `bastion.drainTimeout`, then closes them. New agent tunnels are also rejected
+  during the drain.
+
+For production, run at least two bastion replicas with a shared
+`ssh.existingHostKeySecret`, enable `bastion.podDisruptionBudget`, and keep
+`bastion.terminationGracePeriodSeconds` above `drainTimeout` plus the 3-second
+endpoint-removal delay. The rolling update strategy already uses
+`maxUnavailable: 0`, so a healthy replacement starts before an old pod is
+terminated. A hard crash still drops sessions that were attached to that pod;
+replicas reduce the blast radius but cannot migrate an open SSH connection.
+
 ## Short-lived certificates
 
 The portal can issue a short-lived OpenSSH user certificate instead of relying
@@ -230,6 +256,13 @@ temporary copies so each workspace gets its own short-lived certificate.
 ## Helm configuration
 
 ```yaml
+bastion:
+  # Existing SSH sessions survive graceful pod shutdown for this long.
+  drainTimeout: 20s
+  terminationGracePeriodSeconds: 30
+  # Set to 2+ with a shared ssh.existingHostKeySecret for HA.
+  replicaCount: 1
+
 ssh:
   requireAgent: true
   certTtl: 15m
