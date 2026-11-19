@@ -133,7 +133,7 @@ admins, template owners, teams, and workspace ownership. See
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.8 \
+  -n poddy-system --create-namespace --version 0.1.9 \
   -f values.yaml
 ```
 

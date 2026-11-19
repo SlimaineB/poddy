@@ -83,7 +83,7 @@ details.
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --namespace poddy-system \
-  --version 0.1.8 \
+  --version 0.1.9 \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
   --set auth.existingSecret=poddy-auth \
@@ -119,7 +119,7 @@ create workspaces until they exist.
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
   --namespace poddy-workspaces \
-  --version 0.1.8
+  --version 0.1.9
 ```
 
 The release installs the `base`, `go`, `node`, and `python` templates as

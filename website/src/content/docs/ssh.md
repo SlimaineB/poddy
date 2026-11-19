@@ -215,8 +215,8 @@ end in `.exe`. Verify the download with the release `checksums.txt`, then put
 the binary on your `PATH`:
 
 ```bash
-chmod +x poddy_v0.1.8_darwin_arm64
-sudo mv poddy_v0.1.8_darwin_arm64 /usr/local/bin/poddy
+chmod +x poddy_v0.1.9_darwin_arm64
+sudo mv poddy_v0.1.9_darwin_arm64 /usr/local/bin/poddy
 poddy version
 ```
 

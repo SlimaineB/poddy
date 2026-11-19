@@ -229,12 +229,12 @@ ingress:
 ### 4. Install
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --create-namespace --version 0.1.8 -f values.yaml
+  -n poddy-system --create-namespace --version 0.1.9 -f values.yaml
 
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
-  -n poddy-workspaces --version 0.1.8 -f templates-values.yaml
+  -n poddy-workspaces --version 0.1.9 -f templates-values.yaml
 ```
-From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.8` with the published chart version when a new release is cut.
+From a source checkout, replace the OCI references with `deploy/helm/poddy` and `deploy/helm/poddy-templates`. Replace `0.1.9` with the published chart version when a new release is cut.
 
 The templates release creates labeled ConfigMaps in its namespace, so install it in `workspaceNamespace` (here `poddy-workspaces`). Templates can also be pushed later with `kubectl apply`; see [templates.md](templates.md#adding-a-template).
 
@@ -786,7 +786,7 @@ if unauthenticated users should install them.
 
 ```bash
 helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
-  -n poddy-system --version 0.1.8 -f values.yaml
+  -n poddy-system --version 0.1.9 -f values.yaml
 ```
 - Changing `workspaceNamespace` or `createWorkspaceNamespace` may require manual cleanup.
 - Changing `ssh.existingHostKeySecret` requires a rollout.
