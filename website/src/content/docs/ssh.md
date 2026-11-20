@@ -162,8 +162,9 @@ Requirements and limits:
 
 - Hub and regions must mount the **same SSH CA** (for example the same
   `ssh.ca.existingSecret`), because the hub signs and the region portal verifies.
-- Relayed sessions require a short-lived certificate. Plain public-key logins
-  still work for local workspaces but are not forwarded across regions.
+- Relayed sessions accept a short-lived certificate or a self-service public key
+  authorized for the workspace owner. Region-prefixed aliases such as
+  `poddy-ssh-eu-<workspace>` resolve to the same workspace as `poddy-ssh-<workspace>`.
 - Only port 22 is forwarded, and administrators still need owner approval.
 
 ### Issue a certificate

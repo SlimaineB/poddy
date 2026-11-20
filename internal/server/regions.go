@@ -137,13 +137,13 @@ func (s *Server) regionReplaceSSHKeys(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func regionConfigInfo(cfg region.Config) map[string]any {
+func regionConfigInfo(cfg region.Config, sshHost, sshPort string) map[string]any {
 	return map[string]any{
 		"name":        cfg.Name,
 		"displayName": cfg.DisplayName,
 		"default":     cfg.Default,
-		"sshHost":     cfg.SSHHost,
-		"sshPort":     cfg.SSHPort,
+		"sshHost":     sshHost,
+		"sshPort":     sshPort,
 		"lat":         cfg.Lat,
 		"lon":         cfg.Lon,
 	}
@@ -164,7 +164,12 @@ func (s *Server) regionSummaries(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.Regions.Summaries(r.Context(), s.hubIdentity(id, s.isAdmin(id, cfg))))
+	summaries := s.Regions.Summaries(r.Context(), s.hubIdentity(id, s.isAdmin(id, cfg)))
+	for i := range summaries {
+		summaries[i].SSHHost = s.SSHHost
+		summaries[i].SSHPort = s.SSHPort
+	}
+	writeJSON(w, http.StatusOK, summaries)
 }
 
 func (s *Server) prepareRemoteCreate(r *http.Request, req *k8s.CreateRequest, templateName string) error {

@@ -907,14 +907,10 @@ function linkValue(workspace, key) {
       return workspace.name;
     case "alias":
       return sshAlias(workspace.name, workspace.region);
-    case "sshHost": {
-      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
-      return (region && region.sshHost) || state.config.sshHost || "127.0.0.1";
-    }
-    case "sshPort": {
-      const region = (state.config.regions || []).find((item) => item.name === workspace.region);
-      return (region && region.sshPort) || state.config.sshPort || "2222";
-    }
+    case "sshHost":
+      return state.config.sshHost || "127.0.0.1";
+    case "sshPort":
+      return state.config.sshPort || "2222";
     case "user":
       return "dev";
     case "template":

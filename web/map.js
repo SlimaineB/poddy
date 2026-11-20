@@ -72,8 +72,8 @@ function mapRegionSummary(region) {
     users: owners.size,
     running,
     stopped,
-    sshHost: region.sshHost,
-    sshPort: region.sshPort,
+    sshHost: state.config.sshHost,
+    sshPort: state.config.sshPort,
   };
 }
 
@@ -264,7 +264,7 @@ function mapRegionSearchText(region, summary) {
   return [
     region.name,
     region.displayName,
-    region.sshHost,
+    state.config.sshHost,
     summary && summary.sshHost,
   ].filter(Boolean).join(" ").toLowerCase();
 }
@@ -503,8 +503,8 @@ function renderMapDetail(region) {
     stats.append(item);
   }
 
-  const endpoint = summary && (summary.sshHost || region.sshHost)
-    ? `SSH ${summary.sshHost || region.sshHost}:${summary.sshPort || region.sshPort || "22"}`
+  const endpoint = state.config.sshHost
+    ? `SSH ${state.config.sshHost}:${state.config.sshPort || "22"}`
     : "";
   const meta = document.createElement("p");
   meta.className = "map-detail-meta";

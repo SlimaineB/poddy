@@ -256,7 +256,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	regions := []map[string]any{}
 	if s.Regions != nil {
 		for _, cfg := range s.Regions.Configs() {
-			regions = append(regions, regionConfigInfo(cfg))
+			regions = append(regions, regionConfigInfo(cfg, s.SSHHost, s.SSHPort))
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

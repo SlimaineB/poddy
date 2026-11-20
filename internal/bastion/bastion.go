@@ -52,6 +52,7 @@ type Bastion struct {
 	// It lets a self-service SSH key use the same per-workspace authorization
 	// as certificates when the hub only knows the workspace through a region.
 	RegionOwner  func(context.Context, string) (string, error)
+	RegionNames  []string
 	InternalKey  []byte
 	RequireAgent bool
 	CA           *sshca.CA
@@ -369,7 +370,8 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 		return
 	}
 
-	name := workspaceName(request.Host)
+	names := b.workspaceCandidates(request.Host)
+	name := names[0]
 	fingerprint := ""
 	actor := ""
 	actorType := "user"
@@ -386,13 +388,25 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pod, err := b.Manager.Get(ctx, name)
-	if err != nil {
+	var pod *corev1.Pod
+	var getErr error
+	for _, candidate := range names {
+		pod, getErr = b.Manager.Get(ctx, candidate)
+		if getErr == nil {
+			name = candidate
+			break
+		}
+	}
+	if getErr != nil {
 		port := int(request.Port)
 		if port == 0 {
 			port = 22
 		}
-		if b.regionAuthorized(ctx, permissions, fingerprint, name) {
+		for _, candidate := range names {
+			if !b.regionAuthorized(ctx, permissions, fingerprint, candidate) {
+				continue
+			}
+			name = candidate
 			if port != 22 {
 				b.recordAudit(name, actor, actorType, remoteAddr, "denied", "only the workspace SSH port is allowed")
 				_ = newChannel.Reject(ssh.Prohibited, "only the workspace SSH port is allowed")
@@ -669,6 +683,26 @@ func (b *Bastion) recordEvent(workspace, actor, actorType, sourceIP, action, out
 	}); err != nil {
 		log.Printf("ssh bastion: audit %s: %v", strings.ReplaceAll(strings.ReplaceAll(workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
 	}
+}
+
+func (b *Bastion) workspaceCandidates(host string) []string {
+	name := workspaceName(host)
+	if b == nil || len(b.RegionNames) == 0 {
+		return []string{name}
+	}
+	names := []string{name}
+	for _, region := range b.RegionNames {
+		region = strings.TrimSpace(region)
+		if region == "" {
+			continue
+		}
+		prefix := region + "-"
+		if len(name) > len(prefix) && strings.EqualFold(name[:len(prefix)], prefix) {
+			names = append(names, name[len(prefix):])
+			break
+		}
+	}
+	return names
 }
 
 func workspaceName(host string) string {

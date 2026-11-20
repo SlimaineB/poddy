@@ -289,10 +289,10 @@ Repeat the steps with a new name, namespace, key, SSH endpoint, and workspace
 namespace. Keep the region names unique. For example, a local k3s deployment
 can simulate two regions on one node:
 
-| Region | Release | Region namespace | Workspace namespace | SSH endpoint |
-|--------|---------|------------------|---------------------|--------------|
-| `eu` | `poddy-eu` | `poddy-eu` | `poddy-eu-workspaces` | `172.29.74.141:30224` |
-| `us` | `poddy-us` | `poddy-us` | `poddy-us-workspaces` | `172.29.74.141:30225` |
+| Region | Release | Region namespace | Workspace namespace | SSH endpoint (hub) |
+|--------|---------|------------------|---------------------|---------------------|
+| `eu` | `poddy-eu` | `poddy-eu` | `poddy-eu-workspaces` | `172.29.74.141:30223` |
+| `us` | `poddy-us` | `poddy-us` | `poddy-us-workspaces` | `172.29.74.141:30223` |
 
 The hub remains exposed on its own NodePort or ingress, for example
 `http://172.29.74.141:30081`. Region portal Services stay `ClusterIP`; the hub

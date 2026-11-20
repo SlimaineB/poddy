@@ -47,6 +47,27 @@ func TestWorkspaceName(t *testing.T) {
 	}
 }
 
+func TestWorkspaceCandidatesStripRegion(t *testing.T) {
+	b := &Bastion{RegionNames: []string{"eu", "us"}}
+	tests := map[string][]string{
+		"poddy-ssh-eu-demo":    {"eu-demo", "demo"},
+		"poddy-ssh-us-app":     {"us-app", "app"},
+		"poddy-ssh-demo":       {"demo"},
+		"poddy-ssh-other-demo": {"other-demo"},
+	}
+	for host, want := range tests {
+		got := b.workspaceCandidates(host)
+		if len(got) != len(want) {
+			t.Fatalf("workspaceCandidates(%q) = %v, want %v", host, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("workspaceCandidates(%q) = %v, want %v", host, got, want)
+			}
+		}
+	}
+}
+
 func TestDrainWaitsForActiveConnections(t *testing.T) {
 	keys, err := sshkeys.Parse(nil, true)
 	if err != nil {

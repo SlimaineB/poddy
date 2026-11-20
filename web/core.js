@@ -596,8 +596,8 @@ function sshConfigFor() {
     const slug = region.name ? `${regionSlug(region.name)}-` : "";
     const proxy = region.name ? `poddy-portal-${regionSlug(region.name)}` : "poddy-portal";
     config += `Host ${proxy}\n`;
-    config += `    HostName ${region.sshHost || state.config.sshHost || "127.0.0.1"}\n`;
-    config += `    Port ${region.sshPort || state.config.sshPort || "2222"}\n`;
+    config += `    HostName ${state.config.sshHost || "127.0.0.1"}\n`;
+    config += `    Port ${state.config.sshPort || "2222"}\n`;
     config += "    User poddy\n";
     config += `    IdentityFile ${keyPath}\n`;
     config += "    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    LogLevel ERROR\n\n";
@@ -612,10 +612,7 @@ function renderConfig() {
   if (typeof renderMonitoringConfig === "function") renderMonitoringConfig();
   if (!state.config.ssh) return;
   els.sshEndpoint.hidden = false;
-  const regions = configuredRegions();
-  els.sshEndpoint.textContent = regions.length > 1
-    ? `SSH ${regions.length} regions`
-    : `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
+  els.sshEndpoint.textContent = `SSH ${state.config.sshHost || "127.0.0.1"}:${state.config.sshPort || "2222"}`;
 }
 function renderVSCodeExtension() {
   const ext = state.config.vscodeExtension;
@@ -784,8 +781,8 @@ function renderRegionSummary() {
     const total = Number(state.workspaceTotal) || 0;
     parts.push(`${total} workspace${total === 1 ? "" : "s"}`);
   }
-  const sshHost = (summary && summary.sshHost) || (region && region.sshHost) || state.config.sshHost;
-  const sshPort = (summary && summary.sshPort) || (region && region.sshPort) || state.config.sshPort;
+  const sshHost = state.config.sshHost;
+  const sshPort = state.config.sshPort;
   if (sshHost) parts.push(`SSH ${sshHost}:${sshPort || "22"}`);
 
   const meta = document.createElement("div");
@@ -861,8 +858,8 @@ function renderRegionsList(summaries) {
 
     const footer = document.createElement("div");
     footer.className = "region-card-footer";
-    const sshHost = summary.sshHost || region.sshHost || state.config.sshHost;
-    const sshPort = summary.sshPort || region.sshPort || state.config.sshPort;
+    const sshHost = state.config.sshHost;
+    const sshPort = state.config.sshPort;
     if (sshHost) {
       const endpoint = document.createElement("span");
       endpoint.className = "region-card-endpoint";

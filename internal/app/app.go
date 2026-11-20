@@ -1003,6 +1003,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	sshBastion.Audit = audit
 	sshBastion.Broker = broker
 	sshBastion.RegionBroker = regionTunnel
+	sshBastion.RegionNames = regionNames
 	sshBastion.InternalKey = []byte(agentKey)
 	sshBastion.Remote = &tunnel.PeerDialer{
 		Broker:       broker,
