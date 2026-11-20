@@ -101,6 +101,7 @@ spec:
     metadata:
       labels:
         {{- include "poddy.labels" . | nindent 8 }}
+        poddy.io/component: portal
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -168,7 +169,7 @@ spec:
             - -ssh-enabled={{ .Values.ssh.enabled }}
             {{- if .Values.ssh.enabled }}
             {{- if not .Values.regionManager.enabled }}
-            - -ssh-require-agent={{ .Values.ssh.requireAgent }}
+            - -ssh-require-agent={{ if .Values.mesh.enabled }}false{{ else }}{{ .Values.ssh.requireAgent }}{{ end }}
             {{- end }}
             - -ssh-drain-delay={{ .Values.ssh.drainDelay }}
             - -ssh-drain-timeout={{ .Values.ssh.drainTimeout }}

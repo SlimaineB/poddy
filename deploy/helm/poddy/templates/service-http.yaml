@@ -30,3 +30,4 @@ spec:
       protocol: TCP
   selector:
     {{- include "poddy.selectorLabels" . | nindent 4 }}
+    poddy.io/component: portal

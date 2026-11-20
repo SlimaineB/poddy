@@ -142,7 +142,8 @@ when `networkPolicy.enabled=true`:
 - UDP 41641 for direct WireGuard paths.
 - TCP 443 for DERP over the Headscale ingress.
 - UDP `mesh.derp.stunPort` (3478 by default) for STUN and UDP 41641 for direct
-  WireGuard paths.
+  WireGuard paths. Workspace mesh agents bind UDP 41641 so the workspace
+  NetworkPolicy can allow direct peer traffic on a predictable port.
 - TCP 8080 to the in-cluster Headscale pod.
 
 If you use an external control server or a custom DERP server on non-standard
@@ -166,9 +167,10 @@ DERP servers. Prepare the following before installing:
   Service. Direct WireGuard uses UDP 41641.
 
 For a fully offline demo, use HTTP with `mesh.headscale.serverUrl` set to the
-internal URL and disable the ingress TLS requirement. The mesh control protocol
-and direct WireGuard work over HTTP; DERP relay traffic should use TLS in
-production.
+internal URL and disable the ingress TLS requirement. This works for in-cluster
+direct paths. Tailscale clients outside the cluster need the HTTPS ingress:
+the embedded DERP server only serves relay traffic over TLS, so an HTTP-only
+Headscale cannot relay a laptop connection to a workspace.
 
 ## Multi-region demo
 

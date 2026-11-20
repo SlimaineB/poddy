@@ -44,6 +44,7 @@ helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml" 2>/dev/n
 # reusable workspace preauth key first.
 helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   -f "${STATE_DIR}/poddy-hub-existing.yaml" \
+  --set replicaCount=1 \
   --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent \
   --set mesh.enabled=false \
   --set mesh.headscale.enabled=true \
@@ -71,6 +72,7 @@ fi
 helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml"
 helm upgrade poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   -f "${STATE_DIR}/poddy-hub-existing.yaml" \
+  --set replicaCount=1 \
   --set mesh.enabled=true \
   --set mesh.controlUrl="http://${HOST}:${HEADSCALE_PORT}" \
   --set mesh.loginUrl="http://${HOST}:${HEADSCALE_PORT}" \
@@ -133,6 +135,7 @@ YAML
 
   helm upgrade --install "poddy-${REGION}" "$ROOT/deploy/helm/poddy" -n "$RNS" \
     -f "${STATE_DIR}/poddy-${REGION}-mesh.yaml" --wait --timeout 10m >/dev/null
+  kubectl -n "$RNS" rollout restart "deploy/poddy-${REGION}" >/dev/null
   kubectl -n "$RNS" rollout status "deploy/poddy-${REGION}" --timeout=300s >/dev/null
 
   REGION_ENTRIES="${REGION_ENTRIES}  - name: ${REGION}
@@ -154,8 +157,11 @@ kubectl -n "$NS" create secret generic poddy-regions \
 helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml"
 helm upgrade poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   -f "${STATE_DIR}/poddy-hub-existing.yaml" \
+  --set replicaCount=1 \
   --set regionsExistingSecret=poddy-regions \
   --wait --timeout 10m >/dev/null
+kubectl -n "$NS" rollout restart deploy/poddy >/dev/null
+kubectl -n "$NS" rollout status deploy/poddy --timeout=300s >/dev/null
 
 cat <<MSG
 
@@ -167,9 +173,11 @@ Mesh multi-region demo is ready.
   Regions:    ${REGIONS}
   DERP STUN:  udp/${HOST}:${STUN_PORT}
 
-Join your laptop with:
+The workspace SSH dialog shows ws-<workspace> on port 22 for mesh peers.
 
-  tailscale up --login-server=http://${HOST}:${HEADSCALE_PORT}
+Remote laptops require HTTPS for the Headscale ingress and embedded DERP; this
+HTTP demo validates the in-cluster multi-region mesh. To join a laptop, put
+Headscale behind a trusted TLS certificate and run:
 
-The workspace SSH dialog should show ws-<workspace> on port 22.
+  tailscale up --login-server=https://headscale.example.com
 MSG

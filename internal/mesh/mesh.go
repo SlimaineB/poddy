@@ -54,6 +54,7 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 		ControlURL: strings.TrimSpace(cfg.ControlURL),
 		Dir:        dir,
 		Ephemeral:  cfg.Ephemeral,
+		Port:       41641,
 	}
 	if _, err := srv.Up(ctx); err != nil {
 		_ = srv.Close()

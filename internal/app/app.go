@@ -65,7 +65,7 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("dotfiles: %w", err)
 	}
-	if !cfg.RegionMode && cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
+	if !cfg.RegionMode && !cfg.MeshEnabled && cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
 		return fmt.Errorf("workspace agent: -agent-url or -agent-addr is required when -ssh-require-agent=true")
 	}
 
@@ -217,7 +217,7 @@ func Run(ctx context.Context, args []string) error {
 		AuthorizedKeys:      keys,
 		SSHKeys:             keyring,
 		SSHCA:               sshCA,
-		SSHRequireAgent:     cfg.SSHRequireAgent && !cfg.RegionMode,
+		SSHRequireAgent:     cfg.SSHRequireAgent && !cfg.RegionMode && !cfg.MeshEnabled,
 		StateConfigMap:      cfg.StateConfigMap,
 		PortalURL:           portalURL,
 		InstanceID:          cfg.InstanceID,
@@ -397,13 +397,16 @@ func Run(ctx context.Context, args []string) error {
 		regionTunnel = tunnel.NewRegionBroker(func(name, token string) error {
 			cfg, ok := registry.Get(name)
 			if !ok {
+				log.Printf("region tunnel auth: unknown region %q", name)
 				return fmt.Errorf("unknown region %q", name)
 			}
 			claims, err := region.VerifyIdentity(cfg.Key, token)
 			if err != nil {
+				log.Printf("region tunnel auth: region=%q: %v", name, err)
 				return err
 			}
 			if claims.Region != name || !claims.Admin {
+				log.Printf("region tunnel auth: region=%q has invalid claims", name)
 				return fmt.Errorf("invalid region identity")
 			}
 			return nil
