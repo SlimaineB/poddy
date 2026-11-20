@@ -266,6 +266,8 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"sshCertificates":   s.SSHEnabled && s.SSHCA != nil,
 		"sshHost":           s.SSHHost,
 		"sshPort":           s.SSHPort,
+		"mesh":              s.MeshEnabled,
+		"meshLoginURL":      s.MeshLoginURL,
 		"sshKeyPath":        s.SSHKeyPath,
 		"windows":           s.Windows,
 		"windowsSSHKeyPath": s.WindowsSSHKeyPath,

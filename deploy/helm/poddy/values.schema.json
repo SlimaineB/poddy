@@ -209,6 +209,43 @@
         }
       }
     },
+    "mesh": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "controlUrl": { "type": "string" },
+        "loginUrl": { "type": "string" },
+        "authKey": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "authKeyKey": { "type": "string" },
+        "stateDir": { "type": "string" },
+        "derpUrls": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "headscale": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "type": "string" },
+            "imagePullPolicy": {
+              "enum": ["Always", "IfNotPresent", "Never"]
+            },
+            "host": { "type": "string" },
+            "serverUrl": { "type": "string" },
+            "ingressClassName": { "type": "string" },
+            "tlsSecret": { "type": "string" },
+            "annotations": { "type": "object" },
+            "storage": { "type": "string" },
+            "storageClass": { "type": "string" },
+            "resources": { "type": "object" },
+            "extraEnv": { "type": "array" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "ssh": {
       "type": "object",
       "properties": {

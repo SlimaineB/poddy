@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"poddy/internal/k8s"
+	"poddy/internal/mesh"
 	"poddy/internal/userkeys"
 )
 
@@ -36,6 +37,7 @@ type desktopPayload struct {
 	User      string `json:"user"`
 	SSHHost   string `json:"sshHost"`
 	SSHPort   string `json:"sshPort"`
+	Mesh      bool   `json:"mesh"`
 	Ticket    string `json:"ticket"`
 }
 
@@ -98,6 +100,10 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		}
 		owner = decision.Owner
 	}
+	if s.MeshEnabled {
+		sshHost = mesh.WorkspaceHostname(name)
+		sshPort = "22"
+	}
 	if sshHost == "" {
 		http.Error(w, "SSH is not configured", http.StatusNotImplemented)
 		return
@@ -119,6 +125,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		User:      desktopRemoteUser,
 		SSHHost:   sshHost,
 		SSHPort:   sshPort,
+		Mesh:      s.MeshEnabled,
 		Ticket:    ticket,
 	})
 	if err != nil {

@@ -1,0 +1,19 @@
+{{- if .Values.mesh.headscale.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}-headscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "poddy.selectorLabels" . | nindent 4 }}
+    poddy.io/component: headscale
+{{- end }}

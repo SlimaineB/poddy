@@ -1,0 +1,34 @@
+{{- if and .Values.mesh.headscale.enabled .Values.mesh.headscale.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "poddy.fullname" . }}-headscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+  {{- with .Values.mesh.headscale.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.mesh.headscale.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.mesh.headscale.tlsSecret }}
+  tls:
+    - hosts:
+        - {{ $.Values.mesh.headscale.host | quote }}
+      secretName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.mesh.headscale.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "poddy.fullname" . }}-headscale
+                port:
+                  number: 8080
+{{- end }}

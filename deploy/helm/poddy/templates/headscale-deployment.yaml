@@ -1,0 +1,67 @@
+{{- if .Values.mesh.headscale.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "poddy.fullname" . }}-headscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "poddy.selectorLabels" . | nindent 6 }}
+      poddy.io/component: headscale
+  template:
+    metadata:
+      labels:
+        {{- include "poddy.labels" . | nindent 8 }}
+        poddy.io/component: headscale
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: headscale
+          image: "{{ .Values.mesh.headscale.image }}"
+          imagePullPolicy: {{ .Values.mesh.headscale.imagePullPolicy }}
+          args:
+            - serve
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- with .Values.mesh.headscale.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/headscale
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/headscale
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "poddy.fullname" . }}-headscale
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "poddy.fullname" . }}-headscale
+{{- end }}

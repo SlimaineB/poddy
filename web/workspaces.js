@@ -908,7 +908,7 @@ function linkValue(workspace, key) {
     case "alias":
       return sshAlias(workspace.name, workspace.region);
     case "sshHost":
-      return state.config.sshHost || "127.0.0.1";
+      return state.config.mesh ? sshAlias(workspace.name, workspace.region) : (state.config.sshHost || "127.0.0.1");
     case "sshPort":
       return state.config.sshPort || "2222";
     case "user":
@@ -1666,7 +1666,10 @@ function showSSH(workspace) {
   state.sshWorkspace = workspace;
   els.sshConfig.textContent = sshConfigFor();
   const windowsClient = /Windows/i.test(navigator.userAgent);
-  if (state.config.windows) {
+  if (state.config.mesh) {
+    const login = state.config.meshLoginURL || "your Headscale server";
+    els.sshNote.textContent = `Direct WireGuard SSH. Join the tailnet once: tailscale up --login-server=${login}. Then use the config below.`;
+  } else if (state.config.windows) {
     els.sshNote.textContent = `The portal key is installed on Windows at ${state.config.windowsSSHKeyPath || "~/.ssh/poddy_id_ed25519"}. This config covers all workspaces.`;
   } else if (windowsClient) {
     els.sshNote.textContent = "Save this config once in C:\\Users\\<you>\\.ssh\\config and copy your private key to the same .ssh folder. It covers all workspaces.";

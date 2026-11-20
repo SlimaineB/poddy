@@ -481,6 +481,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	var meshNode *mesh.Node
 	if cfg.MeshEnabled && !cfg.RegionMode {
+		cfg.SSHAddr = ""
 		hostname := cfg.MeshHostname
 		if hostname == "" {
 			hostname = mesh.PortalHostname(hostName())
@@ -500,7 +501,6 @@ func Run(ctx context.Context, args []string) error {
 		} else {
 			defer meshNode.Close()
 			log.Printf("mesh: portal joined tailnet as %s", hostname)
-			cfg.SSHAddr = ""
 		}
 	}
 

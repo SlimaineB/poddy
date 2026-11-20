@@ -15,6 +15,14 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if .Values.mesh.enabled }}
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: UDP
+          port: 41641
+    {{- end }}
     {{- if .Values.networkPolicy.workspace.allowPortal }}
     - from:
         - namespaceSelector:
@@ -30,6 +38,30 @@ spec:
     []
     {{- end }}
   egress:
+    {{- if .Values.mesh.enabled }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: UDP
+          port: 3478
+        - protocol: UDP
+          port: 41641
+    {{- if .Values.mesh.headscale.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              poddy.io/component: headscale
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    {{- end }}
     {{- if .Values.networkPolicy.workspace.egress.allowDNS }}
     - to:
         - namespaceSelector:

@@ -386,6 +386,45 @@ ssh:
     loadBalancerIP: ""
     externalTrafficPolicy: ""
 
+mesh:
+  # Replace the SSH bastion with a direct WireGuard tailnet. Workspaces run
+  # poddy-agent as a tsnet node and users connect straight to ws-<workspace>.
+  # When enabled, the portal does not expose an SSH listener or Service.
+  enabled: false
+  # Control server URL. For Tailscale leave empty; for Headscale use the
+  # public HTTPS URL. Defaults to mesh.headscale.serverUrl when deploying one.
+  controlUrl: ""
+  # Public login server shown in the UI. Defaults to controlUrl.
+  loginUrl: ""
+  # Reusable Headscale preauth key injected into workspace agents. Create it
+  # with: headscale preauthkeys create --user poddy --reusable --expiration 720h
+  # Existing secret must contain mesh.authKeyKey.
+  authKey: ""
+  existingSecret: ""
+  authKeyKey: auth-key
+  # Writable tsnet state directory inside the portal pod.
+  stateDir: /var/lib/poddy/tsnet
+  # DERP map(s). The default uses Tailscale's public DERP relays. Point this at
+  # your own DERP server to keep relay traffic self-hosted.
+  derpUrls:
+    - https://controlplane.tailscale.com/derpmap/default
+  # Optional self-hosted Headscale control plane.
+  headscale:
+    enabled: false
+    image: ghcr.io/juanfont/headscale:v0.23.0
+    imagePullPolicy: IfNotPresent
+    # Public hostname served through the ingress, e.g. mesh.example.com.
+    host: ""
+    # Override the advertised control URL. Defaults to https://<host>.
+    serverUrl: ""
+    ingressClassName: ""
+    tlsSecret: ""
+    annotations: {}
+    storage: 1Gi
+    storageClass: ""
+    resources: {}
+    extraEnv: []
+
 http:
   service:
     type: ClusterIP

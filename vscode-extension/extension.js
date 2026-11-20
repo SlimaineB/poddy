@@ -186,31 +186,38 @@ function postJSON(url, body) {
 async function writeSSHConfig(payload, priv) {
   const workspace = payload.workspace;
   const alias = `poddy-desktop-${workspace}`;
-  const jump = `poddy-desktop-${workspace}-bastion`;
   const key = priv.replace(/\\/g, "/");
-  const block = [
+  const lines = [
     `# >>> poddy:${workspace}`,
     `Host ${alias}`,
-    `  HostName poddy-ssh-${workspace}`,
-    `  User ${payload.user}`,
-    `  ProxyCommand ssh -W %h:%p ${jump}`,
-    `  IdentityFile "${key}"`,
-    "  IdentitiesOnly yes",
-    "  StrictHostKeyChecking no",
-    `  UserKnownHostsFile ${NULL_DEVICE}`,
-    "  LogLevel ERROR",
-    "",
-    `Host ${jump}`,
     `  HostName ${payload.sshHost}`,
     `  Port ${payload.sshPort}`,
-    "  User poddy",
+    `  User ${payload.user}`,
     `  IdentityFile "${key}"`,
     "  IdentitiesOnly yes",
-    "  StrictHostKeyChecking accept-new",
-    "  LogLevel ERROR",
-    `# <<< poddy:${workspace}`,
-    "",
-  ].join("\n");
+  ];
+  if (payload.mesh) {
+    lines.push("  StrictHostKeyChecking accept-new", "  LogLevel ERROR");
+  } else {
+    const jump = `poddy-desktop-${workspace}-bastion`;
+    lines.push(
+      `  ProxyCommand ssh -W %h:%p ${jump}`,
+      "  StrictHostKeyChecking no",
+      `  UserKnownHostsFile ${NULL_DEVICE}`,
+      "  LogLevel ERROR",
+      "",
+      `Host ${jump}`,
+      `  HostName ${payload.sshHost}`,
+      `  Port ${payload.sshPort}`,
+      "  User poddy",
+      `  IdentityFile "${key}"`,
+      "  IdentitiesOnly yes",
+      "  StrictHostKeyChecking accept-new",
+      "  LogLevel ERROR"
+    );
+  }
+  lines.push(`# <<< poddy:${workspace}`, "");
+  const block = lines.join("\n");
 
   const dir = sshDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

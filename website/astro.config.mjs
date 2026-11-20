@@ -86,6 +86,7 @@ export default defineConfig({
           items: [
             { label: 'Kubernetes (Helm)', slug: 'deploy' },
             { label: 'Operations', slug: 'operations' },
+            { label: 'Headscale mesh', slug: 'mesh' },
             { label: 'Regions', slug: 'regions' },
             { label: 'Amazon EKS', slug: 'eks' },
             { label: 'Troubleshooting', slug: 'troubleshooting' },

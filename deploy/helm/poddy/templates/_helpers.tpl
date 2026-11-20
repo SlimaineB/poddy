@@ -197,3 +197,36 @@ Secret holding the SSH certificate authority private key.
 {{- printf "%s-ssh-host-key" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Headscale public control URL.
+*/}}
+{{- define "poddy.headscaleURL" -}}
+{{- if .Values.mesh.headscale.serverUrl -}}
+{{- .Values.mesh.headscale.serverUrl -}}
+{{- else -}}
+{{- printf "https://%s" .Values.mesh.headscale.host -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Mesh control server used by the portal and workspace agents.
+*/}}
+{{- define "poddy.meshControlURL" -}}
+{{- if .Values.mesh.controlUrl -}}
+{{- .Values.mesh.controlUrl -}}
+{{- else -}}
+{{- include "poddy.headscaleURL" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Secret holding the mesh preauth key.
+*/}}
+{{- define "poddy.meshSecretName" -}}
+{{- if .Values.mesh.existingSecret -}}
+{{- .Values.mesh.existingSecret -}}
+{{- else -}}
+{{- printf "%s-mesh" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

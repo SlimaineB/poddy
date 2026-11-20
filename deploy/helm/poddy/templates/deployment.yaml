@@ -4,6 +4,17 @@
 {{- if and .Values.ssh.enabled .Values.ssh.requireAgent (not .Values.ssh.agent.enabled) }}
 {{- fail "ssh.agent.enabled must be true when ssh.requireAgent=true" }}
 {{- end }}
+{{- if .Values.mesh.enabled }}
+{{- if and (not .Values.mesh.authKey) (not .Values.mesh.existingSecret) }}
+{{- fail "mesh.authKey or mesh.existingSecret is required when mesh.enabled=true" }}
+{{- end }}
+{{- if and (not .Values.mesh.controlUrl) (not .Values.mesh.headscale.enabled) }}
+{{- fail "mesh.controlUrl is required when mesh.enabled=true and mesh.headscale.enabled=false" }}
+{{- end }}
+{{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.host) (not .Values.mesh.headscale.serverUrl) }}
+{{- fail "mesh.headscale.host is required when mesh.headscale.enabled=true" }}
+{{- end }}
+{{- end }}
 {{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}
 {{- fail "oidc.issuer is required when oidc.enabled=true" }}
 {{- end }}
@@ -112,7 +123,7 @@ spec:
             - -state-configmap={{ include "poddy.stateConfigMapName" . }}
             - -template={{ .Values.defaultTemplate }}
             - -editor=
-            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) (not .Values.mesh.enabled) }}
             - -ssh-addr={{ .Values.ssh.addr }}
             - -ssh-host-key=/etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
             {{- if and .Values.ssh.agent.enabled }}
@@ -130,7 +141,7 @@ spec:
             - -ssh-drain-timeout={{ .Values.ssh.drainTimeout }}
             {{- end }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
-            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled (not .Values.regionManager.enabled) }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled (not .Values.regionManager.enabled) (not .Values.mesh.enabled) }}
             - -agent-url={{ include "poddy.agentURL" . }}
             - -agent-token-ttl={{ .Values.ssh.agent.tokenTtl }}
             {{- end }}
@@ -140,8 +151,8 @@ spec:
             - -region-hub-url={{ required "regionManager.hubUrl is required when enabled" .Values.regionManager.hubUrl }}
             - -instance-id=$(PODDY_INSTANCE_ID)
             {{- end }}
-            {{- if .Values.ssh.enabled }}
-            - -ssh-public-host={{ required "ssh.publicHost is required when ssh.enabled=true" .Values.ssh.publicHost }}
+            {{- if and .Values.ssh.enabled (not .Values.mesh.enabled) }}
+            - -ssh-public-host={{ required "ssh.publicHost is required when ssh.enabled=true and mesh.enabled=false" .Values.ssh.publicHost }}
             - -ssh-public-port={{ .Values.ssh.publicPort }}
             {{- end }}
             {{- with .Values.extraArgs }}
@@ -437,7 +448,7 @@ spec:
             - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
-            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.ssh.agent.sidecar (not .Values.regionManager.enabled) }}
+            {{- if or .Values.mesh.enabled (and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.ssh.agent.sidecar) }}
             - name: PODDY_AGENT_IMAGE
               value: {{ include "poddy.agentImage" . | quote }}
             {{- end }}
@@ -447,6 +458,21 @@ spec:
                 secretKeyRef:
                   name: {{ include "poddy.agentSecretName" . }}
                   key: agent-key
+            {{- end }}
+            {{- if .Values.mesh.enabled }}
+            - name: PODDY_MESH_ENABLED
+              value: "true"
+            - name: PODDY_MESH_CONTROL_URL
+              value: {{ include "poddy.meshControlURL" . | quote }}
+            - name: PODDY_MESH_LOGIN_URL
+              value: {{ default (include "poddy.meshControlURL" .) .Values.mesh.loginUrl | quote }}
+            - name: PODDY_MESH_STATE_DIR
+              value: {{ .Values.mesh.stateDir | quote }}
+            - name: PODDY_MESH_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.meshSecretName" . }}
+                  key: {{ .Values.mesh.authKeyKey }}
             {{- end }}
             {{- if .Values.ssh.enabled }}
             - name: PODDY_SSH_CA_KEY_FILE
@@ -477,7 +503,7 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) (not .Values.mesh.enabled) }}
             - name: ssh
               containerPort: 2222
               protocol: TCP
@@ -516,10 +542,14 @@ spec:
               mountPath: /etc/poddy/ssh-ca
               readOnly: true
             {{- end }}
-            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) (not .Values.mesh.enabled) }}
             - name: ssh-host-key
               mountPath: /etc/poddy/ssh
               readOnly: true
+            {{- end }}
+            {{- if .Values.mesh.enabled }}
+            - name: mesh-state
+              mountPath: /var/lib/poddy
             {{- end }}
             {{- if or .Values.regions .Values.regionsExistingSecret }}
             - name: regions
@@ -530,11 +560,15 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
-        {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+        {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) (not .Values.mesh.enabled) }}
         - name: ssh-host-key
           secret:
             secretName: {{ include "poddy.sshHostKeySecretName" . }}
             defaultMode: 0444
+        {{- end }}
+        {{- if .Values.mesh.enabled }}
+        - name: mesh-state
+          emptyDir: {}
         {{- end }}
         {{- if .Values.ssh.enabled }}
         - name: ssh-keys

@@ -3,8 +3,10 @@ title: "SSH access"
 description: "Connect to workspaces over SSH through the outbound agent or the Kubernetes port-forward fallback."
 ---
 
-poddy supports two SSH connection paths. The outbound workspace agent is the
-default in the Helm chart; the Kubernetes port-forward path remains as a
+poddy supports three SSH connection paths. With `mesh.enabled=true`, workspaces
+join a WireGuard tailnet and users connect directly to `ws-<workspace>`; see
+[Headscale mesh](/mesh). Without mesh, the outbound workspace agent is the
+default in the Helm chart and the Kubernetes port-forward path remains as a
 compatibility fallback.
 
 ## Connection paths
@@ -82,7 +84,7 @@ A workspace memory spike used to share a cgroup with `sshd` and `poddy-agent`,
 so the OOM killer could terminate either process and disconnect active
 sessions. Poddy now:
 
-- Runs `poddy-agent` in its own container with a 16Mi request and 128Mi limit.
+- Runs `poddy-agent` in its own container with a 64Mi request and 256Mi limit.
 - Grants the workspace container `SYS_RESOURCE` so `poddy-ssh-start` can set
   `sshd`'s `oom_score_adj` to `-1000`.
 - Sets the `dev` user's shell to `/usr/local/bin/poddy-shell`, which resets the

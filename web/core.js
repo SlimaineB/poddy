@@ -551,6 +551,7 @@ function regionSlug(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "region";
 }
 function sshAlias(name, region) {
+  if (state.config.mesh) return `ws-${name}`;
   return region ? `poddy-ssh-${regionSlug(region)}-${name}` : `poddy-ssh-${name}`;
 }
 function vscodeURL(workspace) {
@@ -578,6 +579,20 @@ function browserJupyterURL(name) {
 }
 function sshConfigFor() {
   const keyPath = state.config.windowsSSHKeyPath || state.config.sshKeyPath || "~/.ssh/id_ed25519";
+  if (state.config.mesh) {
+    return [
+      "# Poddy: direct WireGuard/Headscale mesh",
+      "# Join the tailnet once with:",
+      `#   tailscale up --login-server=${state.config.meshLoginURL || "https://headscale.example.com"}`,
+      "Host ws-*",
+      "    User dev",
+      `    IdentityFile ${keyPath}`,
+      "    IdentitiesOnly yes",
+      "    StrictHostKeyChecking accept-new",
+      "    LogLevel ERROR",
+      "",
+    ].join("\n");
+  }
   const regions = Array.isArray(state.config.regions) && state.config.regions.length
     ? state.config.regions
     : [{ name: "", sshHost: state.config.sshHost, sshPort: state.config.sshPort }];
