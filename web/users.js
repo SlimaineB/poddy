@@ -195,12 +195,15 @@ function renderDirectoryList(container, values, memberships, kind, query) {
 
     item.append(avatar, main);
     if (kind === "user" && state.me.isAdmin) {
+      const actions = document.createElement("div");
+      actions.className = "directory-actions";
       const quota = document.createElement("button");
       quota.type = "button";
-      quota.className = "button ghost small quota-button";
+      quota.className = "button small quota-button";
       quota.innerHTML = `${icon("shield")}${quotaEntry ? "Edit quota" : inherited.length ? "Override" : "Set quota"}`;
       quota.addEventListener("click", () => openUserQuota(value, quotaEntry));
-      item.append(quota);
+      actions.append(quota);
+      item.append(actions);
     }
     container.append(item);
   }

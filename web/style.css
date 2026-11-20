@@ -2543,6 +2543,7 @@ select {
 
 .view-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -4422,6 +4423,28 @@ body {
   justify-content: flex-start;
 }
 
+@media (max-width: 1300px) {
+  .topbar-inner {
+    height: auto;
+    min-height: 70px;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    margin-left: auto;
+  }
+
+  .topbar-actions .pill {
+    display: none;
+  }
+}
+
 @media (max-width: 1080px) {
   .topbar-actions .button.ghost .icon {
     display: none;
@@ -4938,8 +4961,12 @@ body {
   color: var(--text-subtle);
 }
 
-.quota-button {
-  align-self: center;
+.directory-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .quota-button .icon {
@@ -5321,7 +5348,7 @@ body {
     flex-wrap: wrap;
   }
 
-  .quota-button {
+  .directory-actions {
     margin-left: 48px;
   }
 
@@ -5335,9 +5362,10 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .quota-button {
+  .directory-actions {
     width: 100%;
     margin-left: 0;
+    justify-content: flex-end;
   }
 
   .team-actions {
@@ -5790,7 +5818,7 @@ body {
 
 .finops-messages {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 18px;
 }
 
@@ -5808,31 +5836,139 @@ body {
   color: var(--text);
 }
 
-.finops-message {
-  margin: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border-strong);
-  border-radius: 12px;
+.finops-alert {
+  --alert-color: var(--text-subtle);
+  --alert-soft: rgba(15, 23, 42, 0.05);
+  --alert-border: var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 14px 16px;
+  border: 1px solid var(--alert-border);
+  border-radius: 14px;
   background: var(--panel);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.finops-alert.tone-warning {
+  --alert-color: #b45309;
+  --alert-soft: rgba(245, 158, 11, 0.1);
+  --alert-border: rgba(245, 158, 11, 0.32);
+}
+
+.finops-alert.tone-danger {
+  --alert-color: #b91c1c;
+  --alert-soft: rgba(220, 38, 38, 0.09);
+  --alert-border: rgba(220, 38, 38, 0.3);
+}
+
+.finops-alert.tone-ok {
+  --alert-color: #047857;
+  --alert-soft: rgba(5, 150, 105, 0.1);
+  --alert-border: rgba(5, 150, 105, 0.28);
+}
+
+.finops-alert-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--alert-soft);
+  color: var(--alert-color);
+}
+
+.finops-alert-icon .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.finops-alert-main {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.finops-alert-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.finops-alert-title {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.finops-alert-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--alert-soft);
+  color: var(--alert-color);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.finops-alert-text {
+  margin: 0;
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
-.finops-message.tone-warning {
-  border-left-color: var(--warning);
-  background: #fffcf5;
+.finops-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.finops-message.tone-danger {
-  border-left-color: var(--danger);
-  background: #fff7f7;
+.finops-alert-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.finops-message.tone-ok {
-  border-left-color: var(--success);
-  background: #f8fffb;
+.finops-alert-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.finops-alert-link .icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.65;
+}
+
+@media (max-width: 640px) {
+  .finops-alert {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .finops-alert-icon {
+    width: 30px;
+    height: 30px;
+  }
 }
 
 .finops-panel {
@@ -6342,7 +6478,16 @@ body {
 }
 
 .finops-overview-panel .panel-header {
+  flex-wrap: wrap;
   margin-bottom: 4px;
+}
+
+.finops-overview-panel .panel-header .count {
+  white-space: normal;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 10px;
+  line-height: 1.45;
 }
 
 .finops-overview-copy {
@@ -6361,6 +6506,7 @@ body {
 
 .finops-gauge {
   display: grid;
+  min-width: 0;
   grid-template-columns: 108px minmax(0, 1fr);
   align-items: center;
   gap: 18px;
@@ -6498,7 +6644,19 @@ body {
 
 @media (max-width: 900px) {
   .finops-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .finops-gauge {
     grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 12px;
+  }
+
+  .finops-gauge-info {
+    width: 100%;
   }
 }
 
@@ -6789,16 +6947,22 @@ body {
   color: var(--text-muted);
 }
 
-[data-theme="dark"] .finops-message.tone-warning {
-  background: rgba(245, 158, 11, 0.1);
+[data-theme="dark"] .finops-alert.tone-warning {
+  --alert-color: #fcd34d;
+  --alert-soft: rgba(245, 158, 11, 0.14);
+  --alert-border: rgba(245, 158, 11, 0.32);
 }
 
-[data-theme="dark"] .finops-message.tone-danger {
-  background: rgba(239, 68, 68, 0.1);
+[data-theme="dark"] .finops-alert.tone-danger {
+  --alert-color: #fca5a5;
+  --alert-soft: rgba(239, 68, 68, 0.16);
+  --alert-border: rgba(239, 68, 68, 0.34);
 }
 
-[data-theme="dark"] .finops-message.tone-ok {
-  background: rgba(16, 185, 129, 0.1);
+[data-theme="dark"] .finops-alert.tone-ok {
+  --alert-color: #6ee7b7;
+  --alert-soft: rgba(16, 185, 129, 0.16);
+  --alert-border: rgba(16, 185, 129, 0.3);
 }
 
 [data-theme="dark"] .finops-signal.tone-warning {

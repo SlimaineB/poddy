@@ -238,46 +238,189 @@ function renderFinOpsKpis(report, currency) {
   els.finopsKpis.replaceChildren(...cards);
 }
 
+function finopsScrollTo(element) {
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function finopsAlertAction(label, run) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "finops-alert-link";
+  button.textContent = label;
+  button.addEventListener("click", run);
+  return button;
+}
+
+function finopsAlertDocLink(label, href) {
+  const link = document.createElement("a");
+  link.className = "finops-alert-link";
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.innerHTML = `${label}${icon("external")}`;
+  return link;
+}
+
+function finopsAlertOpen(view) {
+  if (view === "users" && typeof openUsers === "function") return () => openUsers();
+  if (view === "templates" && typeof openTemplates === "function") return () => openTemplates();
+  if (view === "monitoring" && typeof openMonitoring === "function") return () => openMonitoring();
+  return () => showView(view);
+}
+
+const FINOPS_ALERT_META = {
+  danger: { icon: "alert", badge: "High impact" },
+  warning: { icon: "clock", badge: "Worth a look" },
+  neutral: { icon: "info", badge: "Info" },
+  ok: { icon: "check", badge: "Healthy" },
+};
+
+function renderFinOpsMessage(message) {
+  const meta = FINOPS_ALERT_META[message.tone] || FINOPS_ALERT_META.neutral;
+  const article = document.createElement("article");
+  article.className = `finops-alert tone-${message.tone}`;
+
+  const mark = document.createElement("span");
+  mark.className = "finops-alert-icon";
+  mark.innerHTML = icon(meta.icon);
+
+  const main = document.createElement("div");
+  main.className = "finops-alert-main";
+
+  const head = document.createElement("div");
+  head.className = "finops-alert-head";
+  const title = document.createElement("strong");
+  title.className = "finops-alert-title";
+  title.textContent = message.title;
+  const badge = document.createElement("span");
+  badge.className = "finops-alert-badge";
+  badge.textContent = meta.badge;
+  head.append(title, badge);
+
+  const text = document.createElement("p");
+  text.className = "finops-alert-text";
+  text.textContent = message.text;
+
+  main.append(head, text);
+
+  if (message.actions.length) {
+    const actions = document.createElement("div");
+    actions.className = "finops-alert-actions";
+    for (const action of message.actions) actions.append(action);
+    main.append(actions);
+  }
+
+  article.append(mark, main);
+  return article;
+}
+
 function renderFinOpsMessages(report, currency) {
   els.finopsMessages.replaceChildren();
   const totals = report.totals || {};
   const messages = [];
-  const add = (tone, text) => messages.push({ tone, text });
+  const add = (tone, title, text, actions) => messages.push({ tone, title, text, actions: actions || [] });
+  const ranking = () => finopsScrollTo(els.finopsBars && els.finopsBars.closest(".panel"));
+  const tables = () => finopsScrollTo(els.finopsListWrap);
+  const openUsers = finopsAlertOpen("users");
+  const openTemplates = finopsAlertOpen("templates");
+  const openMonitoring = finopsAlertOpen("monitoring");
+  const docs = "https://slimaineb.github.io/operations/#monitor";
 
   if (!report.available && report.reason) {
-    add("neutral", report.reason);
+    add("neutral", "Live metrics are unavailable", report.reason, [
+      finopsAlertAction("Refresh", () => loadFinOps()),
+      finopsAlertDocLink("Monitoring docs", docs),
+    ]);
   }
   if (report.costVisible) {
     if (totals.wastePercent >= 60) {
-      add("danger", `${totals.wastePercent.toFixed(0)}% of what you reserve is idle. Lower CPU/memory requests on the workspaces below to stop paying for unused capacity.`);
+      add(
+        "danger",
+        `${totals.wastePercent.toFixed(0)}% of reserved capacity is idle`,
+        `You reserve compute that no one uses. Lowering CPU and memory requests on the workspaces below would recover about ${formatMoney(totals.wastedHourly * 730, currency)} per month.`,
+        [
+          finopsAlertAction("Open waste ranking", ranking),
+          finopsAlertAction("Adjust quotas", openUsers),
+          finopsAlertAction("Edit templates", openTemplates),
+        ],
+      );
     } else if (totals.wastePercent >= 30) {
-      add("warning", `${totals.wastePercent.toFixed(0)}% of reserved compute is idle. A few request adjustments would recover ${formatMoney(totals.wastedHourly * 730, currency)} per month.`);
+      add(
+        "warning",
+        `${totals.wastePercent.toFixed(0)}% of reserved compute is idle`,
+        `A few request adjustments would recover ${formatMoney(totals.wastedHourly * 730, currency)} per month without changing how workspaces are used.`,
+        [
+          finopsAlertAction("Open waste ranking", ranking),
+          finopsAlertAction("Edit templates", openTemplates),
+        ],
+      );
     }
   } else {
     if (totals.cpuIdleCores > 0 || totals.memoryIdleBytes > 0) {
-      add("warning", `Idle reservations: ${formatCPU(totals.cpuIdleCores)} CPU and ${formatBytes(totals.memoryIdleBytes)} memory are requested but unused.`);
+      add(
+        "warning",
+        "Reserved resources are idling",
+        `${formatCPU(totals.cpuIdleCores)} CPU and ${formatBytes(totals.memoryIdleBytes)} memory are requested but unused. Right-size the requests in your templates to stop reserving them.`,
+        [
+          finopsAlertAction("Open waste ranking", ranking),
+          finopsAlertAction("Edit templates", openTemplates),
+        ],
+      );
     }
-    add("neutral", "Costs are hidden. Set the PODDY_COST_* prices and enable PODDY_MONITORING_COSTS to show estimated spend.");
+    add(
+      "neutral",
+      "Cost estimates are turned off",
+      "Waste is measured in CPU and memory only. Add hourly prices and enable monitoring.costs to turn idle reservations into estimated spend.",
+      [
+        finopsAlertDocLink("How cost tracking works", docs),
+        finopsAlertAction("Open monitoring", openMonitoring),
+      ],
+    );
   }
   if (totals.oversized) {
-    add("warning", `${totals.oversized} workspace${totals.oversized === 1 ? " is" : "s are"} oversized: requests are far above real usage.`);
+    add(
+      "warning",
+      `${totals.oversized} workspace${totals.oversized === 1 ? " is" : "s are"} oversized`,
+      "Requests are far above real usage, so the scheduler reserves capacity that never gets used. Compare each workspace with its peak usage before lowering its template.",
+      [
+        finopsAlertAction("Open waste ranking", ranking),
+        finopsAlertAction("Edit templates", openTemplates),
+      ],
+    );
   }
   if (totals.missingRequests) {
-    add("neutral", `${totals.missingRequests} workspace${totals.missingRequests === 1 ? " has" : "s have"} no CPU/memory requests, so usage cannot be attributed or costed.`);
+    add(
+      "neutral",
+      `${totals.missingRequests} workspace${totals.missingRequests === 1 ? " has" : "s have"} no CPU or memory requests`,
+      "Without requests, usage cannot be attributed or costed and the workspace is treated as best-effort. Set requests in the template or workspace parameters.",
+      [
+        finopsAlertAction("Edit templates", openTemplates),
+        finopsAlertAction("Open workspaces", tables),
+      ],
+    );
   }
   if (totals.restarts) {
-    add("warning", `${totals.restarts} container restart${totals.restarts === 1 ? "" : "s"} detected. Investigate OOM kills and crash loops.`);
+    add(
+      "warning",
+      `${totals.restarts} container restart${totals.restarts === 1 ? "" : "s"} detected`,
+      "OOM kills and crash loops usually mean the memory limit is too low or the image is unstable. Check the restart reason before raising limits.",
+      [
+        finopsAlertAction("Open monitoring", openMonitoring),
+        finopsAlertAction("Review workspaces", finopsAlertOpen("workspaces")),
+      ],
+    );
   }
 
   if (!messages.length) {
-    add("ok", "Usage is well aligned with reservations. Nothing to fix right now.");
+    add(
+      "ok",
+      "Usage matches your reservations",
+      "Nothing to fix right now. Keep requests close to real usage as workloads change.",
+      [],
+    );
   }
-  for (const message of messages) {
-    const note = document.createElement("p");
-    note.className = `finops-message tone-${message.tone}`;
-    note.textContent = message.text;
-    els.finopsMessages.append(note);
-  }
+  for (const message of messages) els.finopsMessages.append(renderFinOpsMessage(message));
 }
 
 function finopsUsagePercent(used, reserved) {
