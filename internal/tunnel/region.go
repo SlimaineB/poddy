@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,30 @@ const (
 	RegionNameHeader     = "X-Poddy-Region-Name"
 	RegionIdentityHeader = "X-Poddy-Region-Identity"
 	RegionHTTPTarget     = "region-http"
+	RegionTCPPrefix      = "tcp:"
+	RegionSSHCertHeader  = "X-Poddy-SSH-Cert"
 )
+
+// WorkspaceTarget builds the tunnel target used to reach a workspace port
+// through a region agent, for example "tcp:demo:22".
+func WorkspaceTarget(workspace string, port int) string {
+	return RegionTCPPrefix + net.JoinHostPort(workspace, strconv.Itoa(port))
+}
+
+func parseWorkspaceTarget(target string) (string, int, bool) {
+	if !strings.HasPrefix(target, RegionTCPPrefix) {
+		return "", 0, false
+	}
+	workspace, portText, err := net.SplitHostPort(strings.TrimPrefix(target, RegionTCPPrefix))
+	if err != nil || strings.TrimSpace(workspace) == "" {
+		return "", 0, false
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return "", 0, false
+	}
+	return workspace, port, true
+}
 
 type RegionAuthFunc func(region, token string) error
 
@@ -238,11 +262,15 @@ func (b *RegionBroker) Close() {
 }
 
 type RegionAgentConfig struct {
-	URL      string
-	Region   string
-	Target   string
-	Token    func() (string, error)
-	Insecure bool
+	URL    string
+	Region string
+	// Target is the local HTTP server used for the region API.
+	Target string
+	// DialWorkspace opens a connection to a workspace port inside the region.
+	// The hub never reaches workspaces directly, so region SSH relays use it.
+	DialWorkspace func(ctx context.Context, workspace string, port int) (net.Conn, error)
+	Token         func() (string, error)
+	Insecure      bool
 }
 
 type RegionAgent struct {
@@ -346,7 +374,9 @@ func (a *RegionAgent) connect(ctx context.Context) error {
 		}
 		switch kind {
 		case frameOpen:
-			if !a.allowedTarget(string(payload)) {
+			target := string(payload)
+			addr, workspace, port, ok := a.resolveTarget(target)
+			if !ok {
 				_ = writeFrame(frameError, id, []byte("target is not allowed"))
 				continue
 			}
@@ -357,9 +387,15 @@ func (a *RegionAgent) connect(ctx context.Context) error {
 				_ = writeFrame(frameError, id, []byte("stream already exists"))
 				continue
 			}
-			remote, err := net.DialTimeout("tcp", a.config.Target, 10*time.Second)
+			var remote net.Conn
+			var err error
+			if workspace != "" {
+				remote, err = a.config.DialWorkspace(context.Background(), workspace, port)
+			} else {
+				remote, err = net.DialTimeout("tcp", addr, 10*time.Second)
+			}
 			if err != nil {
-				_ = writeFrame(frameError, id, []byte("cannot connect to region HTTP server"))
+				_ = writeFrame(frameError, id, []byte("cannot reach region target"))
 				continue
 			}
 			mu.Lock()
@@ -396,9 +432,18 @@ func (a *RegionAgent) connect(ctx context.Context) error {
 	}
 }
 
-func (a *RegionAgent) allowedTarget(target string) bool {
+func (a *RegionAgent) resolveTarget(target string) (addr, workspace string, port int, ok bool) {
 	target = strings.TrimSpace(target)
-	return target == "" || target == RegionHTTPTarget
+	if target == "" || target == RegionHTTPTarget {
+		return a.config.Target, "", 0, true
+	}
+	if workspace, port, ok = parseWorkspaceTarget(target); !ok {
+		return "", "", 0, false
+	}
+	if a.config.DialWorkspace == nil {
+		return "", "", 0, false
+	}
+	return "", workspace, port, true
 }
 
 func (a *RegionAgent) copyFromTarget(id uint32, target net.Conn, mu *sync.Mutex, targets map[uint32]net.Conn, writeFrame func(byte, uint32, []byte) error) {

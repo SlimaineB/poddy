@@ -82,11 +82,13 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if regionCfg.SSHHost != "" {
-			sshHost = regionCfg.SSHHost
-		}
-		if regionCfg.SSHPort != "" {
-			sshPort = regionCfg.SSHPort
+		if !s.SSHRelay {
+			if regionCfg.SSHHost != "" {
+				sshHost = regionCfg.SSHHost
+			}
+			if regionCfg.SSHPort != "" {
+				sshPort = regionCfg.SSHPort
+			}
 		}
 	} else {
 		if s.Workspaces == nil {

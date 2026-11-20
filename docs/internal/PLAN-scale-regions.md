@@ -79,7 +79,14 @@ avec un jeton court signé vérifié localement par le data plane.
 
 SSH est le seul flux qui ne se route pas comme HTTP : soit hostnames bastion
 régionaux visibles dans l'UI, soit un routeur SSH global qui lit
-`workspace@` et forward en TCP.
+`workspace@` et forward en TCP. Détail des options : `DESIGN-ssh-bastion-tunnel.md`.
+
+Le relais cross-cluster est **implémenté** (`PODDY_SSH_RELAY`) : le bastion du
+hub recopie le flux `direct-tcpip` vers le portail interne, qui ouvre
+`tcp:<workspace>:22` dans le WSS région ; l'agent région fait un port-forward
+local vers le pod. Aucun LB régional, peering ou PrivateLink n'est nécessaire
+pour SSH. Limites v1 : authentification par certificat SSH uniquement, port 22,
+et le secret CA SSH doit être **partagé** entre hub et régions.
 
 Cible incrémentale : **un portail central HA + N data-planes régionaux + edge
 router**. « N portails complets » marche aussi mais ajoute l'agrégation

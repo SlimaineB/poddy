@@ -147,6 +147,24 @@ opening a `direct-tcpip` channel. Workspace sshd performs the final
 authentication against the CA line. Legacy user keys remain valid unless you
 remove them from the key registry.
 
+### Multi-region SSH
+
+With `regions` (or `regionsExistingSecret`) configured, the chart sets
+`PODDY_SSH_RELAY=true` on the hub portal and `PODDY_PORTAL_URL` on the hub
+bastion. The hub bastion then relays region workspaces through the **outbound**
+region tunnel: it forwards the connection to the portal, which opens
+`tcp:<workspace>:22`, and the region agent port-forwards to the pod. No regional
+SSH Service, load balancer, peering, or inbound firewall rule is required, and
+`sshHost`/`sshPort` stay pointed at the hub for every workspace.
+
+Requirements and limits:
+
+- Hub and regions must mount the **same SSH CA** (for example the same
+  `ssh.ca.existingSecret`), because the hub signs and the region portal verifies.
+- Relayed sessions require a short-lived certificate. Plain public-key logins
+  still work for local workspaces but are not relayed.
+- Only port 22 is relayed, and administrators still need owner approval.
+
 ### Issue a certificate
 
 The endpoint is `POST /api/me/ssh-certificate`. It accepts a JSON body with the

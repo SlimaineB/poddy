@@ -435,6 +435,21 @@ func Run(ctx context.Context, args []string) error {
 			URL:    cfg.RegionHubURL,
 			Region: cfg.RegionName,
 			Target: target,
+			DialWorkspace: func(ctx context.Context, workspace string, port int) (net.Conn, error) {
+				pod, err := manager.Get(ctx, workspace)
+				if err != nil {
+					return nil, err
+				}
+				if pod.Status.Phase != corev1.PodRunning {
+					return nil, fmt.Errorf("workspace %q is not running", workspace)
+				}
+				localPort, err := forwards.EnsurePort(manager, workspace, port)
+				if err != nil {
+					return nil, err
+				}
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", localPort))
+			},
 			Token: func() (string, error) {
 				return region.SignIdentity(cfg.RegionKey, region.Identity{
 					User:   auth.User{Username: "region", Subject: cfg.RegionName},
@@ -521,6 +536,7 @@ func Run(ctx context.Context, args []string) error {
 		Forwards:          forwards,
 		Regions:           hub,
 		RegionTunnel:      regionTunnel,
+		SSHRelay:          cfg.SSHRelay,
 		RegionMode:        cfg.RegionMode,
 		RegionKey:         cfg.RegionKey,
 		RegionName:        cfg.RegionName,
@@ -956,6 +972,7 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	sshBastion.Audit = audit
 	sshBastion.Broker = broker
 	sshBastion.DrainDelay = cfg.SSHDrainDelay
+	sshBastion.RegionRelayURL = cfg.PortalURL
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
 	sshBastion.CA = ca
 	sshBastion.Access = accessStore

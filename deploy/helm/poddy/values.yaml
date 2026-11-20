@@ -243,7 +243,9 @@ workspace:
 
 # Central hub only. Each entry is mounted as a YAML regions file and points the
 # hub at a region manager's portal Service. Prefer regionsExistingSecret in
-# production: it must contain regions.yaml with the same structure.
+# production: it must contain regions.yaml with the same structure. When regions
+# are configured, the hub relays region SSH through the outbound region tunnel;
+# sshHost/sshPort are then optional and only used when relay is disabled.
 regions: []
 # - name: eu
 #   displayName: Europe
@@ -386,7 +388,8 @@ ssh:
   certTtl: 15m
   # SSH certificate authority. The same CA is mounted into the portal (to sign
   # certificates) and the bastion (to verify them). Leave key empty to let the
-  # chart generate and preserve a random key.
+  # chart generate and preserve a random key. Region clusters must use the same
+  # CA (for example ssh.ca.existingSecret) for relayed SSH to be accepted.
   ca:
     existingSecret: ""
     keyKey: ssh-ca-key

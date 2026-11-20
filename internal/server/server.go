@@ -42,6 +42,7 @@ type Server struct {
 	Forwards     *Forwarder
 	Regions      *region.Hub
 	RegionTunnel *regiontunnel.RegionBroker
+	SSHRelay     bool
 	RegionMode   bool
 	RegionKey    string
 	RegionName   string
@@ -140,6 +141,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}/git-askpass", s.workspaceGitAskpass)
 	mux.HandleFunc("PUT /api/internal/ssh-keys/{owner}", s.regionReplaceSSHKeys)
 	mux.HandleFunc("GET /api/internal/region/tunnel", s.regionTunnel)
+	mux.HandleFunc("GET /api/internal/region/ssh", s.regionSSH)
 	mux.HandleFunc("POST /api/internal/region/dotfiles", s.regionDotfiles)
 	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)
 	mux.HandleFunc("GET /api/internal/region/access", s.regionAccessState)

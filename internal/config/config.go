@@ -85,6 +85,7 @@ type Config struct {
 	SSHAllowUnmappedKeys bool
 	SSHUserKeysConfigMap string
 	SSHRequireAgent      bool
+	SSHRelay             bool
 	SSHCertTTL           time.Duration
 	SSHDrainDelay        time.Duration
 	SSHDrainTimeout      time.Duration
@@ -94,6 +95,7 @@ type Config struct {
 	AgentImage           string
 	AgentKey             string
 	AgentTokenTTL        time.Duration
+	PortalURL            string
 
 	VSCodeExtensionID          string
 	VSCodeExtensionVersion     string
@@ -189,6 +191,7 @@ func Load(args []string) (Config, error) {
 		SSHAllowUnmappedKeys: envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
 		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
 		SSHRequireAgent:      envBool("PODDY_SSH_REQUIRE_AGENT", false),
+		SSHRelay:             envBool("PODDY_SSH_RELAY", false),
 		SSHCertTTL:           envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
 		SSHDrainDelay:        envDuration("PODDY_SSH_DRAIN_DELAY", 3*time.Second),
 		SSHDrainTimeout:      envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
@@ -198,6 +201,7 @@ func Load(args []string) (Config, error) {
 		AgentImage:           os.Getenv("PODDY_AGENT_IMAGE"),
 		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
 		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", time.Hour),
+		PortalURL:            os.Getenv("PODDY_PORTAL_URL"),
 
 		VSCodeExtensionID:          env("PODDY_VSCODE_EXTENSION_ID", ext.ID),
 		VSCodeExtensionVersion:     env("PODDY_VSCODE_EXTENSION_VERSION", ext.Version),
@@ -286,6 +290,7 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.SSHAllowUnmappedKeys, "ssh-allow-unmapped-keys", cfg.SSHAllowUnmappedKeys, "allow SSH keys without an owner comment to access every workspace (legacy, insecure)")
 	fs.StringVar(&cfg.SSHUserKeysConfigMap, "ssh-user-keys-configmap", cfg.SSHUserKeysConfigMap, "ConfigMap storing self-service SSH keys")
 	fs.BoolVar(&cfg.SSHRequireAgent, "ssh-require-agent", cfg.SSHRequireAgent, "require an outbound workspace agent tunnel for SSH (disables Kubernetes port-forward fallback)")
+	fs.BoolVar(&cfg.SSHRelay, "ssh-relay", cfg.SSHRelay, "route region workspace SSH through the hub bastion instead of exposing each region bastion")
 	fs.DurationVar(&cfg.SSHCertTTL, "ssh-cert-ttl", cfg.SSHCertTTL, "lifetime of issued SSH certificates")
 	fs.DurationVar(&cfg.SSHDrainDelay, "ssh-drain-delay", cfg.SSHDrainDelay, "how long to reject new SSH connections before closing the bastion listener on shutdown")
 	fs.DurationVar(&cfg.SSHDrainTimeout, "ssh-drain-timeout", cfg.SSHDrainTimeout, "how long to keep the bastion alive for existing SSH sessions during shutdown")
@@ -295,6 +300,7 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.AgentImage, "agent-image", cfg.AgentImage, "image running the poddy-agent sidecar (empty uses the in-workspace agent)")
 	fs.StringVar(&cfg.AgentKey, "agent-key", cfg.AgentKey, "shared key used to sign and verify workspace agent tokens")
 	fs.DurationVar(&cfg.AgentTokenTTL, "agent-token-ttl", cfg.AgentTokenTTL, "lifetime of workspace agent tokens")
+	fs.StringVar(&cfg.PortalURL, "portal-url", cfg.PortalURL, "internal portal URL used by the bastion to relay region SSH")
 	fs.StringVar(&cfg.VSCodeExtensionID, "vscode-extension-id", cfg.VSCodeExtensionID, "VS Code extension identifier shown in the portal")
 	fs.StringVar(&cfg.VSCodeExtensionVersion, "vscode-extension-version", cfg.VSCodeExtensionVersion, "VS Code extension version shown in the portal")
 	fs.StringVar(&cfg.VSCodeExtensionReleaseURL, "vscode-extension-release-url", cfg.VSCodeExtensionReleaseURL, "VS Code extension release page")

@@ -104,3 +104,59 @@ dizaines de workspaces / sessions simultanées. À retravailler avant montée en
 ## Expérience développeur
 
 - [ ] À compléter : la demande initiale était tronquée après « Expérience Développeur (D… ».
+
+## Retours pilote EKS Auto Mode (2026-11)
+
+Test sur EKS Auto Mode, chart 0.1.9 / image `bd75698` (migrations PG OK). Un portail unique
+pilote bien 2 clusters EKS dans 2 régions (tunnels, routage, templates, régions). En revanche
+les 2 régions du test « APE » étaient dans le même cluster EU : pas d'infra APE réelle
+(VPC sans subnets publics taggés, pas de peering/TGW).
+
+### P1 — bloquants rencontrés
+
+- [x] **Service SSH LoadBalancer bloqué `<pending>`** : `ssh.service.type=LoadBalancer` +
+      annotations AWS ne suffisent pas sur EKS Auto Mode, qui exige
+      `spec.loadBalancerClass: eks.amazonaws.com/nlb` (les NLB du cluster qui marchent l'ont).
+      Corrigé : `ssh.service.loadBalancerClass` (comme `http.service.loadBalancerClass`).
+      En multi-région, le relais SSH (`PODDY_SSH_RELAY`) supprime même le besoin d'un
+      LoadBalancer bastion par région.
+- [ ] **Aucun template embarqué → install « vide »** : 0.1.9 n'embarque pas les templates
+      (`defaultTemplate: base`). Le portail liste 6 templates mais toute création échoue tant
+      que `poddy-templates` n'est pas installé. Attendu : dépendance/auto-install des
+      templates, NOTES explicites, validation au démarrage (erreur claire si
+      `defaultTemplate` introuvable), ou template `base` minimal embarqué.
+- [ ] **Conflit Helm sur `poddy-rbac` au 2e upgrade** : `rbac.createConfigMap=true` (défaut)
+      + portail qui écrit dans le ConfigMap → upgrade suivant :
+      `Apply failed with 1 conflict: conflict with "poddy" using v1: .data.rbac.yaml`.
+      Attendu : défaut `false` (seed one-shot), `helm.sh/resource-policy: keep`, ou séparer
+      le seed du ConfigMap mutable.
+- [ ] **OIDC discovery fatale au démarrage** : si l'IdP (Dex) n'est pas prêt ou si l'issuer
+      change, le portail sort au démarrage et le rollout Helm timeout avec un message peu
+      clair. Attendu : retry/backoff (cf. `metadata.OpenWithRetry`) ou readiness/event
+      explicite, pas un crashloop silencieux.
+
+### P2 — confort / prod
+
+- [ ] **client-go QPS=5 / Burst=10 codés en dur** (`internal/k8s/client.go`) : limite les
+      interactions (keys, PVC/state). Attendu : `PODDY_K8S_QPS` / `PODDY_K8S_BURST`
+      configurables (défaut ~50/100) ; réduire/cacher les GET par requête interactive.
+- [ ] **Registres non mirrorés (ECR)** : l'image workspace doit être accessible depuis le
+      cluster (via ECR/`imageRegistryMap`) ; ça fonctionne mais à documenter dans l'exemple
+      EKS/registre privé avec `imagePullSecrets`.
+- [ ] **JetBrains (CLion / PyCharm) ne se connectent pas** : VS Code Desktop, terminal web,
+      ports et VS Code Web passent (tunnel hub), mais les IDE JetBrains échouent. Investiguer
+      JetBrains Gateway (SSH / JetBrains Tunneling) et documenter le contournement.
+
+### Notes de test
+
+- Desktop/SSH sans LB : `kubectl -n poddy-eu port-forward svc/poddy-eu-ssh 2222:2222`
+  (région eu) et `2223:2222` (région ape), puis VS Code sur `token-eu-ws` / `token-ape-ws`.
+  Le relais `PODDY_SSH_RELAY` (hub bastion → portail → WSS région → port-forward pod)
+  remplace ce contournement ; à valider sur le pilote EKS avec un CA SSH partagé.
+- Régions sans base : état d'accès/quotas in-memory (les workspaces owner fonctionnent,
+  mais l'approbation admin inter-workspace n'est pas partagée avec le bastion). En prod
+  multi-région, la même PG doit être joignable par toutes les régions.
+- Webhook/admission, Ingress tunnel internet et NLB inutiles ont été supprimés faute
+  d'infra APE (pas de subnets publics taggés).
+- Points positifs : chart 0.1.9 / image `bd75698` cohérents, migrations PG OK, multi-région
+  validé avec un seul portail, desktop SSH OK.
