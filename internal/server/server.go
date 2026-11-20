@@ -53,6 +53,8 @@ type Server struct {
 	Windows           bool
 	WindowsSSHKeyPath string
 	SSHEnabled        bool
+	MeshEnabled       bool
+	MeshLoginURL      string
 	SSHKeys           *sshkeys.Dynamic
 	SSHAdminKeys      []string
 	SSHAllowUnmapped  bool

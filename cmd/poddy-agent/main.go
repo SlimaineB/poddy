@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
+	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"poddy/internal/mesh"
 	"poddy/internal/tunnel"
 )
 
@@ -20,24 +24,106 @@ func main() {
 	workspace := flag.String("workspace", os.Getenv("PODDY_WORKSPACE_NAME"), "workspace name")
 	target := flag.String("target", env("PODDY_AGENT_TARGET", "127.0.0.1:22"), "local TCP target")
 	insecure := flag.Bool("insecure", os.Getenv("PODDY_AGENT_INSECURE") == "true", "skip TLS verification (development only)")
+	meshControlURL := flag.String("mesh-control-url", os.Getenv("PODDY_MESH_CONTROL_URL"), "mesh control server URL")
+	meshAuthKey := flag.String("mesh-auth-key", os.Getenv("PODDY_MESH_AUTH_KEY"), "mesh auth key")
+	meshStateDir := flag.String("mesh-state-dir", env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"), "writable mesh state directory")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	agent := tunnel.NewAgent(tunnel.AgentConfig{
-		URL:         *url,
-		Token:       *token,
-		TokenFile:   *tokenFile,
-		RefreshFile: *refreshFile,
-		Workspace:   *workspace,
-		Target:      *target,
-		Insecure:    *insecure,
-	})
-	log.Printf("workspace agent starting for %s", strings.ReplaceAll(strings.ReplaceAll(*workspace, "\n", " "), "\r", " "))
-	if err := agent.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Fatal(err)
+	name := strings.TrimSpace(*workspace)
+	if name == "" {
+		log.Fatal("workspace name is required")
 	}
+	if *url == "" && strings.TrimSpace(*meshAuthKey) == "" {
+		log.Fatal("either PODDY_AGENT_URL or PODDY_MESH_AUTH_KEY is required")
+	}
+	log.Printf("workspace agent starting for %s", safe(name))
+
+	errors := make(chan error, 2)
+	if *url != "" {
+		agent := tunnel.NewAgent(tunnel.AgentConfig{
+			URL:         *url,
+			Token:       *token,
+			TokenFile:   *tokenFile,
+			RefreshFile: *refreshFile,
+			Workspace:   name,
+			Target:      *target,
+			Insecure:    *insecure,
+		})
+		go func() { errors <- agent.Run(ctx) }()
+	}
+	if strings.TrimSpace(*meshAuthKey) != "" {
+		go func() {
+			errors <- runMesh(ctx, name, *meshControlURL, *meshAuthKey, *meshStateDir, *target)
+		}()
+	}
+
+	select {
+	case err := <-errors:
+		if err != nil && ctx.Err() == nil {
+			log.Fatal(err)
+		}
+	case <-ctx.Done():
+	}
+}
+
+func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, target string) error {
+	node, err := mesh.Start(ctx, mesh.Config{
+		ControlURL: controlURL,
+		AuthKey:    authKey,
+		Hostname:   mesh.WorkspaceHostname(workspace),
+		StateDir:   stateDir,
+		Ephemeral:  true,
+	})
+	if err != nil {
+		return err
+	}
+	defer node.Close()
+
+	listener, err := node.Listen("tcp", ":22")
+	if err != nil {
+		return fmt.Errorf("mesh listen: %w", err)
+	}
+	defer listener.Close()
+	log.Printf("workspace %s joined the mesh as %s", safe(workspace), mesh.WorkspaceHostname(workspace))
+
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		go forward(conn, target)
+	}
+}
+
+func forward(conn net.Conn, target string) {
+	defer conn.Close()
+	upstream, err := net.Dial("tcp", target)
+	if err != nil {
+		log.Printf("mesh forward %s: %v", target, err)
+		return
+	}
+	defer upstream.Close()
+
+	done := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(upstream, conn)
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(conn, upstream)
+		done <- struct{}{}
+	}()
+	<-done
 }
 
 func env(key, fallback string) string {
@@ -45,4 +131,8 @@ func env(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func safe(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", " "), "\r", " ")
 }

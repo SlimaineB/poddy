@@ -20,62 +20,86 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	if container == nil {
 		return nil
 	}
-	if m.AgentImage == "" {
-		if m.AgentURL == "" || m.AgentToken == nil {
-			removeEnv(container, envAgentSidecar)
-			removeAgentEnv(pod)
-			removeAgentTokenSecretMount(pod)
-			removeContainer(pod, AgentContainerName)
-			return m.deleteAgentTokenSecret(ctx, workspace)
-		}
-		token, err := m.AgentToken(workspace, owner)
-		if err != nil {
-			return err
-		}
-		secretName := AgentTokenSecretName(workspace)
-		if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
-			return err
-		}
-		setEnv(container, envAgentURL, m.AgentURL)
-		setEnvFromSecret(container, envAgentToken, secretName, agentTokenSecretKey)
-		setEnv(container, envAgentTokenFile, agentTokenFile)
-		setEnv(container, envAgentRefreshFile, agentTokenRefreshFile)
-		setEnv(container, envWorkspaceName, workspace)
+	useWSS := m.AgentURL != "" && m.AgentToken != nil
+	useMesh := strings.TrimSpace(m.MeshAuthKey) != ""
+	if !useWSS && !useMesh {
 		removeEnv(container, envAgentSidecar)
+		removeAgentEnv(pod)
+		removeAgentTokenSecretMount(pod)
 		removeContainer(pod, AgentContainerName)
-		mountAgentTokenState(pod, container)
-		mountAgentTokenSecret(pod, container, workspace)
-		return nil
+		return m.deleteAgentTokenSecret(ctx, workspace)
 	}
 
 	removeEnv(container, envAgentURL)
 	removeEnv(container, envAgentToken)
 	removeEnv(container, envAgentTokenFile)
 	removeEnv(container, envAgentRefreshFile)
+	removeMeshEnv(container)
 	removeAgentTokenSecretMountFromContainer(container)
-	if m.AgentURL == "" {
+
+	if m.AgentImage == "" {
 		removeEnv(container, envAgentSidecar)
-		removeAgentTokenSecretMount(pod)
 		removeContainer(pod, AgentContainerName)
-		return m.deleteAgentTokenSecret(ctx, workspace)
+		setEnv(container, envWorkspaceName, workspace)
+		if useWSS {
+			token, err := m.AgentToken(workspace, owner)
+			if err != nil {
+				return err
+			}
+			secretName := AgentTokenSecretName(workspace)
+			if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
+				return err
+			}
+			setEnv(container, envAgentURL, m.AgentURL)
+			setEnvFromSecret(container, envAgentToken, secretName, agentTokenSecretKey)
+			setEnv(container, envAgentTokenFile, agentTokenFile)
+			setEnv(container, envAgentRefreshFile, agentTokenRefreshFile)
+			mountAgentTokenSecret(pod, container, workspace)
+		} else {
+			removeAgentTokenSecretMount(pod)
+			if err := m.deleteAgentTokenSecret(ctx, workspace); err != nil {
+				return err
+			}
+		}
+		mountAgentTokenState(pod, container)
+		applyMeshEnv(container, m.MeshControlURL, m.MeshAuthKey)
+		return nil
 	}
-	if m.AgentToken == nil {
-		removeEnv(container, envAgentSidecar)
-		removeAgentTokenSecretMount(pod)
-		removeContainer(pod, AgentContainerName)
-		return m.deleteAgentTokenSecret(ctx, workspace)
-	}
-	token, err := m.AgentToken(workspace, owner)
-	if err != nil {
-		return err
-	}
-	secretName := AgentTokenSecretName(workspace)
-	if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
-		return err
-	}
+
 	setEnv(container, envAgentSidecar, "true")
-	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName)
+	secretName := ""
+	if useWSS {
+		token, err := m.AgentToken(workspace, owner)
+		if err != nil {
+			return err
+		}
+		secretName = AgentTokenSecretName(workspace)
+		if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
+			return err
+		}
+	} else {
+		removeAgentTokenSecretMount(pod)
+		if err := m.deleteAgentTokenSecret(ctx, workspace); err != nil {
+			return err
+		}
+	}
+	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName, m.MeshControlURL, m.MeshAuthKey)
 	return nil
+}
+
+func removeMeshEnv(container *corev1.Container) {
+	removeEnv(container, envMeshControlURL)
+	removeEnv(container, envMeshAuthKey)
+	removeEnv(container, envMeshStateDir)
+}
+
+func applyMeshEnv(container *corev1.Container, controlURL, authKey string) {
+	if container == nil || strings.TrimSpace(authKey) == "" {
+		return
+	}
+	setEnv(container, envMeshControlURL, strings.TrimSpace(controlURL))
+	setEnv(container, envMeshAuthKey, strings.TrimSpace(authKey))
+	setEnv(container, envMeshStateDir, agentStateMountPath+"/tsnet")
 }
 
 func (m *Manager) agentSidecarImage() string {
@@ -88,8 +112,8 @@ const (
 	agentTokenFile       = agentStateMountPath + "/agent-token"
 )
 
-func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName string) {
-	container := agentSidecar(image, agentURL, workspace, secretName)
+func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName, meshControlURL, meshAuthKey string) {
+	container := agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey)
 	mountAgentTokenState(pod, &container)
 	if secretName != "" {
 		mountAgentTokenSecret(pod, &container, workspace)
@@ -201,16 +225,25 @@ func removeAgentTokenSecretMountFromContainer(container *corev1.Container) {
 	container.VolumeMounts = kept
 }
 
-func agentSidecar(image, agentURL, workspace, secretName string) corev1.Container {
+func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey string) corev1.Container {
 	env := []corev1.EnvVar{
 		{Name: envWorkspaceName, Value: workspace},
 	}
 	if agentURL != "" {
 		env = append(env,
 			corev1.EnvVar{Name: envAgentURL, Value: agentURL},
-			secretEnv(envAgentToken, secretName, agentTokenSecretKey),
 			corev1.EnvVar{Name: envAgentTokenFile, Value: agentTokenFile},
 			corev1.EnvVar{Name: envAgentRefreshFile, Value: agentTokenRefreshFile},
+		)
+		if secretName != "" {
+			env = append(env, secretEnv(envAgentToken, secretName, agentTokenSecretKey))
+		}
+	}
+	if strings.TrimSpace(meshAuthKey) != "" {
+		env = append(env,
+			corev1.EnvVar{Name: envMeshControlURL, Value: strings.TrimSpace(meshControlURL)},
+			corev1.EnvVar{Name: envMeshAuthKey, Value: strings.TrimSpace(meshAuthKey)},
+			corev1.EnvVar{Name: envMeshStateDir, Value: agentStateMountPath + "/tsnet"},
 		)
 	}
 	return corev1.Container{
@@ -229,12 +262,12 @@ func agentSidecar(image, agentURL, workspace, secretName string) corev1.Containe
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("10m"),
-				corev1.ResourceMemory: resource.MustParse("16Mi"),
+				corev1.ResourceCPU:    resource.MustParse("20m"),
+				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
+				corev1.ResourceMemory: resource.MustParse("256Mi"),
 			},
 		},
 	}

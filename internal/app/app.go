@@ -33,6 +33,7 @@ import (
 	"poddy/internal/externalauth"
 	"poddy/internal/k8s"
 	"poddy/internal/local"
+	"poddy/internal/mesh"
 	"poddy/internal/metadata"
 	"poddy/internal/metrics"
 	"poddy/internal/monitoring"
@@ -223,6 +224,8 @@ func Run(ctx context.Context, args []string) error {
 		Region:              cfg.RegionName,
 		HelperImage:         templates.RewriteImageRegistryWithMap(cfg.BackupHelperImage, cfg.ImageRegistry, cfg.ImageRegistryMap),
 		AgentImage:          cfg.AgentImage,
+		MeshControlURL:      cfg.MeshControlURL,
+		MeshAuthKey:         cfg.MeshAuthKey,
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
@@ -476,6 +479,31 @@ func Run(ctx context.Context, args []string) error {
 	if hub != nil && regionTunnel != nil {
 		hub.SetTunnel(&tunnel.PeerRegionDialer{Local: regionTunnel, Presence: presence, Address: peerAddress, Key: []byte(agentKey)})
 	}
+	var meshNode *mesh.Node
+	if cfg.MeshEnabled && !cfg.RegionMode {
+		hostname := cfg.MeshHostname
+		if hostname == "" {
+			hostname = mesh.PortalHostname(hostName())
+		}
+		startCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		meshNode, err = mesh.Start(startCtx, mesh.Config{
+			ControlURL: cfg.MeshControlURL,
+			AuthKey:    cfg.MeshAuthKey,
+			Hostname:   hostname,
+			StateDir:   cfg.MeshStateDir,
+			Ephemeral:  true,
+		})
+		cancel()
+		if err != nil {
+			log.Printf("mesh: portal node unavailable: %v", err)
+			meshNode = nil
+		} else {
+			defer meshNode.Close()
+			log.Printf("mesh: portal joined tailnet as %s", hostname)
+			cfg.SSHAddr = ""
+		}
+	}
+
 	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA, accessStore, regionTunnel, regionNames, presence, peerAddress, agentKey)
 	if err != nil {
 		return err
@@ -583,8 +611,10 @@ func Run(ctx context.Context, args []string) error {
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
-		SSHEnabled:        cfg.SSHEnabled && sshBastion != nil,
+		SSHEnabled:        cfg.SSHEnabled && (sshBastion != nil || meshNode != nil),
 		SSHCA:             sshCA,
+		MeshEnabled:       meshNode != nil,
+		MeshLoginURL:      cfg.MeshLoginURL,
 		SSHCertTTL:        cfg.SSHCertTTL,
 		VSCodeExtension: extension.Metadata{
 			ID:          cfg.VSCodeExtensionID,
@@ -984,6 +1014,14 @@ func configureAgentBroker(broker *tunnel.Broker, cfg config.Config, manager *k8s
 		}
 		return nil
 	}
+}
+
+func hostName() string {
+	name, err := os.Hostname()
+	if err != nil || strings.TrimSpace(name) == "" {
+		return "poddy"
+	}
+	return name
 }
 
 func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store, regionTunnel *tunnel.RegionBroker, regionNames []string, presence tunnel.Presence, peerAddress, agentKey string) (*bastion.Bastion, error) {

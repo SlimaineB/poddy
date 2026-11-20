@@ -161,7 +161,7 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	if agent.SecurityContext == nil || agent.SecurityContext.RunAsNonRoot == nil || !*agent.SecurityContext.RunAsNonRoot {
 		t.Fatalf("agent security context = %+v", agent.SecurityContext)
 	}
-	if got := agent.Resources.Limits.Memory().String(); got != "128Mi" {
+	if got := agent.Resources.Limits.Memory().String(); got != "256Mi" {
 		t.Fatalf("agent memory limit = %q", got)
 	}
 
@@ -959,10 +959,10 @@ func TestPreviewUsageIncludesAgentSidecar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.CPU.Cmp(resource.MustParse("510m")) != 0 {
+	if usage.CPU.Cmp(resource.MustParse("520m")) != 0 {
 		t.Fatalf("cpu = %s", usage.CPU.String())
 	}
-	if usage.Memory.Cmp(resource.MustParse("1040Mi")) != 0 {
+	if usage.Memory.Cmp(resource.MustParse("1088Mi")) != 0 {
 		t.Fatalf("memory = %s", usage.Memory.String())
 	}
 }

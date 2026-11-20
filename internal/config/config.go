@@ -95,6 +95,13 @@ type Config struct {
 	AgentKey             string
 	AgentTokenTTL        time.Duration
 
+	MeshEnabled    bool
+	MeshControlURL string
+	MeshAuthKey    string
+	MeshStateDir   string
+	MeshHostname   string
+	MeshLoginURL   string
+
 	VSCodeExtensionID          string
 	VSCodeExtensionVersion     string
 	VSCodeExtensionReleaseURL  string
@@ -198,6 +205,12 @@ func Load(args []string) (Config, error) {
 		AgentImage:           os.Getenv("PODDY_AGENT_IMAGE"),
 		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
 		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", time.Hour),
+		MeshEnabled:          envBool("PODDY_MESH_ENABLED", strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")) != ""),
+		MeshControlURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_CONTROL_URL")), "/"),
+		MeshAuthKey:          strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")),
+		MeshStateDir:         env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"),
+		MeshHostname:         strings.TrimSpace(os.Getenv("PODDY_MESH_HOSTNAME")),
+		MeshLoginURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_LOGIN_URL")), "/"),
 
 		VSCodeExtensionID:          env("PODDY_VSCODE_EXTENSION_ID", ext.ID),
 		VSCodeExtensionVersion:     env("PODDY_VSCODE_EXTENSION_VERSION", ext.Version),
@@ -295,6 +308,12 @@ func Load(args []string) (Config, error) {
 	fs.StringVar(&cfg.AgentImage, "agent-image", cfg.AgentImage, "image running the poddy-agent sidecar (empty uses the in-workspace agent)")
 	fs.StringVar(&cfg.AgentKey, "agent-key", cfg.AgentKey, "shared key used to sign and verify workspace agent tokens")
 	fs.DurationVar(&cfg.AgentTokenTTL, "agent-token-ttl", cfg.AgentTokenTTL, "lifetime of workspace agent tokens")
+	fs.BoolVar(&cfg.MeshEnabled, "mesh-enabled", cfg.MeshEnabled, "join the WireGuard mesh (Headscale/Tailscale) for workspace SSH")
+	fs.StringVar(&cfg.MeshControlURL, "mesh-control-url", cfg.MeshControlURL, "mesh control server URL (empty uses Tailscale)")
+	fs.StringVar(&cfg.MeshAuthKey, "mesh-auth-key", cfg.MeshAuthKey, "mesh auth key injected into workspace agents")
+	fs.StringVar(&cfg.MeshStateDir, "mesh-state-dir", cfg.MeshStateDir, "writable directory for mesh state")
+	fs.StringVar(&cfg.MeshHostname, "mesh-hostname", cfg.MeshHostname, "mesh hostname for the portal node (defaults to the pod name)")
+	fs.StringVar(&cfg.MeshLoginURL, "mesh-login-url", cfg.MeshLoginURL, "public mesh login server shown to users")
 	fs.StringVar(&cfg.VSCodeExtensionID, "vscode-extension-id", cfg.VSCodeExtensionID, "VS Code extension identifier shown in the portal")
 	fs.StringVar(&cfg.VSCodeExtensionVersion, "vscode-extension-version", cfg.VSCodeExtensionVersion, "VS Code extension version shown in the portal")
 	fs.StringVar(&cfg.VSCodeExtensionReleaseURL, "vscode-extension-release-url", cfg.VSCodeExtensionReleaseURL, "VS Code extension release page")

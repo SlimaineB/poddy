@@ -66,6 +66,9 @@ const (
 	envAgentTokenFile   = "PODDY_AGENT_TOKEN_FILE"
 	envAgentRefreshFile = "PODDY_AGENT_REFRESH_FILE"
 	envAgentSidecar     = "PODDY_AGENT_SIDECAR"
+	envMeshControlURL   = "PODDY_MESH_CONTROL_URL"
+	envMeshAuthKey      = "PODDY_MESH_AUTH_KEY" // #nosec G101 -- Environment variable name, not a credential.
+	envMeshStateDir     = "PODDY_MESH_STATE_DIR"
 )
 
 var (
@@ -159,6 +162,8 @@ type Manager struct {
 	AgentImage          string
 	AgentToken          WorkspaceTokenFunc
 	AgentTokenTTL       time.Duration
+	MeshControlURL      string
+	MeshAuthKey         string
 
 	stateOnce sync.Once
 	state     *StateStore
@@ -568,8 +573,14 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if !hasContainer(pod, ContainerName) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
 	}
-	if m.AgentURL != "" && m.AgentImage != "" && m.AgentToken != nil {
-		upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, AgentTokenSecretName(req.Name))
+	if m.AgentImage != "" && (m.AgentURL != "" || m.MeshAuthKey != "") {
+		secretName := ""
+		if m.AgentURL != "" && m.AgentToken != nil {
+			secretName = AgentTokenSecretName(req.Name)
+		}
+		if m.AgentURL == "" || m.AgentToken != nil {
+			upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, secretName, m.MeshControlURL, m.MeshAuthKey)
+		}
 	}
 	return resolvedCreate{
 		templateName: templateName,
