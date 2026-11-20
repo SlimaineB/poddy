@@ -147,6 +147,26 @@ func TestDesktopIsOwnerOrAdminScoped(t *testing.T) {
 		t.Fatalf("admin ticket owner = %q, want workspace owner", claims.Owner)
 	}
 }
+func TestDesktopUsesDirectMeshHost(t *testing.T) {
+	s := desktopTestServer(t)
+	s.MeshEnabled = true
+	s.MeshLoginURL = "https://mesh.example.com"
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/desktop", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("desktop = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeDesktopPayload(t, rec)
+	if !payload.Mesh || payload.SSHHost != "ws-alice-ws" || payload.SSHPort != "22" {
+		t.Fatalf("mesh payload = %+v", payload)
+	}
+}
+
 func TestDesktopEditorScheme(t *testing.T) {
 	s := desktopTestServer(t)
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})

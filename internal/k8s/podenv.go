@@ -254,8 +254,8 @@ func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAu
 		Env:             env,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),
-			RunAsUser:                ptr.To[int64](65532),
-			RunAsGroup:               ptr.To[int64](65532),
+			RunAsUser:                ptr.To[int64](1000),
+			RunAsGroup:               ptr.To[int64](1000),
 			AllowPrivilegeEscalation: ptr.To(false),
 			ReadOnlyRootFilesystem:   ptr.To(true),
 			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},

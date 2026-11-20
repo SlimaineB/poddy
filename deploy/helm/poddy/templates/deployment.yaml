@@ -4,15 +4,15 @@
 {{- if and .Values.ssh.enabled .Values.ssh.requireAgent (not .Values.ssh.agent.enabled) }}
 {{- fail "ssh.agent.enabled must be true when ssh.requireAgent=true" }}
 {{- end }}
+{{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.host) (not .Values.mesh.headscale.serverUrl) }}
+{{- fail "mesh.headscale.host is required when mesh.headscale.enabled=true" }}
+{{- end }}
 {{- if .Values.mesh.enabled }}
 {{- if and (not .Values.mesh.authKey) (not .Values.mesh.existingSecret) }}
 {{- fail "mesh.authKey or mesh.existingSecret is required when mesh.enabled=true" }}
 {{- end }}
 {{- if and (not .Values.mesh.controlUrl) (not .Values.mesh.headscale.enabled) }}
 {{- fail "mesh.controlUrl is required when mesh.enabled=true and mesh.headscale.enabled=false" }}
-{{- end }}
-{{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.host) (not .Values.mesh.headscale.serverUrl) }}
-{{- fail "mesh.headscale.host is required when mesh.headscale.enabled=true" }}
 {{- end }}
 {{- end }}
 {{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}

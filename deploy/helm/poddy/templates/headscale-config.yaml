@@ -14,11 +14,13 @@ data:
     grpc_listen_addr: 127.0.0.1:50443
     grpc_allow_insecure: false
     private_key_path: /var/lib/headscale/private.key
+    unix_socket: /var/lib/headscale/headscale.sock
+    unix_socket_permission: "0770"
     noise:
       private_key_path: /var/lib/headscale/noise_private.key
-    ip_prefixes:
-      - fd7a:115c:a1e0::/48
-      - 100.64.0.0/10
+    prefixes:
+      v4: 100.64.0.0/10
+      v6: fd7a:115c:a1e0::/48
     derp:
       server:
         enabled: false

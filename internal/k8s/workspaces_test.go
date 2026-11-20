@@ -205,6 +205,46 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	}
 }
 
+func TestCreateUsesMeshAgentSidecarWithoutToken(t *testing.T) {
+	m := newTestManager()
+	m.AgentImage = "ghcr.io/slimaineb/poddy:test"
+	m.MeshControlURL = "https://mesh.example.com"
+	m.MeshAuthKey = "tskey-auth-test"
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := containerByName(pod, AgentContainerName)
+	if agent == nil {
+		t.Fatal("agent sidecar missing")
+	}
+	if got := envValue(pod, AgentContainerName, envMeshControlURL); got != m.MeshControlURL {
+		t.Fatalf("mesh control url = %q", got)
+	}
+	if got := envValue(pod, AgentContainerName, envMeshAuthKey); got != m.MeshAuthKey {
+		t.Fatalf("mesh auth key = %q", got)
+	}
+	if got := envValue(pod, AgentContainerName, envMeshStateDir); got != agentStateMountPath+"/tsnet" {
+		t.Fatalf("mesh state dir = %q", got)
+	}
+	if got := envValue(pod, AgentContainerName, envAgentToken); got != "" {
+		t.Fatalf("agent token should not be set: %q", got)
+	}
+	for _, volume := range pod.Spec.Volumes {
+		if volume.Name == agentTokenVolumeName {
+			t.Fatalf("token volume should not be mounted in mesh mode")
+		}
+	}
+	if agent.SecurityContext == nil || agent.SecurityContext.RunAsUser == nil || *agent.SecurityContext.RunAsUser != 1000 {
+		t.Fatalf("mesh agent must run as the workspace UID: %+v", agent.SecurityContext)
+	}
+}
+
 func TestCreateFallsBackToInWorkspaceAgent(t *testing.T) {
 	m := newTestManager()
 	m.AgentURL = "http://poddy-agent.poddy.svc:8091"

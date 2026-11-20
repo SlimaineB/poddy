@@ -251,3 +251,10 @@ région, aucun composant à opérer en plus, et pas de peering/VPN.
 - [ ] Faut-il un endpoint SSE ou l'ETag suffit-il ?
 - [ ] Le tunnel gateway doit-il être un composant du chart `poddy` ou un chart
       séparé ?
+
+> **Mise à jour (Headscale)** : le mesh WireGuard/DERP est maintenant
+> implémenté derrière `mesh.enabled`. Les workspaces rejoignent Headscale via
+> `poddy-agent`, les utilisateurs se connectent directement à `ws-<workspace>`,
+> et le portail ne démarre plus de listener SSH lorsque le mesh est actif. Le
+> tunnel WSS reste utilisé pour l'API des régions et l'ancien mode SSH reste
+> disponible uniquement quand `mesh.enabled=false`.
