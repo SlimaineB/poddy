@@ -18,6 +18,10 @@ spec:
         {{- include "poddy.labels" . | nindent 8 }}
         poddy.io/component: dex
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

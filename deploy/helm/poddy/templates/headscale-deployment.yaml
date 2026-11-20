@@ -20,6 +20,10 @@ spec:
         {{- include "poddy.labels" . | nindent 8 }}
         poddy.io/component: headscale
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -35,6 +39,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.mesh.derp.embedded }}
+            - name: stun
+              containerPort: {{ .Values.mesh.derp.stunPort }}
+              protocol: UDP
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /health

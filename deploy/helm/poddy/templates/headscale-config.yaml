@@ -23,14 +23,24 @@ data:
       v6: fd7a:115c:a1e0::/48
     derp:
       server:
-        enabled: false
-      urls:
-        {{- range .Values.mesh.derpUrls }}
-        - {{ . | quote }}
+        enabled: {{ .Values.mesh.derp.embedded }}
+        region_id: {{ .Values.mesh.derp.regionId }}
+        region_code: {{ .Values.mesh.derp.regionCode | quote }}
+        region_name: {{ .Values.mesh.derp.regionName | quote }}
+        stun_listen_addr: {{ printf "0.0.0.0:%d" (int .Values.mesh.derp.stunPort) | quote }}
+        private_key_path: /var/lib/headscale/derp_server_private.key
+        automatically_add_embedded_derp_region: true
+        {{- with .Values.mesh.derp.ipv4 }}
+        ipv4: {{ . | quote }}
         {{- end }}
-      auto_update_enabled: true
+        {{- with .Values.mesh.derp.ipv6 }}
+        ipv6: {{ . | quote }}
+        {{- end }}
+      urls: {{ toYaml .Values.mesh.derpUrls | nindent 8 }}
+      paths: []
+      auto_update_enabled: false
       update_frequency: 24h
-    disable_check_updates: false
+    disable_check_updates: true
     ephemeral_node_inactivity_timeout: 30m
     database:
       type: sqlite
@@ -42,9 +52,8 @@ data:
       magic_dns: true
       base_domain: poddy.mesh
       nameservers:
-        global:
-          - 1.1.1.1
-      search_domains: []
+        global: {{ toYaml .Values.mesh.headscale.nameservers | nindent 10 }}
+      search_domains: {{ toYaml .Values.mesh.headscale.searchDomains | nindent 8 }}
     policy:
       mode: database
       path: ""

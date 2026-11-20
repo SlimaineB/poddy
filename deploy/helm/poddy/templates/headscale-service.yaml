@@ -6,13 +6,28 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "poddy.labels" . | nindent 4 }}
+  {{- with .Values.mesh.derp.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: ClusterIP
+  {{- with .Values.mesh.derp.service.type }}
+  type: {{ . }}
+  {{- end }}
   ports:
     - name: http
       port: 8080
       targetPort: http
       protocol: TCP
+    {{- if .Values.mesh.derp.embedded }}
+    - name: stun
+      port: {{ .Values.mesh.derp.stunPort }}
+      targetPort: stun
+      protocol: UDP
+      {{- with .Values.mesh.derp.service.stunNodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+    {{- end }}
   selector:
     {{- include "poddy.selectorLabels" . | nindent 4 }}
     poddy.io/component: headscale

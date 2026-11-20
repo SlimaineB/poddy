@@ -404,10 +404,25 @@ mesh:
   authKeyKey: auth-key
   # Writable tsnet state directory inside the portal pod.
   stateDir: /var/lib/poddy/tsnet
-  # DERP map(s). The default uses Tailscale's public DERP relays. Point this at
-  # your own DERP server to keep relay traffic self-hosted.
-  derpUrls:
-    - https://controlplane.tailscale.com/derpmap/default
+  # Optional external DERP map URLs. Empty by default so an air-gapped install
+  # never calls Tailscale's public DERP service.
+  derpUrls: []
+  # Self-hosted DERP. When mesh.headscale.enabled=true the Headscale embedded
+  # DERP server is used and public DERP maps stay disabled.
+  derp:
+    embedded: true
+    regionId: 999
+    regionCode: headscale
+    regionName: Poddy Headscale
+    # STUN port advertised in the DERP map. For NodePort, set this to the same
+    # value as service.stunNodePort so clients use the advertised port.
+    stunPort: 3478
+    ipv4: ""
+    ipv6: ""
+    service:
+      type: ""
+      stunNodePort: 0
+      annotations: {}
   # Optional self-hosted Headscale control plane.
   headscale:
     enabled: false
@@ -444,6 +459,10 @@ mesh:
       allowedGroups: []
       allowedUsers: []
       stripEmailDomain: false
+    # Empty means clients keep their local resolver. In an air-gapped network,
+    # set this to the internal DNS servers reachable by user devices.
+    nameservers: []
+    searchDomains: []
   # Optional in-chart Dex identity provider. It is served on the same
   # Headscale host under /dex, so OIDC login has no external dependency.
   # Workspaces still join with mesh.authKey; humans authenticate through Dex.
@@ -451,8 +470,6 @@ mesh:
     enabled: false
     image: ghcr.io/dexidp/dex:v2.45.0
     imagePullPolicy: IfNotPresent
-    # Defaults to https://<mesh.headscale.host>/dex.
-    issuer: ""
     # Each user needs either passwordHash (bcrypt, preferred) or password.
     users: []
     resources: {}

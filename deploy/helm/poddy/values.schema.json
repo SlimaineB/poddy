@@ -223,6 +223,28 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "derp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "embedded": { "type": "boolean" },
+            "regionId": { "type": "integer", "minimum": 1, "maximum": 999 },
+            "regionCode": { "type": "string" },
+            "regionName": { "type": "string" },
+            "stunPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "ipv4": { "type": "string" },
+            "ipv6": { "type": "string" },
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["", "ClusterIP", "NodePort", "LoadBalancer"] },
+                "stunNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+                "annotations": { "type": "object" }
+              }
+            }
+          }
+        },
         "headscale": {
           "type": "object",
           "additionalProperties": false,
@@ -241,6 +263,8 @@
             "storageClass": { "type": "string" },
             "resources": { "type": "object" },
             "extraEnv": { "type": "array" },
+            "nameservers": { "type": "array", "items": { "type": "string" } },
+            "searchDomains": { "type": "array", "items": { "type": "string" } },
             "oidc": {
               "type": "object",
               "additionalProperties": false,
