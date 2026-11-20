@@ -105,7 +105,7 @@ name (without the leading `v`) is used.
 | `workspace.imageRegistryMap` | `{}` | Per-host registry mirrors. Keys are source hosts (`ghcr.io`, `docker.io`, `localhost:5000`) or `*`; values are target prefixes. Exact host wins, then `*`, then `imageRegistry`. An empty value leaves that host untouched. |
 | `workspace.imagePullSecrets` | `[]` | Image pull Secrets applied to workspace pods (private registry mirror). |
 | `vscodeExtension.id` | `slimaineb.poddy-remote` | Extension identifier shown in the portal. Empty uses the metadata embedded in the image. |
-| `vscodeExtension.version` | `0.1.0` | Extension version shown in the portal. Empty uses the metadata embedded in the image. |
+| `vscodeExtension.version` | `0.1.1` | Extension version shown in the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.releaseUrl` | GitHub release | Release page linked from the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.downloadUrl` | GitHub VSIX | VSIX download linked from the portal. Empty uses the metadata embedded in the image. |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | Legacy ConfigMap read at startup to migrate stopped workspaces to StatefulSets. |

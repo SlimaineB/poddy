@@ -28,7 +28,7 @@ func TestDefaultMatchesVSCodePackage(t *testing.T) {
 	if meta.Version != pkg.Version {
 		t.Fatalf("extension version = %q, want %q", meta.Version, pkg.Version)
 	}
-	tag := "v" + pkg.Version
+	tag := "poddy-remote-v" + pkg.Version
 	if !strings.HasSuffix(meta.ReleaseURL, "/"+tag) {
 		t.Fatalf("release URL = %q, want tag %q", meta.ReleaseURL, tag)
 	}

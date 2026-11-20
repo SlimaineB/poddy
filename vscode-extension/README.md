@@ -49,9 +49,11 @@ app tags skip extension packaging and publishing instead of failing.
    differ.
 3. Commit and push the change.
 4. Run the **VS Code extension** workflow from the Actions tab with the new
-   version, or push a matching `v<version>` tag. The workflow validates the tag,
-   creates it when needed, builds the VSIX, and creates or updates the GitHub
-   release.
+   version, or push a matching `poddy-remote-v<version>` tag. The extension
+   tag keeps the VSIX release independent from application tags; a plain
+   `v<version>` tag also works when the app and extension versions match. The
+   workflow validates the tag, builds the VSIX, and creates or updates the
+   GitHub release.
 
 The portal reads the embedded metadata and shows the extension version and a
 download link in the top bar and in the **Connect via SSH** dialog. Set
