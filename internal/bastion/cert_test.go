@@ -1,8 +1,11 @@
 package bastion
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -73,5 +76,55 @@ func TestCertificateAuthenticationAndAuthorization(t *testing.T) {
 	b.CA = other
 	if _, err := b.publicKeyCallback(nil, cert); err == nil {
 		t.Fatal("certificate from another CA was accepted")
+	}
+}
+
+type stubRemote struct{}
+
+func (stubRemote) DialWorkspace(context.Context, string, int) (net.Conn, error) {
+	return nil, errors.New("unused")
+}
+
+func (stubRemote) DialRegionWorkspace(context.Context, string, int) (net.Conn, error) {
+	return nil, errors.New("unused")
+}
+
+func TestRegionKeyAuthorization(t *testing.T) {
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := signer.PublicKey()
+	fingerprint := ssh.FingerprintSHA256(pub)
+	keys, err := sshkeys.Build(nil, []sshkeys.OwnedKey{{
+		Owner: "alice@example.com",
+		Line:  string(ssh.MarshalAuthorizedKey(pub)),
+	}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &Bastion{
+		keys:   keys,
+		Remote: stubRemote{},
+		RegionOwner: func(_ context.Context, workspace string) (string, error) {
+			if workspace == "missing" {
+				return "", errors.New("not found")
+			}
+			return "alice@example.com", nil
+		},
+	}
+	ctx := context.Background()
+	if !b.regionAuthorized(ctx, nil, fingerprint, "dev") {
+		t.Fatal("workspace owner key was not authorized")
+	}
+	if b.regionAuthorized(ctx, nil, ssh.FingerprintSHA256(testCertKey(t)), "dev") {
+		t.Fatal("unknown key was authorized")
+	}
+	if b.regionAuthorized(ctx, nil, fingerprint, "missing") {
+		t.Fatal("key was authorized for an unresolvable workspace")
 	}
 }

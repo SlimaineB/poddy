@@ -48,6 +48,10 @@ type Bastion struct {
 	Broker       *tunnel.Broker
 	Remote       RemoteDialer
 	RegionBroker *tunnel.RegionBroker
+	// RegionOwner resolves the owner of a workspace that lives in a region.
+	// It lets a self-service SSH key use the same per-workspace authorization
+	// as certificates when the hub only knows the workspace through a region.
+	RegionOwner  func(context.Context, string) (string, error)
 	InternalKey  []byte
 	RequireAgent bool
 	CA           *sshca.CA
@@ -388,7 +392,7 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 		if port == 0 {
 			port = 22
 		}
-		if b.Remote != nil && b.scopedCertAuthorized(permissions, name) {
+		if b.regionAuthorized(ctx, permissions, fingerprint, name) {
 			if port != 22 {
 				b.recordAudit(name, actor, actorType, remoteAddr, "denied", "only the workspace SSH port is allowed")
 				_ = newChannel.Reject(ssh.Prohibited, "only the workspace SSH port is allowed")
@@ -476,6 +480,25 @@ func (b *Bastion) serveChannel(newChannel ssh.NewChannel, name, actor, actorType
 
 	<-done
 	_ = channel.Close()
+}
+
+// regionAuthorized allows a scoped certificate or a self-service key owned by
+// the region workspace owner to reach a workspace through the region tunnel.
+func (b *Bastion) regionAuthorized(ctx context.Context, permissions *ssh.Permissions, fingerprint, workspace string) bool {
+	if b.Remote == nil {
+		return false
+	}
+	if b.scopedCertAuthorized(permissions, workspace) {
+		return true
+	}
+	if b.RegionOwner == nil || fingerprint == "" {
+		return false
+	}
+	owner, err := b.RegionOwner(ctx, workspace)
+	if err != nil {
+		return false
+	}
+	return b.keys.Authorize(fingerprint, owner)
 }
 
 func (b *Bastion) scopedCertAuthorized(permissions *ssh.Permissions, workspace string) bool {

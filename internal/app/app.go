@@ -481,6 +481,18 @@ func Run(ctx context.Context, args []string) error {
 		return err
 	}
 	if sshBastion != nil {
+		if hub != nil {
+			sshBastion.RegionOwner = func(ctx context.Context, name string) (string, error) {
+				_, info, err := hub.FindWorkspace(ctx, name, region.Identity{
+					User:  auth.User{Username: "hub", Subject: "hub"},
+					Admin: true,
+				})
+				if err != nil {
+					return "", err
+				}
+				return info.Owner, nil
+			}
+		}
 		defer sshBastion.Close()
 	}
 
