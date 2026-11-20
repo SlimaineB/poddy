@@ -86,7 +86,7 @@ kubectl -n poddy-system create secret generic poddy-database \
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
   --namespace poddy-system \
-  --version 0.1.9 \
+  --version 0.1.10 \
   --set image.repository=ghcr.io/slimaineb/poddy \
   --set image.tag=latest \
   --set auth.existingSecret=poddy-auth \
@@ -106,7 +106,7 @@ Templates are a separate release so they can be versioned and rolled back indepe
 ```bash
 helm upgrade --install poddy-templates oci://ghcr.io/slimaineb/charts/poddy-templates \
   --namespace poddy-workspaces \
-  --version 0.1.9
+  --version 0.1.10
 ```
 
 ### 5. Open the portal
