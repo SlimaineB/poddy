@@ -45,8 +45,13 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+        {{- if .Values.mesh.derp.embedded }}
+        - protocol: UDP
+          port: {{ .Values.mesh.derp.stunPort }}
+        {{- else }}
         - protocol: UDP
           port: 3478
+        {{- end }}
         - protocol: UDP
           port: 41641
     {{- if .Values.mesh.headscale.enabled }}

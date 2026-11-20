@@ -6,12 +6,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "poddy.labels" . | nindent 4 }}
-  {{- with .Values.mesh.derp.service.annotations }}
+  {{- with .Values.mesh.headscale.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.mesh.derp.service.type }}
+  {{- with .Values.mesh.headscale.service.type }}
   type: {{ . }}
   {{- end }}
   ports:
@@ -19,6 +19,9 @@ spec:
       port: 8080
       targetPort: http
       protocol: TCP
+      {{- with .Values.mesh.headscale.service.httpNodePort }}
+      nodePort: {{ . }}
+      {{- end }}
     {{- if .Values.mesh.derp.embedded }}
     - name: stun
       port: {{ .Values.mesh.derp.stunPort }}

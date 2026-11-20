@@ -216,3 +216,7 @@ Demo is ready.
 
 Run deploy/demo/verify.py to prove external auth and backup/restore.
 EOF
+
+if [[ "${DEMO_MESH:-0}" == "1" ]]; then
+  "$ROOT/deploy/demo/mesh-regions.sh"
+fi

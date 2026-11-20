@@ -7,7 +7,7 @@
 {{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.host) (not .Values.mesh.headscale.serverUrl) }}
 {{- fail "mesh.headscale.host is required when mesh.headscale.enabled=true" }}
 {{- end }}
-{{- if and .Values.mesh.headscale.enabled .Values.mesh.derp.embedded (eq .Values.mesh.derp.service.type "NodePort") (ne (int .Values.mesh.derp.stunPort) (int .Values.mesh.derp.service.stunNodePort)) }}
+{{- if and .Values.mesh.headscale.enabled .Values.mesh.derp.embedded (eq .Values.mesh.headscale.service.type "NodePort") (ne (int .Values.mesh.derp.stunPort) (int .Values.mesh.derp.service.stunNodePort)) }}
 {{- fail "mesh.derp.stunPort and mesh.derp.service.stunNodePort must match for NodePort DERP/STUN" }}
 {{- end }}
 {{- if .Values.mesh.enabled }}

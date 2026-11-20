@@ -238,9 +238,7 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "type": { "enum": ["", "ClusterIP", "NodePort", "LoadBalancer"] },
-                "stunNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 },
-                "annotations": { "type": "object" }
+                "stunNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 }
               }
             }
           }
@@ -263,6 +261,15 @@
             "storageClass": { "type": "string" },
             "resources": { "type": "object" },
             "extraEnv": { "type": "array" },
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["", "ClusterIP", "NodePort", "LoadBalancer"] },
+                "httpNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+                "annotations": { "type": "object" }
+              }
+            },
             "nameservers": { "type": "array", "items": { "type": "string" } },
             "searchDomains": { "type": "array", "items": { "type": "string" } },
             "oidc": {

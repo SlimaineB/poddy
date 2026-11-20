@@ -21,9 +21,10 @@ Kubernetes/region API and is unaffected.
 
 ## Install Headscale through the chart
 
-The chart can run a single-replica Headscale server with SQLite and a PVC. It
-uses Tailscale's public DERP map by default; set `mesh.derpUrls` to your own
-DERP server if relay traffic must stay self-hosted.
+The chart runs a single-replica Headscale server with SQLite and a PVC. It
+also runs the Headscale embedded DERP relay, so no Tailscale DERP service or
+external DERP container is required. Tailscale's public DERP map is not loaded
+by default.
 
 ```yaml
 mesh:
@@ -34,6 +35,11 @@ mesh:
     tlsSecret: mesh-example-tls
     annotations:
       cert-manager.io/cluster-issuer: letsencrypt
+  derp:
+    embedded: true
+    stunPort: 30347
+    service:
+      stunNodePort: 30347
   dex:
     enabled: true
     users:
@@ -42,7 +48,9 @@ mesh:
 ```
 
 Headscale must be reachable over HTTPS by workspaces and user laptops. Finish
-the ingress/TLS setup before enabling the mesh data plane.
+the ingress/TLS setup before enabling the mesh data plane. The embedded DERP
+TCP endpoint is served on the same HTTPS host; expose the STUN UDP port through
+a LoadBalancer or a NodePort whose number equals `mesh.derp.stunPort`.
 
 With `mesh.dex.enabled=true`, Dex runs in the same chart and is exposed under
 `https://<mesh.headscale.host>/dex`. Headscale OIDC is configured automatically,
@@ -132,8 +140,46 @@ The workspace NetworkPolicy automatically allows the WireGuard/DERP traffic
 when `networkPolicy.enabled=true`:
 
 - UDP 41641 for direct WireGuard paths.
-- TCP 443, UDP 3478 and UDP 41641 for DERP/STUN.
+- TCP 443 for DERP over the Headscale ingress.
+- UDP `mesh.derp.stunPort` (3478 by default) for STUN and UDP 41641 for direct
+  WireGuard paths.
 - TCP 8080 to the in-cluster Headscale pod.
 
 If you use an external control server or a custom DERP server on non-standard
 ports, add the endpoints to `networkPolicy.workspace.egress.allowedCIDRs`.
+
+## Air-gapped operation
+
+The mesh path makes no runtime calls to Tailscale, an external IdP, or public
+DERP servers. Prepare the following before installing:
+
+- Mirror the Poddy, Headscale, Dex, workspace template, PostgreSQL, and demo
+  images into the internal registry and set `image.repository`,
+  `imagePullSecrets`, and `workspace.imageRegistry`/`imageRegistryMap`.
+- Use an internal DNS name and TLS Secret for `mesh.headscale.host`; set
+  `mesh.headscale.tlsSecret` or `mesh.headscale.ingressClassName`.
+- Leave `mesh.derpUrls` empty. The chart starts the embedded DERP server and
+  sets `disable_check_updates: true`.
+- Keep `mesh.headscale.nameservers` empty, or set it to DNS servers reachable
+  by user devices. Poddy does not inject `1.1.1.1` or any public resolver.
+- Open TCP 443 to the ingress and UDP `mesh.derp.stunPort` to the Headscale
+  Service. Direct WireGuard uses UDP 41641.
+
+For a fully offline demo, use HTTP with `mesh.headscale.serverUrl` set to the
+internal URL and disable the ingress TLS requirement. The mesh control protocol
+and direct WireGuard work over HTTP; DERP relay traffic should use TLS in
+production.
+
+## Multi-region demo
+
+`deploy/demo/demo.sh` installs the single-region demo. To add a hub with mesh
+SSH plus two regions on one k3s cluster:
+
+```bash
+DEMO_MESH=1 DEMO_REGIONS="eu us" deploy/demo/demo.sh
+```
+
+The script installs Headscale and Dex in `poddy-system`, creates the workspace
+preauth key, enables mesh SSH on the hub, then installs `poddy-eu` and
+`poddy-us` with the same control URL and key. Workspaces in every region get
+the mesh sidecar and appear as `ws-<workspace>` on the tailnet.

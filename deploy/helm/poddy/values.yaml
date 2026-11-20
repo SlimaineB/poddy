@@ -420,9 +420,7 @@ mesh:
     ipv4: ""
     ipv6: ""
     service:
-      type: ""
       stunNodePort: 0
-      annotations: {}
   # Optional self-hosted Headscale control plane.
   headscale:
     enabled: false
@@ -439,6 +437,10 @@ mesh:
     storageClass: ""
     resources: {}
     extraEnv: []
+    service:
+      type: ""
+      httpNodePort: 0
+      annotations: {}
     # Human users can authenticate through an OIDC provider such as Dex.
     # Workspace agents keep using mesh.authKey.
     oidc:
