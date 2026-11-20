@@ -223,6 +223,20 @@ The ALB can take a few minutes to become active. The NLB is created by the AWS
 Load Balancer Controller because the Service uses
 `service.beta.kubernetes.io/aws-load-balancer-type: external`.
 
+On EKS Auto Mode, or with AWS Load Balancer Controller 2.9 and later, you can
+request an NLB through `loadBalancerClass` instead of annotations:
+
+```yaml
+ssh:
+  service:
+    type: LoadBalancer
+    loadBalancerClass: eks.amazonaws.com/nlb   # EKS Auto Mode
+    # loadBalancerClass: service.k8s.aws/nlb   # Load Balancer Controller >= 2.9
+```
+
+`http.service.loadBalancerClass` does the same for the portal Service. Leave
+both empty to keep using annotations or the cluster default.
+
 ## 8. Create a workspace with EFS
 
 1. Open `https://poddy.example.com` and sign in through Okta.

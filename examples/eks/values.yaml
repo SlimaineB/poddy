@@ -46,6 +46,10 @@ ssh:
   service:
     type: LoadBalancer
     port: 2222
+    # On EKS Auto Mode, drop the annotations below and set:
+    # loadBalancerClass: eks.amazonaws.com/nlb
+    # With AWS Load Balancer Controller >= 2.9 you may use:
+    # loadBalancerClass: service.k8s.aws/nlb
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-type: external
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip

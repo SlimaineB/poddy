@@ -164,9 +164,11 @@ name (without the leading `v`) is used.
 | `ssh.service.type` | `ClusterIP` | SSH Service type. Opt in to `LoadBalancer`/`NodePort` explicitly. |
 | `ssh.service.port` | `2222` | SSH Service port. |
 | `ssh.service.nodePort` | `0` | Optional fixed SSH NodePort. |
+| `ssh.service.loadBalancerClass` | `""` | Load balancer class, e.g. `eks.amazonaws.com/nlb` (EKS Auto Mode) or `service.k8s.aws/nlb` (AWS Load Balancer Controller >= 2.9). |
 | `http.service.type` | `ClusterIP` | HTTP Service type. |
 | `http.service.port` | `80` | HTTP Service port. |
 | `http.service.nodePort` | `0` | Optional fixed HTTP NodePort. |
+| `http.service.loadBalancerClass` | `""` | Load balancer class for the portal Service. |
 | `networkPolicy.enabled` | `true` | Default-deny NetworkPolicy for workspace pods with DNS/control-plane/internet allow rules. |
 | `networkPolicy.workspace.egress.allowedCIDRs` | `[]` | Extra allowed destinations (internal mirrors, databases). |
 | `networkPolicy.workspace.egress.allowedNamespaces` | `[]` | Extra allowed namespace destinations. |

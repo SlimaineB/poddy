@@ -425,6 +425,11 @@ ssh:
     port: 2222
     # Optional fixed NodePort (30000-32767) for type NodePort/LoadBalancer.
     nodePort: 0
+    # Select a load balancer implementation without annotations. On EKS Auto
+    # Mode use eks.amazonaws.com/nlb; with AWS Load Balancer Controller >= 2.9
+    # use service.k8s.aws/nlb. Leave empty to rely on annotations or the
+    # cluster default.
+    loadBalancerClass: ""
     annotations: {}
     loadBalancerIP: ""
     externalTrafficPolicy: ""
@@ -435,6 +440,14 @@ http:
     port: 80
     # Optional fixed NodePort (30000-32767); only for type NodePort/LoadBalancer.
     nodePort: 0
+    # Select a load balancer implementation without annotations. On EKS Auto
+    # Mode use eks.amazonaws.com/nlb; with AWS Load Balancer Controller >= 2.9
+    # use service.k8s.aws/nlb. Leave empty to rely on annotations or the
+    # cluster default.
+    loadBalancerClass: ""
+    annotations: {}
+    loadBalancerIP: ""
+    externalTrafficPolicy: ""
 
 # Prometheus metrics are served on a separate listener so they are never
 # exposed through the portal ingress. The metrics Service is always ClusterIP.

@@ -370,6 +370,18 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 65535
+            },
+            "loadBalancerClass": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "loadBalancerIP": {
+              "type": "string"
+            },
+            "externalTrafficPolicy": {
+              "type": "string"
             }
           }
         },
@@ -445,6 +457,18 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 65535
+            },
+            "loadBalancerClass": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "loadBalancerIP": {
+              "type": "string"
+            },
+            "externalTrafficPolicy": {
+              "type": "string"
             }
           }
         }
