@@ -48,4 +48,19 @@ data:
     policy:
       mode: database
       path: ""
+    {{- if or .Values.mesh.headscale.oidc.enabled .Values.mesh.dex.enabled }}
+    oidc:
+      only_start_if_oidc_is_available: {{ .Values.mesh.headscale.oidc.onlyStartIfAvailable }}
+      issuer: {{ include "poddy.oidcIssuer" . | quote }}
+      client_id: {{ .Values.mesh.headscale.oidc.clientId | quote }}
+      client_secret_path: /etc/headscale-oidc/client-secret
+      {{- with .Values.mesh.headscale.oidc.expiry }}
+      expiry: {{ . | quote }}
+      {{- end }}
+      strip_email_domain: {{ .Values.mesh.headscale.oidc.stripEmailDomain }}
+      scope: {{ toYaml .Values.mesh.headscale.oidc.scopes | nindent 8 }}
+      allowed_domains: {{ toYaml .Values.mesh.headscale.oidc.allowedDomains | nindent 8 }}
+      allowed_groups: {{ toYaml .Values.mesh.headscale.oidc.allowedGroups | nindent 8 }}
+      allowed_users: {{ toYaml .Values.mesh.headscale.oidc.allowedUsers | nindent 8 }}
+    {{- end }}
 {{- end }}

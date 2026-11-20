@@ -1,0 +1,73 @@
+{{- if .Values.mesh.dex.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "poddy.fullname" . }}-dex
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "poddy.selectorLabels" . | nindent 6 }}
+      poddy.io/component: dex
+  template:
+    metadata:
+      labels:
+        {{- include "poddy.labels" . | nindent 8 }}
+        poddy.io/component: dex
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: dex
+          image: "{{ .Values.mesh.dex.image }}"
+          imagePullPolicy: {{ .Values.mesh.dex.imagePullPolicy }}
+          command:
+            - /usr/local/bin/dex
+          args:
+            - serve
+            - /etc/dex/config.yaml
+          ports:
+            - name: http
+              containerPort: 5556
+              protocol: TCP
+          env:
+            - name: HEADSCALE_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.headscaleOIDCSecretName" . }}
+                  key: {{ .Values.mesh.headscale.oidc.clientSecretKey }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- with .Values.mesh.dex.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex
+              readOnly: true
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "poddy.fullname" . }}-dex
+            defaultMode: 0444
+{{- end }}

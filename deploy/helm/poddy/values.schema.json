@@ -240,7 +240,51 @@
             "storage": { "type": "string" },
             "storageClass": { "type": "string" },
             "resources": { "type": "object" },
-            "extraEnv": { "type": "array" }
+            "extraEnv": { "type": "array" },
+            "oidc": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "issuer": { "type": "string" },
+                "clientId": { "type": "string" },
+                "clientSecret": { "type": "string" },
+                "existingSecret": { "type": "string" },
+                "clientSecretKey": { "type": "string" },
+                "onlyStartIfAvailable": { "type": "boolean" },
+                "expiry": { "type": "string" },
+                "scopes": { "type": "array", "items": { "type": "string" } },
+                "allowedDomains": { "type": "array", "items": { "type": "string" } },
+                "allowedGroups": { "type": "array", "items": { "type": "string" } },
+                "allowedUsers": { "type": "array", "items": { "type": "string" } },
+                "stripEmailDomain": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "dex": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "type": "string" },
+            "imagePullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] },
+            "issuer": { "type": "string" },
+            "users": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string" },
+                  "username": { "type": "string" },
+                  "password": { "type": "string" },
+                  "passwordHash": { "type": "string" }
+                }
+              }
+            },
+            "resources": { "type": "object" }
           }
         }
       },

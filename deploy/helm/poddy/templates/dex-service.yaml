@@ -1,0 +1,19 @@
+{{- if .Values.mesh.dex.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poddy.fullname" . }}-dex
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 5556
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "poddy.selectorLabels" . | nindent 4 }}
+    poddy.io/component: dex
+{{- end }}

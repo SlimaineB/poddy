@@ -57,6 +57,11 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/lib/headscale
+            {{- if or .Values.mesh.headscale.oidc.enabled .Values.mesh.dex.enabled }}
+            - name: oidc
+              mountPath: /etc/headscale-oidc
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -64,4 +69,13 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "poddy.fullname" . }}-headscale
+        {{- if or .Values.mesh.headscale.oidc.enabled .Values.mesh.dex.enabled }}
+        - name: oidc
+          secret:
+            secretName: {{ include "poddy.headscaleOIDCSecretName" . }}
+            defaultMode: 0444
+            items:
+              - key: {{ .Values.mesh.headscale.oidc.clientSecretKey }}
+                path: client-secret
+        {{- end }}
 {{- end }}

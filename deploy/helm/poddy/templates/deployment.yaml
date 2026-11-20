@@ -15,6 +15,36 @@
 {{- fail "mesh.controlUrl is required when mesh.enabled=true and mesh.headscale.enabled=false" }}
 {{- end }}
 {{- end }}
+{{- if .Values.mesh.dex.enabled }}
+{{- if not .Values.mesh.headscale.enabled }}
+{{- fail "mesh.headscale.enabled=true is required when mesh.dex.enabled=true" }}
+{{- end }}
+{{- if .Values.mesh.headscale.oidc.enabled }}
+{{- fail "choose either mesh.dex.enabled or mesh.headscale.oidc.enabled, not both" }}
+{{- end }}
+{{- if not .Values.mesh.dex.users }}
+{{- fail "mesh.dex.users must contain at least one user when mesh.dex.enabled=true" }}
+{{- end }}
+{{- range $i, $user := .Values.mesh.dex.users }}
+{{- if not $user.email }}
+{{- fail (printf "mesh.dex.users[%d].email is required" $i) }}
+{{- end }}
+{{- if and (not $user.password) (not $user.passwordHash) }}
+{{- fail (printf "mesh.dex.users[%d] needs password or passwordHash" $i) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if or .Values.mesh.headscale.oidc.enabled .Values.mesh.dex.enabled }}
+{{- if not .Values.mesh.headscale.oidc.clientId }}
+{{- fail "mesh.headscale.oidc.clientId is required when OIDC is enabled" }}
+{{- end }}
+{{- if and .Values.mesh.headscale.oidc.enabled (not .Values.mesh.dex.enabled) (not .Values.mesh.headscale.oidc.issuer) }}
+{{- fail "mesh.headscale.oidc.issuer is required for an external OIDC provider" }}
+{{- end }}
+{{- if and .Values.mesh.headscale.oidc.enabled (not .Values.mesh.dex.enabled) (not .Values.mesh.headscale.oidc.clientSecret) (not .Values.mesh.headscale.oidc.existingSecret) }}
+{{- fail "mesh.headscale.oidc.clientSecret or existingSecret is required for an external OIDC provider" }}
+{{- end }}
+{{- end }}
 {{- if and .Values.oidc.enabled (not .Values.oidc.issuer) }}
 {{- fail "oidc.issuer is required when oidc.enabled=true" }}
 {{- end }}

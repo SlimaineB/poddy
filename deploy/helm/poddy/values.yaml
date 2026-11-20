@@ -424,7 +424,38 @@ mesh:
     storageClass: ""
     resources: {}
     extraEnv: []
-
+    # Human users can authenticate through an OIDC provider such as Dex.
+    # Workspace agents keep using mesh.authKey.
+    oidc:
+      enabled: false
+      issuer: ""
+      clientId: headscale
+      clientSecret: ""
+      existingSecret: ""
+      clientSecretKey: client-secret
+      onlyStartIfAvailable: true
+      expiry: 180d
+      scopes:
+        - openid
+        - profile
+        - email
+        - groups
+      allowedDomains: []
+      allowedGroups: []
+      allowedUsers: []
+      stripEmailDomain: false
+  # Optional in-chart Dex identity provider. It is served on the same
+  # Headscale host under /dex, so OIDC login has no external dependency.
+  # Workspaces still join with mesh.authKey; humans authenticate through Dex.
+  dex:
+    enabled: false
+    image: ghcr.io/dexidp/dex:v2.45.0
+    imagePullPolicy: IfNotPresent
+    # Defaults to https://<mesh.headscale.host>/dex.
+    issuer: ""
+    # Each user needs either passwordHash (bcrypt, preferred) or password.
+    users: []
+    resources: {}
 http:
   service:
     type: ClusterIP

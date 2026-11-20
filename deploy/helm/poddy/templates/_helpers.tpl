@@ -230,3 +230,34 @@ Secret holding the mesh preauth key.
 {{- printf "%s-mesh" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Dex issuer. Dex is served under /dex on the Headscale ingress so deployments
+do not need another public hostname.
+*/}}
+{{- define "poddy.dexIssuer" -}}
+{{- printf "%s/dex" (include "poddy.headscaleURL" .) -}}
+{{- end -}}
+
+{{/*
+OIDC issuer used by Headscale, either the in-chart Dex or an external IdP.
+*/}}
+{{- define "poddy.oidcIssuer" -}}
+{{- if .Values.mesh.dex.enabled -}}
+{{- include "poddy.dexIssuer" . -}}
+{{- else -}}
+{{- .Values.mesh.headscale.oidc.issuer -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Secret holding the Headscale OIDC client secret. The same secret is mounted
+into Dex when the in-chart identity provider is enabled.
+*/}}
+{{- define "poddy.headscaleOIDCSecretName" -}}
+{{- if .Values.mesh.headscale.oidc.existingSecret -}}
+{{- .Values.mesh.headscale.oidc.existingSecret -}}
+{{- else -}}
+{{- printf "%s-headscale-oidc" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}

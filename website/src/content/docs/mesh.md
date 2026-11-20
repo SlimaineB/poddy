@@ -25,17 +25,33 @@ The chart can run a single-replica Headscale server with SQLite and a PVC. It
 uses Tailscale's public DERP map by default; set `mesh.derpUrls` to your own
 DERP server if relay traffic must stay self-hosted.
 
-```bash
-helm upgrade --install poddy ./deploy/helm/poddy -n poddy-system \
-  --set mesh.headscale.enabled=true \
-  --set mesh.headscale.host=mesh.example.com \
-  --set mesh.headscale.ingressClassName=traefik \
-  --set mesh.headscale.tlsSecret=mesh-example-tls \
-  --set mesh.headscale.annotations."cert-manager\.io/cluster-issuer"=letsencrypt
+```yaml
+mesh:
+  headscale:
+    enabled: true
+    host: mesh.example.com
+    ingressClassName: traefik
+    tlsSecret: mesh-example-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+  dex:
+    enabled: true
+    users:
+      - email: admin@example.com
+        password: change-me
 ```
 
 Headscale must be reachable over HTTPS by workspaces and user laptops. Finish
 the ingress/TLS setup before enabling the mesh data plane.
+
+With `mesh.dex.enabled=true`, Dex runs in the same chart and is exposed under
+`https://<mesh.headscale.host>/dex`. Headscale OIDC is configured automatically,
+so there is no external identity-provider dependency. Prefer `passwordHash`
+(bcrypt) over `password` for production; Helm can generate one locally:
+
+```bash
+htpasswd -bnBC 10 "" 'change-me' | tr -d ':\n'
+```
 
 ## Create the workspace auth key
 
@@ -60,7 +76,8 @@ the new `PODDY_MESH_*` environment variables.
 
 ## Join users
 
-Users install Tailscale and join the same control server once:
+Users install Tailscale and join the same control server once. The browser
+opens the in-chart Dex login page:
 
 ```bash
 tailscale up --login-server=https://mesh.example.com
@@ -71,13 +88,19 @@ The SSH dialog shows the direct `ws-<workspace>` host and the generated
 enrolls a workspace key through the portal, then connects directly over the
 tailnet.
 
-For automated onboarding, create a short-lived user key:
+For automated onboarding without the browser flow, create a short-lived user
+key:
 
 ```bash
 kubectl -n poddy-system exec deploy/poddy-headscale -- \
   headscale preauthkeys create --user alice --expiration 24h
 tailscale up --login-server=https://mesh.example.com --authkey=tskey-auth-...
 ```
+
+Add Dex users under `mesh.dex.users`; each entry needs `email` and either
+`passwordHash` or `password`. To federate an existing IdP later, use Dex
+connectors or set `mesh.headscale.oidc` to an external issuer instead of
+`mesh.dex.enabled`.
 
 ## ACLs
 
