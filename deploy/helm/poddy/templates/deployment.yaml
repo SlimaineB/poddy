@@ -1,9 +1,6 @@
 {{- if and (not .Values.database.url) (not .Values.database.existingSecret) (not .Values.regionManager.enabled) }}
 {{- fail "database.url or database.existingSecret is required unless regionManager.enabled=true" }}
 {{- end }}
-{{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
-{{- fail "ssh.existingHostKeySecret is required when ssh.enabled=true and bastion.replicaCount > 1" }}
-{{- end }}
 {{- if and .Values.ssh.enabled .Values.ssh.requireAgent (not .Values.ssh.agent.enabled) }}
 {{- fail "ssh.agent.enabled must be true when ssh.requireAgent=true" }}
 {{- end }}
@@ -115,13 +112,25 @@ spec:
             - -state-configmap={{ include "poddy.stateConfigMapName" . }}
             - -template={{ .Values.defaultTemplate }}
             - -editor=
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            - -ssh-addr={{ .Values.ssh.addr }}
+            - -ssh-host-key=/etc/poddy/ssh/{{ .Values.ssh.hostKeySecretKey }}
+            {{- if and .Values.ssh.agent.enabled }}
+            - -agent-addr=:{{ .Values.ssh.agent.port }}
+            {{- end }}
+            {{- else }}
             - -ssh-addr=
+            {{- end }}
             - -ssh-enabled={{ .Values.ssh.enabled }}
             {{- if .Values.ssh.enabled }}
+            {{- if not .Values.regionManager.enabled }}
             - -ssh-require-agent={{ .Values.ssh.requireAgent }}
             {{- end }}
+            - -ssh-drain-delay={{ .Values.ssh.drainDelay }}
+            - -ssh-drain-timeout={{ .Values.ssh.drainTimeout }}
+            {{- end }}
             - -ssh-user-keys-configmap={{ include "poddy.fullname" . }}-user-ssh-keys
-            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled (not .Values.regionManager.enabled) }}
             - -agent-url={{ include "poddy.agentURL" . }}
             - -agent-token-ttl={{ .Values.ssh.agent.tokenTtl }}
             {{- end }}
@@ -245,9 +254,15 @@ spec:
             {{- if or .Values.regions .Values.regionsExistingSecret }}
             - name: PODDY_REGIONS_FILE
               value: /etc/poddy/regions/{{ .Values.regionsKey }}
-            - name: PODDY_SSH_RELAY
-              value: "true"
             {{- end }}
+            - name: PODDY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: PODDY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             {{- if or .Values.desktop.secret .Values.desktop.existingSecret }}
             - name: PODDY_DESKTOP_SECRET
               valueFrom:
@@ -422,11 +437,11 @@ spec:
             - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
-            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
-            {{- if .Values.ssh.agent.sidecar }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.ssh.agent.sidecar (not .Values.regionManager.enabled) }}
             - name: PODDY_AGENT_IMAGE
               value: {{ include "poddy.agentImage" . | quote }}
             {{- end }}
+            {{- if and .Values.ssh.enabled .Values.ssh.agent.enabled }}
             - name: PODDY_AGENT_KEY
               valueFrom:
                 secretKeyRef:
@@ -462,6 +477,16 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            - name: ssh
+              containerPort: 2222
+              protocol: TCP
+            {{- if .Values.ssh.agent.enabled }}
+            - name: agent
+              containerPort: {{ .Values.ssh.agent.port }}
+              protocol: TCP
+            {{- end }}
+            {{- end }}
             {{- if $metricsEnabled }}
             - name: metrics
               containerPort: {{ $metricsPort }}
@@ -491,6 +516,11 @@ spec:
               mountPath: /etc/poddy/ssh-ca
               readOnly: true
             {{- end }}
+            {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+            - name: ssh-host-key
+              mountPath: /etc/poddy/ssh
+              readOnly: true
+            {{- end }}
             {{- if or .Values.regions .Values.regionsExistingSecret }}
             - name: regions
               mountPath: /etc/poddy/regions
@@ -500,6 +530,12 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
+        - name: ssh-host-key
+          secret:
+            secretName: {{ include "poddy.sshHostKeySecretName" . }}
+            defaultMode: 0444
+        {{- end }}
         {{- if .Values.ssh.enabled }}
         - name: ssh-keys
           {{- if .Values.ssh.existingKeysSecret }}

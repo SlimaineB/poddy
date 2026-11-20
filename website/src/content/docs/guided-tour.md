@@ -28,7 +28,7 @@ date. poddy turns that into one portal and one template catalogue.
 | Plane | Components | Responsibility |
 |-------|------------|----------------|
 | **Control plane** | Portal + PostgreSQL | Sign-in, RBAC, quotas, templates, workspace lifecycle, encrypted secrets, audit, and the UI/API. |
-| **Access plane** | SSH bastion + workspace agent | Stable SSH entry point, owner checks, port forwarding, terminal, and IDE proxying. |
+| **Access plane** | Portal SSH + workspace agent | Stable SSH entry point, owner checks, port forwarding, terminal, and IDE proxying. |
 | **Runtime plane** | Workspace StatefulSet + Pod + PVC | The developer's Linux environment, home directory, tools, and sidecars. |
 
 ```text
@@ -40,7 +40,7 @@ Browser ──────────► Portal ──────────�
 VS Code / Cursor / PyCharm / ssh ──► Bastion ──► workspace agent ──► sshd (:22)
 ```
 
-The portal and bastion are built from the same image but run as separate
+The portal serves the UI, API, agent broker, and SSH from one image and one
 Deployments. That lets HTTP/API traffic and SSH traffic scale independently.
 
 ## A day in the life
@@ -115,7 +115,7 @@ inputs, not the authority.
 
 Workspaces receive short-lived workspace tokens and refreshed external-auth
 tokens. Users do not receive cluster credentials. SSH is owner-scoped and the
-bastion re-checks ownership on every connection.
+portal re-checks ownership on every connection.
 
 ### Templates are explicit, not magic
 

@@ -30,8 +30,8 @@ Losing these breaks access or makes stored data unreadable:
   the fallback key; keep it stable.
 - `poddy-ssh-ca`: the SSH certificate authority.
 - Your SSH host key Secret (`ssh.existingHostKeySecret`), if configured. A
-  stable host key is strongly recommended for production and required for
-  multiple bastion replicas.
+  stable host key is strongly recommended for production and shared by all
+  portal replicas.
 - The agent HMAC key (`poddy-agent` or `ssh.agent.existingSecret`).
 - `poddy-regions`: region keys on the hub.
 - `poddy-backup`: S3 credentials, if poddy manages backups.
@@ -66,12 +66,12 @@ psql -d poddy_restore_test -c 'select count(*) from poddy.users;'
 
 ### Restore PostgreSQL
 
-1. Stop portal and bastion traffic, or scale both Deployments to zero.
+1. Stop portal traffic, or scale the Deployment to zero.
 2. Restore the database into an empty database.
 3. Restore the matching encryption, OIDC, SSH CA, host, agent, and region
    Secrets.
 4. Start the portal and check migrations and login.
-5. Start the bastion and verify SSH.
+5. Verify SSH through the portal.
 6. Reconcile templates and workspaces from Kubernetes if needed.
 
 Application rollback does not reverse database migrations. Restore the database
@@ -150,7 +150,6 @@ helm upgrade poddy oci://ghcr.io/slimaineb/charts/poddy \
 
 ```bash
 kubectl -n poddy-system rollout status deploy/poddy --timeout=5m
-kubectl -n poddy-system rollout status deploy/poddy-bastion --timeout=5m
 kubectl -n poddy-system get pods
 kubectl -n poddy-workspaces get statefulsets,pods,pvc
 ```
@@ -217,7 +216,7 @@ Suggested alerts:
 - repeated `poddy_workspace_operations_total{result!="success"}`;
 - PostgreSQL unavailable, replication lag, or disk above 80%;
 - PVC usage above 85%;
-- bastion restarts or failed SSH authentication spikes;
+- portal restarts or failed SSH authentication spikes;
 - region tunnel disconnected for more than 5 minutes;
 - certificate or token expiration approaching.
 
@@ -253,7 +252,7 @@ without meaningful prices can leave pricing empty and use resource waste only.
 
 Also log:
 
-- portal and bastion JSON logs;
+- portal JSON logs;
 - Kubernetes events in `poddy-system` and the workspace namespace;
 - audit events in the portal **Audit** page or PostgreSQL;
 - ingress and load-balancer errors for WebSocket upgrades.
@@ -261,24 +260,20 @@ Also log:
 ## Scale and high availability
 
 - **Portal replicas**: stateless for HTTP if every replica shares the OIDC session
-  key and the external-auth/share/environment encryption key. When regions are
-  configured, keep the hub at one replica or use sticky routing because region
-  tunnel sessions live in the hub process. On shutdown, the portal fails
-  readiness, rejects new requests for `portal.shutdownDrainDelay`, then closes
-  the HTTP listener; keep `portal.terminationGracePeriodSeconds` above the drain
-  delay plus the HTTP shutdown timeout.
-- **Bastion replicas**: set `bastion.replicaCount` and provide a shared SSH host
-  key with `ssh.existingHostKeySecret`. Otherwise host-key warnings appear after
-  scaling or restarts. The bastion rejects new SSH connections immediately on
-  `SIGTERM`, keeps existing sessions for `bastion.drainTimeout`, and closes the
-  listener after `bastion.drainDelay`; keep
-  `bastion.terminationGracePeriodSeconds` above the drain delay plus timeout.
-- **PDBs**: portal and bastion PDBs are created automatically when the matching
-  replica count is above one. Set `podDisruptionBudget.enabled=false` or
-  `bastion.podDisruptionBudget.enabled=false` to opt out. `minAvailable` must
+  key and the external-auth/share/environment encryption key. SSH and region
+  tunnels scale with `replicaCount`; owners publish Kubernetes Leases and other
+  replicas forward sessions to them. On shutdown, the portal fails readiness,
+  rejects new requests for `portal.shutdownDrainDelay`, then closes the HTTP
+  listener; keep `portal.terminationGracePeriodSeconds` above the drain delay
+  plus the HTTP shutdown timeout. Provide a shared SSH host key with
+  `ssh.existingHostKeySecret`; SSH rejects new connections immediately on
+  `SIGTERM`, keeps existing sessions for `ssh.drainTimeout`, and closes after
+  `ssh.drainDelay`.
+- **PDB**: the portal PDB is created automatically when `replicaCount` is above
+  one. Set `podDisruptionBudget.enabled=false` to opt out. `minAvailable` must
   leave room for at least one healthy replica during drains.
 - **Database**: use a managed or HA PostgreSQL, not a single demo pod. Size
-  connections for the portal and bastion replicas.
+  connections for the portal replicas.
 - **Kubernetes client**: the default is 50 QPS / 100 burst. Raise
   `kubernetes.qps`/`kubernetes.burst` if many users open terminals or browser
   IDEs at once.
@@ -299,12 +294,12 @@ matrix.
   region Deployment.
 - Rotate the SSH CA carefully. New and restarted workspaces trust the new CA;
   existing workspaces keep the old CA line until restarted.
-- Rotate the bastion host key only with a planned user notification, because
+- Rotate the portal host key only with a planned user notification, because
   clients will see a host-key change.
 - Keep `ssh.authorizedKeys` break-glass admin keys few and audited.
 - Keep `metrics`, PostgreSQL, and the workspace namespace off the public
   internet.
-- Add NetworkPolicies for the portal, bastion, database, and workspace
+- Add NetworkPolicies for the portal, database, and workspace
   namespace.
 - Review global admins, team membership, template access, and owner approvals
   quarterly.
@@ -318,7 +313,7 @@ The hub routes workspace operations to each region over an outbound tunnel. For
 each region:
 
 - monitor tunnel reconnects and `502` responses;
-- keep the same SSH CA available to the hub and every region bastion;
+- keep the same SSH CA available to the hub and every region manager;
 - back up each region's workspace PVCs;
 - keep the hub at one replica or use sticky routing;
 - test workspace creation in every region after an upgrade.
@@ -357,7 +352,7 @@ database, and remove the S3 backup prefix deliberately.
 3. Check PostgreSQL availability, disk, connections, and migrations.
 4. Check the workspace namespace for pending pods, PVCs, and image pulls.
 5. Check the ingress/load balancer for WebSocket upgrades and TLS.
-6. For SSH, check the bastion Deployment, host key Secret, agent connectivity,
+6. For SSH, check the portal Deployment, host key Secret, agent connectivity,
    and CA Secret.
 7. For login, check the OIDC issuer, callback URL, clock skew, and group claims.
 8. After recovery, verify workspace creation, terminal, SSH, and a backup.

@@ -29,31 +29,27 @@ Workspace namespace: {{ include "poddy.workspaceNamespace" . }}
 Workspace lifecycle: stop/start/restart from the UI (stopped specs are kept in the {{ include "poddy.stateConfigMapName" . }} ConfigMap).
 
 {{- if .Values.ssh.enabled }}
-{{- if .Values.bastion.enabled }}
+{{- if .Values.regionManager.enabled }}
+SSH is served by the hub; this region manager does not listen for SSH.
+{{- else }}
 SSH endpoint: {{ .Values.ssh.publicHost }}:{{ .Values.ssh.publicPort }}
-SSH bastion Deployment: {{ include "poddy.fullname" . }}-bastion
+SSH is served by the portal Deployment; there is no separate bastion.
 Use the "SSH" button in the UI to copy the ProxyCommand configuration for VS Code, Cursor, PyCharm, or a terminal.
-{{- if not .Values.ssh.existingHostKeySecret }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.ssh.existingHostKeySecret) }}
 
-WARNING: the SSH host key is ephemeral (stored in an emptyDir). Create a host
-key Secret and set ssh.existingHostKeySecret before scaling
-bastion.replicaCount above one.
+WARNING: the generated SSH host key is stored in
+{{ include "poddy.sshHostKeySecretName" . }}. Set ssh.existingHostKeySecret to
+manage it yourself.
 {{- end }}
-{{- else }}
-SSH certificate issuance is enabled; no local bastion is deployed.
-{{- end }}
-{{- else }}
-SSH bastion is disabled.
 {{- end }}
 
 {{- if and (or .Values.regions .Values.regionsExistingSecret) .Values.ssh.enabled (not .Values.ssh.ca.existingSecret) }}
 
-WARNING: region SSH is relayed through the outbound region tunnel and verifies
-certificates with the SSH CA. Hub and every region cluster must mount the same
-CA Secret (set ssh.ca.existingSecret); the chart otherwise generates a
-per-release key.
+WARNING: region SSH verifies certificates with the SSH CA. Hub and every region
+cluster must mount the same CA Secret (set ssh.ca.existingSecret); the chart
+otherwise generates a per-release key.
 {{- end }}
-
+{{- end }}
 {{- if and .Values.auth.token (not .Values.oidc.enabled) }}
 WARNING: only a shared token is configured. All users share the same identity
 ("token") and can reach each other's workspaces. Enable oidc for multi-user use.
@@ -65,9 +61,4 @@ administrator access to all workspaces.
 {{- if and (gt (int .Values.replicaCount) 1) (not .Values.podDisruptionBudget.enabled) }}
 WARNING: replicaCount is above one but podDisruptionBudget.enabled=false.
 Enable the portal PDB to protect availability during node drains.
-{{- end }}
-{{- if and .Values.ssh.enabled .Values.bastion.enabled (gt (int .Values.bastion.replicaCount) 1) (not .Values.bastion.podDisruptionBudget.enabled) }}
-WARNING: bastion.replicaCount is above one but
-bastion.podDisruptionBudget.enabled=false. Enable it to protect SSH during
-node drains.
 {{- end }}

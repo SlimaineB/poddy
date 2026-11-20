@@ -118,8 +118,8 @@ les 2 régions du test « APE » étaient dans le même cluster EU : pas d'infra
       annotations AWS ne suffisent pas sur EKS Auto Mode, qui exige
       `spec.loadBalancerClass: eks.amazonaws.com/nlb` (les NLB du cluster qui marchent l'ont).
       Corrigé : `ssh.service.loadBalancerClass` (comme `http.service.loadBalancerClass`).
-      En multi-région, le relais SSH (`PODDY_SSH_RELAY`) supprime même le besoin d'un
-      LoadBalancer bastion par région.
+      En multi-région, le forwarding portal-native supprime même le besoin d'un
+      LoadBalancer SSH par région.
 - [ ] **Aucun template embarqué → install « vide »** : 0.1.9 n'embarque pas les templates
       (`defaultTemplate: base`). Le portail liste 6 templates mais toute création échoue tant
       que `poddy-templates` n'est pas installé. Attendu : dépendance/auto-install des
@@ -151,8 +151,8 @@ les 2 régions du test « APE » étaient dans le même cluster EU : pas d'infra
 
 - Desktop/SSH sans LB : `kubectl -n poddy-eu port-forward svc/poddy-eu-ssh 2222:2222`
   (région eu) et `2223:2222` (région ape), puis VS Code sur `token-eu-ws` / `token-ape-ws`.
-  Le relais `PODDY_SSH_RELAY` (hub bastion → portail → WSS région → port-forward pod)
-  remplace ce contournement ; à valider sur le pilote EKS avec un CA SSH partagé.
+  Le forwarding portal-native (SSH dans le portail → WSS région → port-forward pod)
+  remplace ce contournement ; à valider sur un hub multi-replica avec un CA SSH partagé.
 - Régions sans base : état d'accès/quotas in-memory (les workspaces owner fonctionnent,
   mais l'approbation admin inter-workspace n'est pas partagée avec le bastion). En prod
   multi-région, la même PG doit être joignable par toutes les régions.

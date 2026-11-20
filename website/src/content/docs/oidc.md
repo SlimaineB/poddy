@@ -189,7 +189,7 @@ exactly. If the provider is not reachable at that URL from the portal pod, set
 advertised by discovery, set `authorizationUrl`. Without these overrides, the
 issuer must be reachable from both the pod and the browser. If the issuer
 hostname resolves publicly for browsers but not inside the cluster, add a
-`hostAliases` entry for the portal and bastion pods instead.
+`hostAliases` entry for the portal pod instead.
 
 ## Callback behind a proxy
 

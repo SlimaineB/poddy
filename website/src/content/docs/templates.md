@@ -272,7 +272,7 @@ kubectl -n poddy-workspaces delete configmap my-template
 
 No portal restart or `helm upgrade` is required. If the workspace image is
 private, add `imagePullSecrets` to the `pod.yaml` spec; the chart's top-level
-`imagePullSecrets` only covers the portal and bastion pods.
+`imagePullSecrets` only covers the portal pods.
 
 ## GitOps and one repository per team
 
@@ -337,7 +337,7 @@ The portal picks up the change through the watch. Old ConfigMaps can stay for hi
    ```
 4. Open **Templates** in the portal, search for the new name, and set access if needed. A template with no RBAC entry is public.
 
-No portal restart or `helm upgrade` of the portal is required. If the workspace image is private, add `imagePullSecrets` inside the template's `pod` spec; the portal chart's top-level `imagePullSecrets` only applies to the portal and bastion pods.
+No portal restart or `helm upgrade` of the portal is required. If the workspace image is private, add `imagePullSecrets` inside the template's `pod` spec; the portal chart's top-level `imagePullSecrets` only applies to the portal pods.
 
 **ConfigMap size limit**: 1 MiB per ConfigMap. Templates are small; split large templates into separate ConfigMaps or bake them into a custom portal image.
 
@@ -463,7 +463,7 @@ spec:
   containers:
     ...
 ```
-The Helm chart's top-level `imagePullSecrets` applies only to the portal and bastion pods. Use `workspace.imagePullSecrets` for every workspace pod, or add `imagePullSecrets` in the pod template for per-template credentials.
+The Helm chart's top-level `imagePullSecrets` applies only to the portal pods. Use `workspace.imagePullSecrets` for every workspace pod, or add `imagePullSecrets` in the pod template for per-template credentials.
 
 ## Parameter handling details
 

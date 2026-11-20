@@ -24,7 +24,7 @@ You need:
 go build -o poddy .
 ```
 
-The local binary runs the portal and the SSH bastion in one process:
+The local binary runs the portal, the agent broker, and SSH in one process:
 
 ```bash
 export KUBE_CONTEXT="$(kubectl config current-context)"
@@ -39,8 +39,8 @@ export PODDY_DATABASE_URL='postgres://poddy:poddy@127.0.0.1:5432/poddy?sslmode=d
   -ssh-public-port=2222
 ```
 
-The web UI is at <http://127.0.0.1:8090>. The standalone cluster bastion is
-built from `cmd/poddy-bastion` and runs as a separate Deployment in Helm.
+The web UI is at <http://127.0.0.1:8090>. In this mode the portal process also
+serves SSH and the workspace agent broker.
 
 ## Build workspace images locally
 
@@ -90,7 +90,7 @@ The same suite runs in CI and through `make ui-test` after a one-time
 
 ## Publishing images
 
-The GitHub Actions publish workflow builds and pushes the portal/bastion image,
+The GitHub Actions publish workflow builds and pushes the portal image,
 the workspace base image, and the Go, Node.js, and Python workspace images to
 GHCR on pushes to `main` and `v*` tags. Manual `docker push` is not part of the
 user setup flow.

@@ -129,7 +129,7 @@ Host poddy-ssh-*
   ProxyCommand ...
 ```
 
-For direct SSH in a local install, port-forward the bastion and use the config
+For direct SSH in a local install, port-forward the portal and use the config
 from the dialog:
 
 ```bash
@@ -137,7 +137,7 @@ kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222
 ssh poddy-ssh-alice-dev
 ```
 
-Production deployments usually expose the bastion with a LoadBalancer or an SSH
+Production deployments usually expose the portal with a LoadBalancer or an SSH
 TCP ingress instead. See [SSH access](ssh.md).
 
 ### Ports
@@ -192,7 +192,7 @@ defaults.
 
 ## SSH keys and external accounts
 
-- **SSH keys** stores public keys used for the bastion and workspaces. You can
+- **SSH keys** stores public keys used for SSH and workspaces. You can
   add, inspect, and remove keys.
 - **Connections** stores OAuth tokens for providers such as GitHub, GitLab,
   Gitea, or Azure DevOps. Templates can require a connection before creation.

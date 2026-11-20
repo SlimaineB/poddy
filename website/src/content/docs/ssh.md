@@ -13,7 +13,7 @@ compatibility fallback.
 ssh / VS Code / Cursor / PyCharm
      │
      ▼
-poddy-bastion :2222
+portal :2222
      │  direct-tcpip (port 22 only)
      │
      ├── workspace agent tunnel ──► poddy-agent ──► 127.0.0.1:22
@@ -24,13 +24,13 @@ poddy-bastion :2222
 ```
 
 The workspace pod runs `poddy-agent` in a dedicated sidecar by default. It opens
-an outbound WebSocket to the bastion and multiplexes TCP streams back to the
-workspace's loopback SSH port. The bastion never accepts an inbound connection
+an outbound WebSocket to the portal and multiplexes TCP streams back to the
+workspace's loopback SSH port. The portal never accepts an inbound connection
 from the workspace, and the agent only permits `127.0.0.1:22`, `localhost:22`,
 or `[::1]:22`. The sidecar has its own memory limit, so a workspace memory spike
 cannot OOM-kill the agent and drop every SSH session.
 
-Desktop IDEs use the same bastion: VS Code and Cursor through the Poddy
+Desktop IDEs use the same portal endpoint: VS Code and Cursor through the Poddy
 extension, and PyCharm through JetBrains Gateway and the generated SSH config.
 Gateway must parse `~/.ssh/config`; the generated block uses `ProxyCommand`
 because Gateway does not support `ProxyJump`.
@@ -59,7 +59,7 @@ not connected.
 
 The token is signed with a key derived from the shared `PODDY_AGENT_KEY` and
 the workspace name, so a token for one workspace cannot be replayed against
-another. The bastion verifies the signature before accepting the tunnel.
+another. The portal verifies the signature before accepting the tunnel.
 
 Existing workspace pods must be stopped and started after upgrading so they
 receive the agent sidecar. Custom workspace images do not need to include
@@ -94,12 +94,12 @@ The workspace image must run `scripts/poddy-ssh-start` as its entrypoint for
 the OOM protection to take effect. A template that overrides the workspace
 command keeps the agent sidecar but must set the OOM score itself.
 
-## Bastion failures and reconnects
+## Portal failures and reconnects
 
-The workspace and its agent stay running when a bastion pod fails. Active SSH
-sessions are terminated because the TCP connection is anchored to that bastion
-process; SSH has no session resumption. New SSH connections fail while
-`ssh.requireAgent=true` until the workspace agent reconnects.
+The workspace and its agent stay running when a portal pod fails. Active SSH
+sessions through that pod are terminated because the TCP connection is anchored
+to that process; SSH has no session resumption. The agent reconnects to another
+portal replica, and new sessions use the replica that owns the agent tunnel.
 
 Poddy limits the outage in three ways:
 
@@ -107,14 +107,15 @@ Poddy limits the outage in three ways:
   adds jitter so many workspaces do not reconnect at the same instant.
 - Agent tunnels use WebSocket ping/pong heartbeats. A dead or half-open tunnel
   is detected within 20 seconds instead of waiting for a TCP timeout.
-- On `SIGTERM`, the bastion rejects new SSH connections and agent tunnels
-  immediately, keeps existing SSH sessions until `bastion.drainTimeout`, and
-  closes the listener after `bastion.drainDelay` so Kubernetes can remove the
-  endpoint first.
+- On `SIGTERM`, the portal rejects new SSH connections and agent tunnels
+  immediately, keeps existing SSH sessions until `ssh.drainTimeout`, and closes
+  the listener after `ssh.drainDelay` so Kubernetes can remove the endpoint
+  first.
 
-For production, run at least two bastion replicas with a shared
-`ssh.existingHostKeySecret`. The bastion PDB is created automatically above one
-replica, and `bastion.terminationGracePeriodSeconds` must stay above
+For production, run at least two portal replicas with a shared
+`ssh.existingHostKeySecret` (or let the chart generate one). The portal PDB is
+created automatically above one replica, and
+`portal.terminationGracePeriodSeconds` must stay above
 `drainDelay + drainTimeout`. The rolling update strategy already uses
 `maxUnavailable: 0`, so a healthy replacement starts before an old pod is
 terminated. A hard crash still drops sessions that were attached to that pod;
@@ -126,7 +127,7 @@ The portal can issue a short-lived OpenSSH user certificate instead of relying
 on long-lived public keys in every workspace:
 
 - The portal signs with the CA private key from `PODDY_SSH_CA_KEY_FILE`.
-- The bastion verifies the certificate with the same CA.
+- The portal verifies the certificate with the same CA.
 - Workspace `authorized_keys` contains a CA line:
 
   ```text
@@ -142,28 +143,28 @@ on long-lived public keys in every workspace:
 - The certificate carries `poddy-workspace` when it is scoped to one workspace
   and `poddy-admin=true` for administrators.
 
-The bastion checks the certificate owner and optional workspace scope before
+The portal checks the certificate owner and optional workspace scope before
 opening a `direct-tcpip` channel. Workspace sshd performs the final
 authentication against the CA line. Legacy user keys remain valid unless you
 remove them from the key registry.
 
 ### Multi-region SSH
 
-With `regions` (or `regionsExistingSecret`) configured, the chart sets
-`PODDY_SSH_RELAY=true` on the hub portal and `PODDY_PORTAL_URL` on the hub
-bastion. The hub bastion then relays region workspaces through the **outbound**
-region tunnel: it forwards the connection to the portal, which opens
-`tcp:<workspace>:22`, and the region agent port-forwards to the pod. No regional
-SSH Service, load balancer, peering, or inbound firewall rule is required, and
-`sshHost`/`sshPort` stay pointed at the hub for every workspace.
+With `regions` (or `regionsExistingSecret`) configured, the hub portal reaches
+region workspaces through the **outbound** region tunnel: it opens
+`tcp:<workspace>:22`, and the region manager port-forwards to the pod. No
+regional SSH Service, load balancer, peering, or inbound firewall rule is
+required, and `sshHost`/`sshPort` stay pointed at the hub for every workspace.
+A portal replica that does not own the region tunnel looks up the owner in a
+Kubernetes Lease and forwards the raw stream to that replica.
 
 Requirements and limits:
 
 - Hub and regions must mount the **same SSH CA** (for example the same
   `ssh.ca.existingSecret`), because the hub signs and the region portal verifies.
 - Relayed sessions require a short-lived certificate. Plain public-key logins
-  still work for local workspaces but are not relayed.
-- Only port 22 is relayed, and administrators still need owner approval.
+  still work for local workspaces but are not forwarded across regions.
+- Only port 22 is forwarded, and administrators still need owner approval.
 
 ### Issue a certificate
 
@@ -210,12 +211,12 @@ ssh -i ~/.ssh/poddy \
   dev@alice-dev
 ```
 
-The same certificate authenticates the outer connection to the bastion and the
+The same certificate authenticates the outer connection to the portal and the
 inner connection to the workspace. Certificates default to 15 minutes
 (`ssh.certTtl` / `PODDY_SSH_CERT_TTL`).
 
 If `workspace` is omitted, the certificate can access any workspace owned by
-the certificate owner. If it is present, the bastion restricts the certificate
+the certificate owner. If it is present, the portal restricts the certificate
 to that workspace.
 
 ## Poddy CLI
@@ -263,7 +264,7 @@ a per-workspace key, requests a short-lived certificate when certificates are
 enabled, falls back to enrolling the public key, then runs the system `ssh`
 client. `poddy port-forward` uses the same tunnel and only forwards the requested
 local port. `poddy cp` streams a `tar` archive between two workspaces through
-the same SSH/bastion path; it works across regions, does not store the data in
+the same SSH path; it works across regions, does not store the data in
 the portal, and applies the same workspace access checks. Copying a directory is
 recursive, and an existing destination directory receives the source basename,
 matching `cp` semantics. Both workspaces must be running and have `tar`
@@ -274,16 +275,15 @@ temporary copies so each workspace gets its own short-lived certificate.
 ## Helm configuration
 
 ```yaml
-bastion:
+# SSH runs inside the portal Deployment, so replicaCount also scales SSH.
+replicaCount: 2
+
+ssh:
   # Reject new connections immediately, then wait for endpoint removal.
   drainDelay: 3s
   # Existing SSH sessions survive graceful pod shutdown for this long.
   drainTimeout: 20s
   terminationGracePeriodSeconds: 30
-  # Set to 2+ with a shared ssh.existingHostKeySecret for HA.
-  replicaCount: 1
-
-ssh:
   requireAgent: true
   certTtl: 15m
 
@@ -308,37 +308,42 @@ ssh:
 
 The chart creates:
 
-- `<fullname>-agent`, a ClusterIP Service for the bastion agent listener.
+- `<fullname>-ssh`, a Service for the SSH listener on the portal.
+- `<fullname>-agent`, a ClusterIP Service for the workspace agent listener.
 - `<fullname>-agent`, a Secret containing the shared agent HMAC key.
+- `<fullname>-ssh-host-key`, a Secret containing the SSH host key.
 - `<fullname>-ssh-ca`, a Secret containing the SSH CA private key.
 
-Both the portal and the bastion mount the CA Secret. The portal uses it to sign
-certificates; the bastion uses it to verify them. Back up the CA Secret if you
-need certificates issued before a restore to remain valid.
+The portal mounts the CA Secret and uses it to sign and verify certificates. Back
+up the CA Secret if you need certificates issued before a restore to remain valid.
 
 ## Multi-region
 
-The central portal issues certificates, while each region runs its own bastion.
-Mount the same CA Secret into the central portal and every region, for example
-by setting `ssh.ca.existingSecret` to a Secret replicated to each release
-namespace. Otherwise a certificate issued by the hub will not verify at a
-region bastion.
+The hub portal is the only SSH entry point. Region managers run with
+`regionManager.enabled=true`, do not listen for SSH, and never require an agent
+sidecar. The hub reaches a region workspace through the region manager's
+outbound tunnel: it opens a `tcp:<workspace>:22` stream, the region manager
+port-forwards to the pod, and the SSH session is spliced end to end.
 
-Agent tokens are scoped to one workspace and are signed by the release that
-creates the workspace. Each region's manager and bastion share their own
-`ssh.agent` Secret; cross-region agent keys are not required. Tokens are
+Mount the same CA Secret into the hub and every region, for example by setting
+`ssh.ca.existingSecret` to a Secret replicated to each release namespace.
+Otherwise a certificate issued by the hub will not verify at a region manager.
+
+Agent tokens are scoped to one workspace and are signed by the hub that creates
+the workspace. Region workspaces do not run the agent tunnel; they rely on the
+region tunnel and Kubernetes port-forward inside the region. Tokens are
 short-lived, are renewed while the agent stays connected, and are refreshed in
 the workspace Secret so a reconnecting agent picks up a valid token.
 
-`poddy config` and `poddy ssh` read the region SSH endpoint from `/api/config`
-and the workspace list, so multi-region workspaces use the correct bastion.
+`poddy config` and `poddy ssh` always target the hub SSH endpoint. The hub
+routes each workspace to the replica that owns its agent or region tunnel, so
+multi-region workspaces use the same `~/.ssh/config` block.
 
 ## Security notes
 
 - Treat the CA private key as a cluster credential. It can mint SSH access to
-  every workspace that trusts it. The bastion only needs the public key in
-  principle, but the chart currently mounts the private key into both portal and
-  bastion for simplicity; restrict Secret access accordingly.
+  every workspace that trusts it. The chart mounts the private key into the
+  portal; restrict Secret access accordingly.
 - Rotating the CA or changing `ssh.requireAgent` updates the CA line only for
   workspaces created or restarted afterwards. Restart existing workspaces to
   apply the new line.
@@ -359,7 +364,7 @@ and the workspace list, so multi-region workspaces use the correct bastion.
   Secret to `workspace.imagePullSecrets` so workspace nodes can start the
   agent sidecar.
 - `ssh.requireAgent=true` removes the Kubernetes port-forward fallback. Keep it
-  enabled in production. The Helm chart only grants the bastion
+  enabled in production. The Helm chart only grants the portal
   `pods/portforward` when `ssh.requireAgent=false`.
 - Administrator certificates (`poddy-admin=true`) can reach every workspace.
   Keep their TTL short. Administrator certificates are also subject to the

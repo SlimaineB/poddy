@@ -6,7 +6,7 @@ description: "Deploy poddy on Amazon EKS with ALB ingress, EBS persistent homes,
 This page shows a production-oriented EKS deployment:
 
 - **ALB Ingress** for the portal, with an ACM certificate.
-- **NLB Service** for SSH through the bastion.
+- **NLB Service** for SSH through the portal.
 - **EBS** for each workspace's `/home/dev` home volume.
 - **EFS** for shared data at `/shared/<workspace>`.
 - **Okta OIDC** for sign-in.
@@ -185,7 +185,7 @@ The chart creates:
 - an `Ingress` with `ingressClassName: alb`;
 - a `Service` of type `LoadBalancer` for SSH, annotated for the AWS Load
   Balancer Controller;
-- the portal and bastion Deployments.
+- the portal Deployment (which serves SSH).
 
 Apply the EFS workspace template in the workspace namespace:
 
@@ -282,7 +282,7 @@ PostgreSQL refuses to initialize a non-empty data directory. See
 | ALB is not created | AWS Load Balancer Controller logs, IRSA annotations, public subnet tags, and the ACM certificate ARN. |
 | Ingress returns 503 | The target group has no healthy targets. Check `alb.ingress.kubernetes.io/healthcheck-path: /healthz` and the portal Service endpoints. |
 | NLB is not created | Controller logs, `aws-load-balancer-type: external`, subnet tags, and the SSH Service annotations. |
-| SSH connects but the host key changes | Set `ssh.existingHostKeySecret`; all bastion replicas must share the same host key. |
+| SSH connects but the host key changes | Set `ssh.existingHostKeySecret`; all portal replicas must share the same host key. |
 | Workspace PVC stays `Pending` | `workspace.storageClass` is empty and the cluster has no default, or the EBS CSI driver is missing. |
 | `poddy-shared-efs` stays `Pending` | The EFS CSI controller, StorageClass name, file system ID, and EFS mount targets. |
 | Workspace pod stuck mounting EFS | EFS security group allows TCP 2049 from the node security group; mount targets exist in the node AZs. |

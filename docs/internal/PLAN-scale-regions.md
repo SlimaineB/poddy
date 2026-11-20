@@ -81,12 +81,14 @@ SSH est le seul flux qui ne se route pas comme HTTP : soit hostnames bastion
 régionaux visibles dans l'UI, soit un routeur SSH global qui lit
 `workspace@` et forward en TCP. Détail des options : `DESIGN-ssh-bastion-tunnel.md`.
 
-Le relais cross-cluster est **implémenté** (`PODDY_SSH_RELAY`) : le bastion du
-hub recopie le flux `direct-tcpip` vers le portail interne, qui ouvre
-`tcp:<workspace>:22` dans le WSS région ; l'agent région fait un port-forward
-local vers le pod. Aucun LB régional, peering ou PrivateLink n'est nécessaire
-pour SSH. Limites v1 : authentification par certificat SSH uniquement, port 22,
-et le secret CA SSH doit être **partagé** entre hub et régions.
+Le forwarding cross-cluster est **implémenté** sans bastion ni relais : le
+portail hub sert SSH en processus et ouvre `tcp:<workspace>:22` dans le WSS
+région ; l'agent région fait un port-forward local vers le pod. Les replicas
+hub se relaient la session via les Leases Kubernetes et le port agent interne
+(`/api/internal/dial`). Aucun LB régional, peering ou PrivateLink n'est
+nécessaire pour SSH. Limites v1 : authentification par certificat SSH
+uniquement, port 22, et le secret CA SSH doit être **partagé** entre hub et
+régions.
 
 Cible incrémentale : **un portail central HA + N data-planes régionaux + edge
 router**. « N portails complets » marche aussi mais ajoute l'agrégation
@@ -221,34 +223,25 @@ Constats :
 | P2 | Sharding de `poddy-state` | moyen | dépasse la limite 1 MiB |
 | P3 | Tunnel gateway dédié | moyen | hub HA avec régions |
 
-## 4. Architecture mesh de référence
+## 4. Architecture retenue
 
-Un control plane de référence a remplacé son ancien stack WebRTC par un mesh
-WireGuard. Conséquences :
+Pas de mesh, pas de WireGuard/DERP, pas de dépendance externe : le portail hub
+est le control plane et le point d'entrée unique.
 
-- Chaque workspace exécute un agent qui se connecte en sortant au control plane
-  et rejoint un tailnet. Les connexions sont directes (P2P, NAT traversal via
-  STUN) et basculent sur des **relais DERP** quand le direct échoue. Tout est
-  chiffré de bout en bout.
-- Le control plane embarque un serveur DERP. Pour la HA, un paramètre de relais
-  permet aux replicas de se relayer le trafic DERP entre eux.
-- Des **proxys de workspace** peuvent être déployés près des users, sans
-  connexion à la base, et relaient SSH/HTTP/WebSocket vers les workspaces via
-  le tailnet. Comme c'est un mesh, n'importe quel proxy peut joindre n'importe
-  quel workspace : pas de session « possédée » par un pod.
-- Multi-région : un seul control plane, des proxys régionaux et des relais
-  DERP. Les appels dashboard/API ne passent pas par les proxys.
+- Les agents des workspaces hub se connectent en sortant au portail (WSS).
+- Les region managers ouvrent un WSS sortant vers le hub ; le hub route l'API,
+  le terminal et SSH via `tcp:<workspace>:22` et un port-forward local.
+- SSH est terminé dans le processus du portail hub (`:2222`), pas dans un
+  bastion séparé.
+- La HA ne dépend pas d'un tunnel « possédé » par un pod : chaque propriétaire
+  publie un Lease Kubernetes (`workspace` ou `region`) et les autres replicas
+  forwardent le flux brut vers lui via `/api/internal/dial` (HMAC).
+- Le CA SSH est partagé entre le hub et les régions pour que les certificats
+  émis par le hub soient acceptés dans `authorized_keys` des workspaces
+  régionaux.
 
-### Implication pour poddy
-
-Le problème du tunnel « possédé par un pod hub » vient du modèle WSS centralisé.
-Un mesh WireGuard + DERP l'évite. Deux stratégies possibles :
-
-1. Court/moyen terme : garder WSS mais isoler les tunnels dans un gateway
-   (option B), ou accepter le hub mono-replica (option A).
-2. Long terme : passer à un modèle mesh (WireGuard/tsnet ou équivalent) pour
-   supprimer la notion de tunnel attaché à un replica. C'est un changement
-   d'architecture majeur, à ne faire que si le multi-région devient central.
+Cette conception respecte les contraintes : aucune exposition entrante par
+région, aucun composant à opérer en plus, et pas de peering/VPN.
 
 ## 5. Décisions ouvertes
 

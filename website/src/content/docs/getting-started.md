@@ -17,7 +17,7 @@ Docker, or a local image build.
 
 | Requirement | Why |
 |-------------|-----|
-| Kubernetes 1.28+ or k3s | Runs the portal, bastion, workspaces, and volumes. |
+| Kubernetes 1.28+ or k3s | Runs the portal, workspaces, and volumes. |
 | PostgreSQL 13+ | Stores users, RBAC, quotas, access, encrypted tokens/secrets, shares, and audit events. |
 | Helm 3.13+ | Installs the portal and templates charts. |
 | `kubectl` | Creates secrets and checks the deployment. |
@@ -78,7 +78,7 @@ The portal runs embedded migrations on startup by default. See
 [PostgreSQL control plane](postgres-schema.md) for schema, migration, and backup
 details.
 
-## 3. Install the portal and SSH bastion
+## 3. Install the portal
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
@@ -98,8 +98,7 @@ helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
 
 This creates:
 
-- the `poddy` portal Deployment;
-- the `poddy-bastion` SSH Deployment;
+- the `poddy` Deployment, which also serves SSH and the agent broker;
 - the `poddy-workspaces` namespace and its Roles/RoleBindings;
 - a generated SSH CA and workspace agent key.
 
@@ -108,7 +107,6 @@ Check the rollout:
 ```bash
 kubectl -n poddy-system get deploy,pods
 kubectl -n poddy-system rollout status deploy/poddy --timeout=5m
-kubectl -n poddy-system rollout status deploy/poddy-bastion --timeout=5m
 ```
 
 ## 4. Install the default templates
@@ -140,7 +138,7 @@ kubectl -n poddy-system get secret poddy-auth \
 
 Open <http://127.0.0.1:8080> and sign in with the token.
 
-For desktop SSH or Remote-SSH, start the bastion port-forward in a third
+For desktop SSH or Remote-SSH, start the SSH port-forward in a third
 terminal:
 
 ```bash
@@ -224,7 +222,7 @@ yourself and set `createWorkspaceNamespace: false`.
 | `no templates` or no **New workspace** choices | Install `poddy-templates` in the workspace namespace and check the portal logs. |
 | Workspace stays in `ImagePullBackOff` | The cluster cannot pull the image or tag; check registry access and `workspace.imagePullSecrets`. |
 | Workspace stays `Pending` | No schedulable node or no StorageClass/PVC. Check `kubectl -n poddy-workspaces describe pod`. |
-| SSH connection refused | Start the bastion port-forward, or expose the SSH Service in production. |
+| SSH connection refused | Start the SSH port-forward, or expose the SSH Service in production. |
 | Login fails | Read the token again from `poddy-auth`; if OIDC is enabled, check the callback URL. |
 
 See [Troubleshooting](troubleshooting.md) for the full runbook.

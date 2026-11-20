@@ -7,7 +7,7 @@ A multi-region deployment uses one central hub and one region manager per
 Kubernetes cluster. The hub owns authentication, RBAC, users, templates, the
 workspace list, the UI, and external auth tokens. Each region manager owns the
 Kubernetes API connection, workspace StatefulSets, PVCs, legacy stopped-state ConfigMap,
-terminal and desktop IDE proxying, and the region SSH bastion.
+terminal and desktop IDE proxying, and the outbound region tunnel.
 
 ```text
 Browser ──► central hub ── signed identity ──► region tunnel (eu) ──► region manager ──► pods
@@ -34,10 +34,11 @@ SSH public keys are replicated from the hub registry to every region.
 | Template catalog and access rules | Yes | No |
 | Workspace list and UI | Yes | No |
 | Workspace pods, PVCs, stopped state | No | Yes |
-| SSH bastion and SSH endpoint | No | Yes |
+| SSH endpoint | Yes (in the portal) | No |
 | PostgreSQL control plane and audit | Yes | No (uses hub) |
 | Access grants, presence, and quotas | Yes (PostgreSQL) | Proxied to hub |
 | Region key and signed identity | Verifies region keys | Trusts hub signature |
+| Outbound tunnel to hub | Accepts | Opens |
 
 Region managers do not need OIDC. They only accept requests signed by the hub.
 Do not expose a region manager portal Service publicly; the hub proxies all
@@ -49,12 +50,12 @@ user traffic through the outbound tunnel.
   must forward WebSocket upgrades for `/api/internal/region/tunnel`.
 - Region manager egress: HTTPS/WSS to `regionManager.hubUrl`.
 - No hub-to-region inbound path and no VPN peering are required.
-- Region SSH bastions remain directly reachable by users on their public
-  `sshHost`/`sshPort`.
+- No region SSH endpoint, load balancer, peering, or inbound firewall rule is
+  required. Users connect to the hub SSH endpoint for every workspace.
 
-Tunnel sessions live in the hub process. When using region tunnels, run a
-single hub replica or configure sticky routing so all hub requests reach the
-replica that owns the region tunnel.
+Tunnel sessions live in the hub process. With multiple hub replicas, each owner
+publishes a Kubernetes Lease and other replicas forward SSH and API streams to
+it over the internal agent port, so no sticky routing is required.
 
 ## Add a region
 
@@ -87,18 +88,7 @@ kubectl -n poddy-eu create secret generic poddy-eu-region-key \
 
 Keep `$REGION_KEY` for the hub step. Do not reuse a key across regions.
 
-### 3. Create a stable SSH host key Secret
-
-A stable host key avoids `known_hosts` warnings after region restarts:
-
-```bash
-ssh-keygen -t ed25519 -N '' -f /tmp/poddy-eu-host-key -C poddy-eu
-
-kubectl -n poddy-eu create secret generic poddy-eu-host-key \
-  --from-file=ssh_host_ed25519_key=/tmp/poddy-eu-host-key
-```
-
-### 4. Create the region manager values
+### 3. Create the region manager values
 
 Save as `values-eu.yaml`. Replace the image tag, hub URL, SSH host, and ports
 with your values.
@@ -111,10 +101,6 @@ image:
   repository: ghcr.io/slimaineb/poddy
   tag: sha-269a643
   pullPolicy: IfNotPresent
-
-bastion:
-  enabled: true
-  replicaCount: 1
 
 # Region managers do not use this token for user login. The chart still
 # requires an auth token or an existing secret when OIDC is disabled.
@@ -147,18 +133,15 @@ rbac:
 defaultTemplate: base
 
 ssh:
+  # The hub terminates SSH for every workspace. Keep this enabled in regions so
+  # the shared CA is mounted and workspace authorized_keys trusts hub-issued
+  # certificates. The chart does not create an SSH Service or listener in a
+  # region manager.
   enabled: true
-  addr: ":2222"
-  # Public endpoint shown to users in the UI and SSH instructions.
-  publicHost: 172.29.74.141
-  publicPort: 30224
-  existingHostKeySecret: poddy-eu-host-key
-  hostKeySecretKey: ssh_host_ed25519_key
-  allowUnmappedKeys: false
-  service:
-    type: NodePort
-    port: 2222
-    nodePort: 30224
+  publicHost: ssh.hub.example.com
+  publicPort: 2222
+  ca:
+    existingSecret: poddy-ssh-ca
 
 # The hub uses the outbound tunnel. This Service is local to the region.
 http:
@@ -176,10 +159,9 @@ metrics:
 `hubUrl` must be reachable from the region manager over outbound HTTPS/WSS. In
 the same cluster it can be the hub ClusterIP Service; across clusters use the
 public hub URL. `sshHost` and `sshPort` on the hub must point to the endpoint
-users can reach, not to the internal `http` Service. On a cloud load balancer,
-use the region bastion's external hostname and port. On k3s, use the node IP
-and the SSH NodePort. Set `replicaCount > 1` for region-manager HA; each replica
-opens its own tunnel and the hub load-balances requests across them.
+users can reach, not to the internal `http` Service. On k3s, use the node IP
+and the hub SSH NodePort. Set `replicaCount > 1` for region-manager HA; each
+replica opens its own tunnel and the hub load-balances requests across them.
 
 ### 5. Install the region manager
 
@@ -213,9 +195,10 @@ regions:
     displayName: Europe
     # Must match regionManager.key in the eu region.
     key: <REGION_KEY>
-    # User -> region bastion, public endpoint.
+    # Legacy display fields; SSH always uses the hub endpoint.
+    # Keep them pointed at the hub, not at a region-specific port.
     sshHost: 172.29.74.141
-    sshPort: 30224
+    sshPort: 30223
     lat: 50.1109
     lon: 8.6821
     default: true
@@ -254,7 +237,7 @@ regions:
     displayName: Europe
     key: <REGION_KEY>
     sshHost: 172.29.74.141
-    sshPort: 30224
+    sshPort: 30223
     lat: 50.1109
     lon: 8.6821
     default: true
@@ -312,8 +295,8 @@ can simulate two regions on one node:
 | `us` | `poddy-us` | `poddy-us` | `poddy-us-workspaces` | `172.29.74.141:30225` |
 
 The hub remains exposed on its own NodePort or ingress, for example
-`http://172.29.74.141:30081`. Region portal Services stay `ClusterIP`; only the
-region SSH bastion uses a NodePort.
+`http://172.29.74.141:30081`. Region portal Services stay `ClusterIP`; the hub
+SSH NodePort or load balancer is the only SSH endpoint.
 
 ## Rotate or remove a region
 
@@ -336,6 +319,6 @@ creation time.
 | `"available": false` | Region Service name, `url` in `regions.yaml`, NetworkPolicy, and hub logs. |
 | `502` for a workspace | The owning region is unreachable or the region key does not match. |
 | `403` from a region | `regionManager.key` and the hub region `key` differ, or the request did not come through the hub. |
-| SSH connects to the wrong host | `sshHost`/`sshPort` on the hub must be the public bastion endpoint, not the internal portal Service. |
+| SSH connects to the wrong host | `sshHost`/`sshPort` on the hub must be the public portal endpoint, not the internal `http` Service. |
 | Hub does not see a new region | Restart the hub after editing `regionsExistingSecret`; values-based `regions` roll automatically. |
 | Region workspaces missing from PostgreSQL | The PostgreSQL mirror is configured on the hub only. Region managers own their workspace objects; use the hub API or region namespace for live state. |

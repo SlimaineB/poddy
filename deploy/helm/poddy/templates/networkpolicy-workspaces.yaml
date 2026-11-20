@@ -26,7 +26,6 @@ spec:
                 operator: In
                 values:
                   - {{ printf "%s-portal" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
-                  - {{ printf "%s-bastion" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
     {{- else }}
     []
     {{- end }}
@@ -63,7 +62,6 @@ spec:
                 operator: In
                 values:
                   - {{ printf "%s-portal" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
-                  - {{ printf "%s-bastion" (include "poddy.name" .) | trunc 63 | trimSuffix "-" }}
       ports:
         - protocol: TCP
           port: {{ regexReplaceAll ".*:" .Values.portal.addr "" | int }}

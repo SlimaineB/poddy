@@ -6,13 +6,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,20 +36,27 @@ const (
 	sshServerVersion           = "SSH-2.0-Poddy"
 )
 
+type RemoteDialer interface {
+	DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error)
+	DialRegionWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error)
+}
+
 type Bastion struct {
-	Addr           string
-	Manager        *k8s.Manager
-	Audit          metadata.Auditor
-	Broker         *tunnel.Broker
-	RegionRelayURL string
-	RequireAgent   bool
-	CA             *sshca.CA
-	Access         k8s.AccessStore
-	keys           sshkeys.Keyring
-	config         *ssh.ServerConfig
-	listener       net.Listener
-	AgentServer    *http.Server
-	DrainDelay     time.Duration
+	Addr         string
+	Manager      *k8s.Manager
+	Audit        metadata.Auditor
+	Broker       *tunnel.Broker
+	Remote       RemoteDialer
+	RegionBroker *tunnel.RegionBroker
+	InternalKey  []byte
+	RequireAgent bool
+	CA           *sshca.CA
+	Access       k8s.AccessStore
+	keys         sshkeys.Keyring
+	config       *ssh.ServerConfig
+	listener     net.Listener
+	AgentServer  *http.Server
+	DrainDelay   time.Duration
 
 	MaxConnections      int
 	MaxConnectionsPerIP int
@@ -379,31 +384,25 @@ func (b *Bastion) forward(newChannel ssh.NewChannel, permissions *ssh.Permission
 
 	pod, err := b.Manager.Get(ctx, name)
 	if err != nil {
-		if b.canRelayRegion(permissions) {
-			if relayPort := int(request.Port); relayPort != 0 && relayPort != 22 {
+		port := int(request.Port)
+		if port == 0 {
+			port = 22
+		}
+		if b.Remote != nil && b.scopedCertAuthorized(permissions, name) {
+			if port != 22 {
 				b.recordAudit(name, actor, actorType, remoteAddr, "denied", "only the workspace SSH port is allowed")
 				_ = newChannel.Reject(ssh.Prohibited, "only the workspace SSH port is allowed")
 				return
 			}
-			relay, relayErr := b.dialRegionRelay(ctx, name, permissions)
-			if relayErr == nil {
-				b.serveChannel(newChannel, name, actor, actorType, remoteAddr, relay, "region")
-				return
-			}
-			var statusErr *tunnel.DialStatusError
-			if !errors.As(relayErr, &statusErr) {
-				log.Printf("ssh bastion: region relay %s: %v", name, relayErr)
-				b.recordAudit(name, actor, actorType, remoteAddr, "error", relayErr.Error())
+			target, dialErr := b.Remote.DialRegionWorkspace(ctx, name, port)
+			if dialErr != nil {
+				log.Printf("ssh bastion: peer dial %s: %v", name, dialErr)
+				b.recordAudit(name, actor, actorType, remoteAddr, "error", dialErr.Error())
 				_ = newChannel.Reject(ssh.ConnectionFailed, "cannot reach workspace")
 				return
 			}
-			if statusErr.StatusCode != http.StatusNotFound {
-				log.Printf("ssh bastion: region relay %s: %v", name, relayErr)
-				b.recordAudit(name, actor, actorType, remoteAddr, "denied", statusErr.Message)
-				_ = newChannel.Reject(ssh.Prohibited, "region relay refused: "+statusErr.Message)
-				return
-			}
-			// 404 means the workspace is neither local nor in a region.
+			b.serveChannel(newChannel, name, actor, actorType, remoteAddr, target, "tunnel")
+			return
 		}
 		b.recordAudit(name, actor, actorType, remoteAddr, "error", "workspace not found")
 		_ = newChannel.Reject(ssh.ConnectionFailed, "workspace not found")
@@ -479,59 +478,24 @@ func (b *Bastion) serveChannel(newChannel ssh.NewChannel, name, actor, actorType
 	_ = channel.Close()
 }
 
-// canRelayRegion reports whether the session can be handed to the portal's
-// region relay. Relayed sessions require a short-lived SSH certificate because
-// the portal re-verifies it before opening the region stream.
-func (b *Bastion) canRelayRegion(permissions *ssh.Permissions) bool {
-	if b.RegionRelayURL == "" || permissions == nil {
+func (b *Bastion) scopedCertAuthorized(permissions *ssh.Permissions, workspace string) bool {
+	if permissions == nil {
 		return false
 	}
-	return strings.TrimSpace(permissions.Extensions["certificate"]) != ""
-}
-
-func (b *Bastion) dialRegionRelay(ctx context.Context, workspace string, permissions *ssh.Permissions) (net.Conn, error) {
-	encoded := ""
-	if permissions != nil {
-		encoded = strings.TrimSpace(permissions.Extensions["certificate"])
+	ext := permissions.Extensions
+	if strings.TrimSpace(ext["certificate"]) == "" || strings.TrimSpace(ext["actor"]) == "" {
+		return false
 	}
-	if encoded == "" {
-		return nil, errors.New("region relay requires an SSH certificate")
-	}
-	endpoint, err := regionRelayEndpoint(b.RegionRelayURL, workspace)
-	if err != nil {
-		return nil, err
-	}
-	header := http.Header{}
-	header.Set(tunnel.RegionSSHCertHeader, encoded)
-	return tunnel.DialConn(ctx, endpoint, header)
-}
-
-func regionRelayEndpoint(raw, workspace string) (string, error) {
-	base, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	switch base.Scheme {
-	case "http":
-		base.Scheme = "ws"
-	case "https":
-		base.Scheme = "wss"
-	case "ws", "wss":
-	default:
-		return "", fmt.Errorf("unsupported region relay URL scheme %q", base.Scheme)
-	}
-	if base.Host == "" {
-		return "", errors.New("region relay URL host is required")
-	}
-	base.Path = strings.TrimRight(base.Path, "/") + "/api/internal/region/ssh"
-	query := base.Query()
-	query.Set("workspace", workspace)
-	base.RawQuery = query.Encode()
-	base.Fragment = ""
-	return base.String(), nil
+	scope := strings.TrimSpace(ext["workspace"])
+	return scope != "" && strings.EqualFold(scope, workspace)
 }
 
 func (b *Bastion) dialWorkspace(ctx context.Context, name string, port int) (net.Conn, func(), string, error) {
+	if b.Remote != nil {
+		if conn, err := b.Remote.DialWorkspace(ctx, name, port); err == nil {
+			return conn, nil, "remote", nil
+		}
+	}
 	if b.Broker != nil && b.Broker.Connected(name) {
 		conn, err := b.Broker.Dial(ctx, name, fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {

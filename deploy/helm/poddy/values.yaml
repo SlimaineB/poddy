@@ -1,61 +1,5 @@
-# Number of portal replicas. The portal is stateless and can be scaled
-# independently from the SSH bastion.
+# Number of portal replicas. The portal is stateless; SSH runs in the portal.
 replicaCount: 1
-
-# SSH bastion. Runs as its own Deployment and Service so it can scale on
-# connection load without scaling the portal. Set ssh.existingHostKeySecret
-# before scaling above 1 replica.
-bastion:
-  enabled: true
-  replicaCount: 1
-  serviceAccount:
-    create: true
-    name: ""
-    annotations: {}
-  # Namespace-scoped Role with pod read, port-forward, and access approval
-  # state access.
-  rbac:
-    create: true
-  resources: {}
-  priorityClassName: ""
-  podAnnotations: {}
-  podLabels: {}
-  extraArgs: []
-  extraEnv: []
-  extraVolumeMounts: []
-  extraVolumes: []
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  # When empty, replicaCount > 1 spreads bastions across nodes with
-  # ScheduleAnyway. Set this to enforce zone/host policies in production.
-  topologySpreadConstraints: []
-  # New SSH connections are rejected as soon as SIGTERM arrives. The listener
-  # then stays open for drainDelay so Kubernetes can remove the endpoint before
-  # it closes.
-  drainDelay: 3s
-  # Existing SSH sessions stay alive during a graceful pod shutdown for this
-  # long. Keep drainDelay + drainTimeout below terminationGracePeriodSeconds.
-  drainTimeout: 20s
-  terminationGracePeriodSeconds: 30
-  # Treat a new bastion as available only after it has been ready for this long.
-  minReadySeconds: 5
-  probes:
-    readiness:
-      initialDelaySeconds: 2
-      periodSeconds: 10
-      timeoutSeconds: 2
-      failureThreshold: 6
-    liveness:
-      initialDelaySeconds: 10
-      periodSeconds: 20
-      timeoutSeconds: 2
-      failureThreshold: 3
-  # Created automatically when replicaCount > 1. Set enabled=false to opt out.
-  podDisruptionBudget:
-    enabled: true
-    minAvailable: 1
-    unhealthyPodEvictionPolicy: AlwaysAllow
 
 image:
   repository: ghcr.io/your-org/poddy
@@ -69,7 +13,7 @@ kubernetes:
   qps: 50
   burst: 100
 
-# PostgreSQL control plane. Required for the portal and bastion unless
+# PostgreSQL control plane. Required for the portal unless
 # regionManager.enabled=true (regions use the hub instead). PostgreSQL stores
 # RBAC, users, quotas, access grants, audit events, shares, external auth
 # tokens, and environment variables/secrets.
@@ -176,12 +120,12 @@ workspaceNamespace: ""
 createWorkspaceNamespace: false
 
 # Network isolation for workspace pods. The default policy denies all ingress
-# and egress, then allows DNS, reaches the portal/bastion, and (optionally)
+# and egress, then allows DNS, reaches the portal, and (optionally)
 # public internet access with private, CGNAT and IMDS ranges excluded.
 networkPolicy:
   enabled: true
   workspace:
-    # Allow the portal and bastion to reach workspace ports. Direct browser
+    # Allow the portal to reach workspace ports. Direct browser
     # access still goes through the portal, so no ingress controller rule is
     # needed.
     allowPortal: true
@@ -190,7 +134,7 @@ networkPolicy:
       allowDNS: true
       dnsNamespace: kube-system
       # Allow the workspace agent and external-auth helper to reach the
-      # portal/bastion in the release namespace on their control-plane ports.
+      # portal in the release namespace on its control-plane ports.
       allowControlPlane: true
       # Allow public internet egress while blocking RFC1918, CGNAT and
       # link-local ranges (including the cloud metadata endpoint).
@@ -244,8 +188,8 @@ workspace:
 # Central hub only. Each entry is mounted as a YAML regions file and points the
 # hub at a region manager's portal Service. Prefer regionsExistingSecret in
 # production: it must contain regions.yaml with the same structure. When regions
-# are configured, the hub relays region SSH through the outbound region tunnel;
-# sshHost/sshPort are then optional and only used when relay is disabled.
+# are configured, the hub proxies region API and SSH traffic through the
+# outbound region tunnel.
 regions: []
 # - name: eu
 #   displayName: Europe
@@ -362,9 +306,9 @@ externalAuth:
   providers: []
 
 ssh:
-  # Enables the bastion Deployment and the SSH/VS Code options in the UI.
+  # Enables SSH in the portal and the SSH/VS Code options in the UI.
   enabled: true
-  # Listen address inside the bastion container.
+  # Listen address inside the portal container.
   addr: ":2222"
   # Hostname or IP users connect to. Required when ssh.enabled=true.
   publicHost: ""
@@ -381,15 +325,20 @@ ssh:
   # Legacy escape hatch: allow keys without an owner comment to access every
   # workspace. Keep false in production.
   allowUnmappedKeys: false
-  # Require the outbound workspace agent tunnel. When true, the bastion never
-  # uses the Kubernetes port-forward API to reach workspace pods.
+  # Require the outbound workspace agent tunnel. When true, the portal never
+  # uses the Kubernetes port-forward API to reach hub workspace pods. Region
+  # workspaces always use the region tunnel.
   requireAgent: true
+  # On SIGTERM, reject new SSH connections immediately, then keep existing
+  # sessions for drainTimeout before closing the listener.
+  drainDelay: 3s
+  drainTimeout: 20s
   # Lifetime of short-lived user SSH certificates issued by the portal.
   certTtl: 15m
-  # SSH certificate authority. The same CA is mounted into the portal (to sign
-  # certificates) and the bastion (to verify them). Leave key empty to let the
+  # SSH certificate authority. The same CA signs and verifies certificates
+  # inside the portal. Leave key empty to let the
   # chart generate and preserve a random key. Region clusters must use the same
-  # CA (for example ssh.ca.existingSecret) for relayed SSH to be accepted.
+  # CA (for example ssh.ca.existingSecret) for region SSH to work.
   ca:
     existingSecret: ""
     keyKey: ssh-ca-key
@@ -408,7 +357,7 @@ ssh:
     url: ""
     port: 8091
     tokenTtl: 1h
-    # HMAC key shared by the portal and the bastion. Leave empty to let the
+    # HMAC key used for agent tokens and peer forwarding. Leave empty to let the
     # chart generate and preserve a random Secret.
     key: ""
     existingSecret: ""
@@ -417,13 +366,13 @@ ssh:
   existingKeysSecret: ""
   keysSecretKey: authorized_keys
   # Recommended for production. The Secret must contain a private host key at
-  # ssh.hostKeySecretKey. Required when bastion.replicaCount > 1.
+  # ssh.hostKeySecretKey. Shared by all portal replicas.
   existingHostKeySecret: ""
   hostKeySecretKey: ssh_host_ed25519_key
   service:
-    # ClusterIP by default. Set LoadBalancer or NodePort explicitly when the
-    # bastion must be reachable from outside the cluster, and restrict access
-    # with annotations/firewall rules.
+    # ClusterIP by default. Set LoadBalancer or NodePort explicitly when SSH
+    # must be reachable from outside the cluster, and restrict access with
+    # annotations/firewall rules.
     type: ClusterIP
     port: 2222
     # Optional fixed NodePort (30000-32767) for type NodePort/LoadBalancer.

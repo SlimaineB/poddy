@@ -10,7 +10,6 @@ are visible in one of these commands:
 ```bash
 kubectl -n poddy-system get pods,deploy,svc
 kubectl -n poddy-system logs deploy/poddy --tail=200
-kubectl -n poddy-system logs deploy/poddy-bastion --tail=200
 kubectl -n poddy-workspaces get statefulsets,pods,pvc
 kubectl get events -A --sort-by=.lastTimestamp | tail -40
 ```
@@ -50,9 +49,9 @@ and exits if it is still unavailable.
   and `/api/internal/region/tunnel`.
 - Check TLS certificate and host rules.
 
-### The bastion Pod is crashing
+### The SSH listener is failing
 
-- `ssh.enabled` or `bastion.enabled` is inconsistent.
+- `ssh.enabled` and the host key configuration are inconsistent.
 - The host key Secret is missing or unreadable.
 - The SSH CA Secret is missing when certificates are enabled.
 - Port `2222` is already bound inside the container.
@@ -60,7 +59,7 @@ and exits if it is still unavailable.
 Inspect:
 
 ```bash
-kubectl -n poddy-system logs deploy/poddy-bastion --previous
+kubectl -n poddy-system logs deploy/poddy --previous
 kubectl -n poddy-system get secret | grep -E 'ssh|ca|host'
 ```
 
@@ -237,11 +236,11 @@ including stop/start. Recreate the workspace with a persistent storage size.
 
 ### Connection refused
 
-- The bastion is not running: `kubectl -n poddy-system get deploy poddy-bastion`.
+- The portal is not running: `kubectl -n poddy-system get deploy poddy`.
 - `ssh.publicHost`/`ssh.publicPort` do not match the Service or LoadBalancer.
 - In a local install, start the port-forward:
   `kubectl -n poddy-system port-forward svc/poddy-ssh 2222:2222`.
-- The Service selects no ready bastion Pods.
+- The Service selects no ready portal Pods.
 
 ### Connection times out
 
@@ -254,7 +253,7 @@ Check the agent sidecar:
 
 ```bash
 kubectl -n poddy-workspaces logs poddy-<workspace>-0 -c poddy-agent --tail=100
-kubectl -n poddy-system logs deploy/poddy-bastion --tail=100
+kubectl -n poddy-system logs deploy/poddy --tail=100
 ```
 
 ### `Permission denied (publickey)`
@@ -267,7 +266,7 @@ kubectl -n poddy-system logs deploy/poddy-bastion --tail=100
 
 ### `Host key verification failed`
 
-The bastion host key changed, usually after recreating the release without
+The portal host key changed, usually after recreating the release without
 `ssh.existingHostKeySecret`. Confirm the change with your team before removing
 the old entry from `known_hosts`. For stable host keys, provide the Secret.
 
@@ -487,7 +486,7 @@ the UI.
 ### Terminals disconnect under load
 
 - Increase ingress/proxy read timeouts.
-- Raise the bastion replica count and resources.
+- Raise the portal replica count and resources.
 - Check node memory pressure and OOM kills of `sshd` or the agent.
 - Keep `ssh.agent.sidecar=true` so the agent has its own memory limit.
 
@@ -498,8 +497,8 @@ the UI.
 - Check the region manager logs and its outbound WebSocket to the hub.
 - The hub Ingress must forward `/api/internal/region/tunnel` upgrades.
 - The region key must match `poddy-regions` on the hub.
-- Keep the hub at one replica or use sticky routing.
 - Check firewall egress from the region to the hub.
+- Multiple hub replicas forward region sessions through Kubernetes Leases; check RBAC for Leases in the release namespace.
 
 ### Workspace requests return 502
 
@@ -509,17 +508,18 @@ region Deployment and the hub logs.
 
 ### SSH works in one region but not another
 
-- Every region bastion needs the same SSH CA Secret as the hub.
-- The region's `ssh.publicHost` and Service must be reachable.
-- The workspace agent must connect to its own region bastion.
-- Restart workspaces created before a CA or agent change.
+- The hub must own or reach the region tunnel; check hub logs for `region`.
+- Region workspaces use Kubernetes port-forward inside the region, so the
+  region Role must allow `pods/portforward`.
+- SSH always uses the hub endpoint; region `sshHost`/`sshPort` values are legacy.
+- Restart workspaces created before a CA change.
 
 ## Collect a debug bundle
 
 ```bash
 kubectl -n poddy-system get pods,deploy,svc,ingress -o wide
 kubectl -n poddy-system logs deploy/poddy --tail=500
-kubectl -n poddy-system logs deploy/poddy-bastion --tail=500
+kubectl -n poddy-system logs deploy/poddy --tail=500
 kubectl -n poddy-workspaces get statefulsets,pods,pvc,configmap
 kubectl get events -A --sort-by=.lastTimestamp | tail -100
 ```

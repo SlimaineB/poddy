@@ -10,7 +10,7 @@ rules:
   # Distributed workspace locks for safe multi-replica lifecycle operations.
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
-    verbs: ["get", "create", "update"]
+    verbs: ["get", "create", "update", "list", "watch", "delete"]
   # Workspace lifecycle: list, get, create and delete workspace pods.
   - apiGroups: [""]
     resources: ["pods"]

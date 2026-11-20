@@ -66,7 +66,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 	owner := ""
 	admin := s.isAdmin(id, cfg)
 	if s.Regions != nil {
-		regionCfg, info, findErr := s.Regions.FindWorkspace(r.Context(), name, s.hubIdentity(id, admin))
+		_, info, findErr := s.Regions.FindWorkspace(r.Context(), name, s.hubIdentity(id, admin))
 		if findErr != nil {
 			writeRegionError(w, findErr)
 			return
@@ -80,14 +80,6 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 			if info.Access != nil && !info.Access.Allowed {
 				s.denyInteractive(w, id, cfg)
 				return
-			}
-		}
-		if !s.SSHRelay {
-			if regionCfg.SSHHost != "" {
-				sshHost = regionCfg.SSHHost
-			}
-			if regionCfg.SSHPort != "" {
-				sshPort = regionCfg.SSHPort
 			}
 		}
 	} else {

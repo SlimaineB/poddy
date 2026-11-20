@@ -1,10 +1,10 @@
 ---
 title: "Architecture"
-description: "How the portal, SSH bastion, PostgreSQL control plane, workspace StatefulSets, and multi-region managers fit together."
+description: "How the portal, SSH, PostgreSQL control plane, workspace StatefulSets, and multi-region managers fit together."
 ---
 
 poddy is a stateless Go portal plus a set of Kubernetes workspace StatefulSets.
-The portal and bastion require PostgreSQL for the control plane; region managers
+The hub portal requires PostgreSQL for the control plane; region managers
 call the hub instead and do not need database credentials. Kubernetes remains the
 runtime source of truth for workspaces and PVCs.
 
@@ -23,7 +23,7 @@ runtime source of truth for workspaces and PVCs.
                        └────────────▲─────────────┘
                                     │ port-forward
 ┌───────────────┐   SSH   ┌─────────┴─────────────┐
-│ Desktop IDEs  │────────►│     poddy-bastion     │
+│ Desktop IDEs  │────────►│    portal (SSH)       │
 └───────────────┘         │ SSH :2222 + broker    │
                           └───────────┬───────────┘
                                       │ outbound agent tunnel
@@ -34,21 +34,23 @@ runtime source of truth for workspaces and PVCs.
                           └───────────────────────┘
 ```
 
-The portal and bastion are separate Deployments built from the same container
-image. The portal never listens for SSH in cluster mode; the bastion exposes
-SSH plus a private agent listener. Workspace pods run `poddy-agent` in a
-dedicated sidecar, which connects outbound to the bastion and forwards only to
-the workspace's loopback SSH port. The sidecar has its own memory limit, and
-`sshd` runs with a lowered OOM score so workspace memory spikes do not drop
-active SSH sessions. The bastion falls back to Kubernetes port-forward only
-when `ssh.requireAgent=false`.
+The hub portal is one Deployment built from one container image. It serves the
+web UI, the API, a private agent listener on `:8091`, and SSH on `:2222`.
+Workspace pods run `poddy-agent` in a dedicated sidecar, which connects
+outbound to the portal and forwards only to the workspace's loopback SSH port.
+The sidecar has its own memory limit, and `sshd` runs with a lowered OOM score
+so workspace memory spikes do not drop active SSH sessions. The portal falls
+back to Kubernetes port-forward only when `ssh.requireAgent=false`. Region
+workspaces use the region manager's outbound tunnel instead.
 
 ## Multi-region
 
 A central portal can front one or more regions. Each region runs the same image
-in region-manager mode (`-region-mode`) plus its own bastion. The central
-portal keeps auth, RBAC, users, templates, metadata, and the UI; regions keep
-workspace StatefulSets, PVCs, and local state.
+in region-manager mode (`-region-mode`) with no SSH listener and no agent
+sidecar. The central portal keeps auth, RBAC, users, templates, metadata, and
+the UI; regions keep workspace StatefulSets, PVCs, and local state. The hub
+reaches region workspaces for HTTP and SSH through the region's outbound
+tunnel.
 
 The central portal calls a region manager with an HMAC-signed identity header
 (`X-Poddy-Region-Identity`) that expires after two minutes. Region managers
@@ -71,8 +73,8 @@ internal region-authenticated endpoint.
 | Component | Responsibility | Where it runs |
 |-----------|----------------|---------------|
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
-| SSH bastion | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents | Separate Deployment in the control namespace, same image, `/poddy-bastion` |
-| Workspace agent | Outbound WebSocket client that forwards bastion streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
+| SSH listener | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents or region tunnels | In-process in the portal Deployment, port `2222` |
+| Workspace agent | Outbound WebSocket client that forwards portal streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
 | Workspace StatefulSets | One StatefulSet per workspace, scaled 0/1; pod `poddy-<name>-0` runs `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, template access, and quotas | PostgreSQL; ConfigMap mirror |
@@ -106,13 +108,13 @@ internal region-authenticated endpoint.
 
 ### SSH access
 
-1. The user connects to the bastion with an SSH key or a short-lived
+1. The user connects to the portal with an SSH key or a short-lived
    certificate issued by `POST /api/me/ssh-certificate`.
-2. The bastion verifies the key or certificate, resolves the target workspace
+2. The portal verifies the key or certificate, resolves the target workspace
    from the `direct-tcpip` host, and checks that the workspace is running.
-3. The bastion authorizes the connection against the workspace owner, or
+3. The portal authorizes the connection against the workspace owner, or
    against the certificate's owner and optional workspace scope.
-4. If the workspace agent is connected, the bastion opens a multiplexed stream
+4. If the workspace agent is connected, the portal opens a multiplexed stream
    to `127.0.0.1:22` inside the workspace. Otherwise it uses Kubernetes
    port-forward unless `ssh.requireAgent=true`.
 5. The workspace `sshd` authenticates the user again with the same key or
@@ -174,13 +176,14 @@ locally, so direct region creates bypass quota checks.
 2. Self-service keys are bound to the authenticated identity server-side.
    Administrator-managed keys are mapped to an owner by their comment
    (`alice@example.com` or `user:alice`).
-3. The user connects to the `poddy-bastion` Service. The bastion checks that
-   the key's owner matches the target workspace.
-4. It port-forwards to the pod's port 22 through the Kubernetes API. Workspace
+3. The user connects to the portal SSH Service. The portal checks that the
+   key's owner matches the target workspace.
+4. It forwards to the workspace agent, or port-forwards to the pod's port 22
+   through the Kubernetes API. Workspace
    pods receive their owner's keys through a read-only Secret mounted at
    `/etc/poddy/ssh/authorized_keys`.
-5. The bastion records `ssh.connect` in PostgreSQL.
-6. VS Code, Cursor, and PyCharm through JetBrains Gateway connect through `ProxyCommand` using the same bastion.
+5. The portal records `ssh.connect` in PostgreSQL.
+6. VS Code, Cursor, and PyCharm through JetBrains Gateway connect through `ProxyCommand` using the same portal endpoint.
 
 ### Browser VS Code
 
@@ -192,20 +195,21 @@ locally, so direct region creates bypass quota checks.
 4. The portal reverse-proxies HTTP and WebSocket traffic, preserving the
    OpenVSCode base path.
 
-In local mode, the portal process can start the same bastion in-process on
+In local mode, the portal process can start the SSH server in-process on
 `-ssh-addr`. Helm deployments run it as a separate Deployment.
 
 Keys commented `admin` or `*` are break-glass keys. Unmapped keys are denied by
 default.
 
-## Portal and bastion internals
+## Portal internals
 
 poddy ships two Go binaries from one module:
 
-- `poddy` (`main.go`) runs the portal and embeds the web UI. In local mode it can
-  also start the bastion in-process when `-ssh-addr` is set.
-- `poddy-bastion` (`cmd/poddy-bastion`) runs only the SSH bastion for cluster
-  deployments.
+- `poddy` (`main.go`) runs the portal, embeds the web UI, and serves SSH plus the
+  workspace agent broker in-process when `-ssh-addr` and `-agent-addr` are set.
+  This is what the Helm chart deploys.
+- `poddy-bastion` (`cmd/poddy-bastion`) is a legacy standalone entry point; the
+  chart no longer deploys it.
 
 | Package | Role |
 |---------|------|
@@ -217,12 +221,12 @@ poddy ships two Go binaries from one module:
 | `internal/auth` | OIDC authorization code + PKCE, sessions |
 | `internal/externalauth` | OAuth2 providers, encrypted token store, refresh |
 | `internal/userstore` | OIDC user directory |
-| `internal/bastion` | SSH bastion and owner checks |
+| `internal/bastion` | SSH server, owner checks, and peer/region stream forwarding |
 | `internal/sshkeys` | `authorized_keys` parsing and key-to-owner mapping |
 | `internal/links` | Template link validation |
 | `internal/local` | Local SSH config, port-forward, VS Code/Cursor launch |
 | `internal/metadata` | PostgreSQL control-plane stores, migrations, and audit writer |
-| `cmd/poddy-bastion` | Standalone bastion entry point |
+| `cmd/poddy-bastion` | Legacy standalone entry point |
 
 ## State and storage
 
@@ -245,7 +249,7 @@ PostgreSQL stores RBAC, OIDC users, external auth tokens, share links,
 team/user quotas, access state, templates, workspaces, environment variables,
 dotfiles, and audit events. The portal syncs templates and workspaces as a
 mirror while Kubernetes remains their runtime source. The portal syncs metadata at startup
-and after writes; the bastion writes `ssh.connect` audit events. PVC contents are
+and after writes; the portal writes `ssh.connect` audit events. PVC contents are
 not stored in PostgreSQL. Use volume snapshots or the built-in
 [S3 volume backups](volumes.md). See [PostgreSQL schema](postgres-schema.md)
 and [Data model](data-model.md) for the object-level details.
@@ -259,25 +263,25 @@ both restore paths independently.
 
 ## Scaling and availability
 
-The portal and bastion scale independently:
+The portal scales horizontally:
 
 - **Portal** (`replicaCount`) is stateless and can run multiple replicas behind a
   Service or LoadBalancer. Session cookies are signed. On shutdown it fails
   readiness, rejects new requests during `portal.shutdownDrainDelay`, then
   closes the HTTP listener.
-- **Bastion** (`bastion.replicaCount`) scales on SSH connections. It uses a shared
-  host key so clients see the same host key across replicas. Set
-  `ssh.existingHostKeySecret` when running more than one bastion replica. It
-  rejects new connections immediately on shutdown and drains existing sessions
-  for `bastion.drainTimeout`.
-- **PDBs** are created automatically for the portal and bastion when their
-  replica count is above one.
-- **Local mode** runs both processes in one binary, which is convenient for
-  development but not how Helm deploys them.
+- **SSH and agents** scale with the portal. Replicas publish Kubernetes Leases
+  for the workspace agents and region tunnels they own; a replica that receives
+  a session for another replica forwards the raw stream over `/api/internal/dial`
+  on the internal agent port.
+- **Host key** is shared across replicas via `ssh.existingHostKeySecret` or the
+  generated Secret. SSH rejects new connections immediately on shutdown and
+  drains existing sessions for `ssh.drainTimeout`.
+- **PDBs** are created automatically when `replicaCount` is above one.
+- **Local mode** runs the portal and SSH in one process, which is convenient for
+  development.
 
 Workspace pods are independent. The portal's Kubernetes Role is scoped to the
-workspace namespace; the bastion's Role is narrower still and only grants pod
-read access plus port-forward.
+workspace namespace and also covers Leases in the release namespace.
 
 ## Observability
 
@@ -291,11 +295,10 @@ render a ServiceMonitor. See [deployment metrics](deploy.md#prometheus-metrics).
 
 ## Security boundaries
 
-- Both portal and bastion run as non-root with a read-only root filesystem and
-  dropped capabilities.
-- The portal and bastion use separate ServiceAccounts. The bastion's Role cannot
-  read ConfigMaps or Secrets through the API and cannot manage workspace
-  lifecycle.
+- The portal runs as non-root with a read-only root filesystem and dropped
+  capabilities.
+- The portal ServiceAccount is scoped to the workspace namespace plus Leases in
+  the release namespace for tunnel presence.
 - Workspace containers run `sshd` as root only to bind port 22 and switch to the
   `dev` user. The workspace container is granted `SYS_RESOURCE` so
   `poddy-ssh-start` can lower `sshd`'s OOM score; user shells reset their own

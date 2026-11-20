@@ -64,7 +64,7 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("dotfiles: %w", err)
 	}
-	if cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
+	if !cfg.RegionMode && cfg.SSHRequireAgent && cfg.AgentURL == "" && cfg.AgentAddr == "" {
 		return fmt.Errorf("workspace agent: -agent-url or -agent-addr is required when -ssh-require-agent=true")
 	}
 
@@ -216,7 +216,7 @@ func Run(ctx context.Context, args []string) error {
 		AuthorizedKeys:      keys,
 		SSHKeys:             keyring,
 		SSHCA:               sshCA,
-		SSHRequireAgent:     cfg.SSHRequireAgent,
+		SSHRequireAgent:     cfg.SSHRequireAgent && !cfg.RegionMode,
 		StateConfigMap:      cfg.StateConfigMap,
 		PortalURL:           portalURL,
 		InstanceID:          cfg.InstanceID,
@@ -350,14 +350,6 @@ func Run(ctx context.Context, args []string) error {
 		defer metricsServer.Close()
 	}
 
-	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA, accessStore)
-	if err != nil {
-		return err
-	}
-	if sshBastion != nil {
-		defer sshBastion.Close()
-	}
-
 	forwards := server.NewForwarder()
 	defer forwards.Close()
 
@@ -465,6 +457,33 @@ func Run(ctx context.Context, args []string) error {
 		}()
 	}
 
+	regionNames := make([]string, 0, len(registry.All()))
+	for _, regionCfg := range registry.All() {
+		regionNames = append(regionNames, regionCfg.Name)
+	}
+	var presence tunnel.Presence
+	peerAddress := ""
+	if podIP := strings.TrimSpace(os.Getenv("PODDY_POD_IP")); podIP != "" && cfg.AgentAddr != "" && agentKey != "" {
+		namespace := strings.TrimSpace(cfg.Namespace)
+		if namespace == "" {
+			namespace = strings.TrimSpace(os.Getenv("PODDY_POD_NAMESPACE"))
+		}
+		if _, port, splitErr := net.SplitHostPort(cfg.AgentAddr); splitErr == nil {
+			peerAddress = net.JoinHostPort(podIP, port)
+			presence = &k8s.LeasePresence{Client: client, Namespace: namespace, InstanceID: cfg.InstanceID}
+		}
+	}
+	if hub != nil && regionTunnel != nil {
+		hub.SetTunnel(&tunnel.PeerRegionDialer{Local: regionTunnel, Presence: presence, Address: peerAddress, Key: []byte(agentKey)})
+	}
+	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA, accessStore, regionTunnel, regionNames, presence, peerAddress, agentKey)
+	if err != nil {
+		return err
+	}
+	if sshBastion != nil {
+		defer sshBastion.Close()
+	}
+
 	var backups *backup.Store
 	backups, err = backup.New(backup.Config{
 		Endpoint:  cfg.BackupS3Endpoint,
@@ -536,7 +555,6 @@ func Run(ctx context.Context, args []string) error {
 		Forwards:          forwards,
 		Regions:           hub,
 		RegionTunnel:      regionTunnel,
-		SSHRelay:          cfg.SSHRelay,
 		RegionMode:        cfg.RegionMode,
 		RegionKey:         cfg.RegionKey,
 		RegionName:        cfg.RegionName,
@@ -553,7 +571,7 @@ func Run(ctx context.Context, args []string) error {
 		SSHKeyPath:        sshKeyPath,
 		Windows:           windows,
 		WindowsSSHKeyPath: windowsKeyPath,
-		SSHEnabled:        cfg.SSHEnabled && (cfg.SSHAddr == "" || sshBastion != nil),
+		SSHEnabled:        cfg.SSHEnabled && sshBastion != nil,
 		SSHCA:             sshCA,
 		SSHCertTTL:        cfg.SSHCertTTL,
 		VSCodeExtension: extension.Metadata{
@@ -740,6 +758,7 @@ func RunBastion(ctx context.Context, args []string) error {
 		SSHKeys:         keyring,
 		SSHCA:           sshCA,
 		SSHRequireAgent: cfg.SSHRequireAgent,
+		AgentImage:      cfg.AgentImage,
 	}
 
 	agentKey := agentSecret(cfg)
@@ -955,7 +974,7 @@ func configureAgentBroker(broker *tunnel.Broker, cfg config.Config, manager *k8s
 	}
 }
 
-func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store) (*bastion.Bastion, error) {
+func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store, regionTunnel *tunnel.RegionBroker, regionNames []string, presence tunnel.Presence, peerAddress, agentKey string) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
 		return nil, nil
 	}
@@ -971,9 +990,21 @@ func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, 
 	}
 	sshBastion.Audit = audit
 	sshBastion.Broker = broker
+	sshBastion.RegionBroker = regionTunnel
+	sshBastion.InternalKey = []byte(agentKey)
+	sshBastion.Remote = &tunnel.PeerDialer{
+		Broker:       broker,
+		RegionTunnel: regionTunnel,
+		RegionNames:  regionNames,
+		Presence:     presence,
+		Address:      peerAddress,
+		Key:          []byte(agentKey),
+	}
 	sshBastion.DrainDelay = cfg.SSHDrainDelay
-	sshBastion.RegionRelayURL = cfg.PortalURL
 	sshBastion.RequireAgent = cfg.SSHRequireAgent
+	if presence != nil {
+		go tunnel.ReportPresence(ctx, presence, broker, regionTunnel, peerAddress)
+	}
 	sshBastion.CA = ca
 	sshBastion.Access = accessStore
 	if err := sshBastion.Listen(); err != nil {

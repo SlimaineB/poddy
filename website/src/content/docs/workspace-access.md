@@ -53,7 +53,7 @@ Presence combines two sources:
 
 - **Portal sessions**: terminal, desktop/browser IDE, and port-forward sessions.
   The portal refreshes presence while the session is active.
-- **SSH bastion sessions**: a certificate-authenticated SSH session registers
+- **SSH sessions**: a certificate-authenticated SSH session registers
   presence when the channel opens and clears it when it closes.
 
 Presence uses a 30-second heartbeat and a 2-minute TTL. A session that closes
@@ -69,13 +69,13 @@ used as an audit record.
 
 Requests, grants, and presence are stored in PostgreSQL (tables
 `poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`).
-The hub portal and bastion share the same database and namespace key, so an
-approval made in the browser also unlocks SSH. Region portals and bastions do not
-connect to PostgreSQL; they proxy these operations to the hub.
+The hub portal shares the same database and namespace key for SSH and browser
+sessions, so an approval made in the browser also unlocks SSH. Region managers
+do not connect to PostgreSQL; they proxy these operations to the hub.
 
 This state is mutable and written frequently (presence heartbeats), so it is not
 stored in a Kubernetes Secret. PostgreSQL is required and shares approvals
-between the portal and bastion.
+between the portal and SSH.
 
 Expired grants and stale presence rows are filtered on read and pruned
 opportunistically. No Secret permissions are required for access state.
@@ -101,7 +101,7 @@ The actions are recorded in the audit trail as `workspace.access.request`,
 ## Multi-region
 
 Only the hub connects to PostgreSQL. Regions are stateless with respect to
-access and quotas: their portal and bastion call the hub's internal endpoints
+access and quotas: their portal calls the hub's internal endpoints
 (`/api/internal/region/access` and `/api/internal/region/quotas`) using the
 region key, and the hub reads and writes the shared tables. Regions therefore
 need neither database credentials nor network access to PostgreSQL.

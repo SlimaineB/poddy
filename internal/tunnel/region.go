@@ -22,7 +22,6 @@ const (
 	RegionIdentityHeader = "X-Poddy-Region-Identity"
 	RegionHTTPTarget     = "region-http"
 	RegionTCPPrefix      = "tcp:"
-	RegionSSHCertHeader  = "X-Poddy-SSH-Cert"
 )
 
 // WorkspaceTarget builds the tunnel target used to reach a workspace port
@@ -71,6 +70,19 @@ func NewRegionBroker(auth RegionAuthFunc) *RegionBroker {
 			CheckOrigin:      func(*http.Request) bool { return true },
 		},
 	}
+}
+
+func (b *RegionBroker) Regions() []string {
+	if b == nil {
+		return nil
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]string, 0, len(b.sessions))
+	for name := range b.sessions {
+		out = append(out, name)
+	}
+	return out
 }
 
 func (b *RegionBroker) Serve(w http.ResponseWriter, r *http.Request) error {
@@ -262,15 +274,14 @@ func (b *RegionBroker) Close() {
 }
 
 type RegionAgentConfig struct {
-	URL    string
-	Region string
-	// Target is the local HTTP server used for the region API.
-	Target string
 	// DialWorkspace opens a connection to a workspace port inside the region.
-	// The hub never reaches workspaces directly, so region SSH relays use it.
 	DialWorkspace func(ctx context.Context, workspace string, port int) (net.Conn, error)
-	Token         func() (string, error)
-	Insecure      bool
+	URL           string
+	Region        string
+	// Target is the local HTTP server used for the region API.
+	Target   string
+	Token    func() (string, error)
+	Insecure bool
 }
 
 type RegionAgent struct {

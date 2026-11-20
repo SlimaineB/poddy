@@ -4,7 +4,7 @@ description: "Understand the PostgreSQL control-plane schema, migrations, audit 
 ---
 
 :::note[PostgreSQL is required]
-The portal and bastion require PostgreSQL 13+. Set `PODDY_DATABASE_URL` or
+The hub portal requires PostgreSQL 13+. Set `PODDY_DATABASE_URL` or
 Helm `database.url` / `database.existingSecret`. PostgreSQL is the
 authoritative store for RBAC, OIDC users, encrypted external auth tokens,
 workspace share links, workspace access, quotas, environment
@@ -81,8 +81,8 @@ kubectl -n poddy-system create secret generic poddy-database \
   --from-literal=database-url='postgres://poddy:secret@postgres.example.com:5432/poddy?sslmode=require'
 ```
 
-The chart injects `PODDY_DATABASE_URL` into the portal and bastion. The portal
-mirrors metadata and audits HTTP actions; the bastion audits SSH connections.
+The chart injects `PODDY_DATABASE_URL` into the portal. The portal mirrors
+metadata and audits HTTP and SSH actions.
 Set `database.autoMigrate: false` (or `PODDY_DATABASE_AUTO_MIGRATE=false`) when
 migrations are managed externally.
 
@@ -114,7 +114,7 @@ usually a better choice than EFS for PostgreSQL.
 
 ## Schema migrations
 
-By default the portal and bastion apply the embedded migrations on startup.
+By default the portal applies the embedded migrations on startup.
 They use a PostgreSQL advisory lock and `poddy.schema_migrations`, so several
 replicas can start at the same time safely.
 
@@ -180,11 +180,11 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | `poddy-shares` Secret | `share_links` | Migration source only after PostgreSQL is enabled |
 | Environment UI | `env_vars`; per-workspace `pd-env-<workspace>` Secret | PostgreSQL authoritative; Secret is runtime input |
 | Dotfiles UI | `dotfiles`; workspace environment `PODDY_DOTFILES_*` | PostgreSQL authoritative; injected at create/start |
-| Audit stream | `audit_events` | Written by portal and bastion |
+| Audit stream | `audit_events` | Written by the portal |
 
 Workspace access state (`access_requests`, `access_grants`, `access_presence`)
 and quotas (`user_quotas`, `team_quotas`) are owned by PostgreSQL rather than
-mirrored from Kubernetes. The hub portal and bastion read and write them
+mirrored from Kubernetes. The hub portal reads and writes them
 directly; regions go through the hub control plane. There is no Kubernetes
 Secret for access and no quota entry in the RBAC ConfigMap.
 
@@ -277,7 +277,7 @@ owner as appropriate.
 
 ## Audit actions
 
-`audit_events` is append-only. The portal and bastion currently record:
+`audit_events` is append-only. The portal currently records:
 
 | Area | Actions |
 |------|---------|

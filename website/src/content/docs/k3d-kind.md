@@ -112,10 +112,10 @@ admin, and creates a `base` workspace with `250m` CPU, `512Mi` memory, and a
 - `GET /healthz` on the portal.
 - The workspace reaches the `Running` phase through the API.
 - The workspace PVC reaches `Bound`.
-- SSH through the bastion succeeds and lands in `/home/dev` as `dev`.
+- SSH through the portal succeeds and lands in `/home/dev` as `dev`.
 
 It deliberately sets `ssh.agent.enabled=false` and `ssh.requireAgent=false`, so
-the test exercises the bastion-to-workspace port-forward path. The agent
+the test exercises the portal-to-workspace port-forward path. The agent
 sidecar path is covered separately.
 
 ```bash

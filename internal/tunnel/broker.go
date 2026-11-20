@@ -202,6 +202,19 @@ func (b *Broker) run(s *session) error {
 	}
 }
 
+func (b *Broker) Workspaces() []string {
+	if b == nil {
+		return nil
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]string, 0, len(b.agents))
+	for workspace := range b.agents {
+		out = append(out, workspace)
+	}
+	return out
+}
+
 func (b *Broker) Connected(workspace string) bool {
 	b.mu.RLock()
 	s := b.agents[workspace]

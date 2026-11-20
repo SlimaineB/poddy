@@ -20,22 +20,22 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	if container == nil {
 		return nil
 	}
-	if m.AgentURL == "" || m.AgentToken == nil {
-		removeEnv(container, envAgentSidecar)
-		removeAgentEnv(pod)
-		removeAgentTokenSecretMount(pod)
-		removeContainer(pod, AgentContainerName)
-		return m.deleteAgentTokenSecret(ctx, workspace)
-	}
-	token, err := m.AgentToken(workspace, owner)
-	if err != nil {
-		return err
-	}
-	secretName := AgentTokenSecretName(workspace)
-	if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
-		return err
-	}
 	if m.AgentImage == "" {
+		if m.AgentURL == "" || m.AgentToken == nil {
+			removeEnv(container, envAgentSidecar)
+			removeAgentEnv(pod)
+			removeAgentTokenSecretMount(pod)
+			removeContainer(pod, AgentContainerName)
+			return m.deleteAgentTokenSecret(ctx, workspace)
+		}
+		token, err := m.AgentToken(workspace, owner)
+		if err != nil {
+			return err
+		}
+		secretName := AgentTokenSecretName(workspace)
+		if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
+			return err
+		}
 		setEnv(container, envAgentURL, m.AgentURL)
 		setEnvFromSecret(container, envAgentToken, secretName, agentTokenSecretKey)
 		setEnv(container, envAgentTokenFile, agentTokenFile)
@@ -53,6 +53,26 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	removeEnv(container, envAgentTokenFile)
 	removeEnv(container, envAgentRefreshFile)
 	removeAgentTokenSecretMountFromContainer(container)
+	if m.AgentURL == "" {
+		removeEnv(container, envAgentSidecar)
+		removeAgentTokenSecretMount(pod)
+		removeContainer(pod, AgentContainerName)
+		return m.deleteAgentTokenSecret(ctx, workspace)
+	}
+	if m.AgentToken == nil {
+		removeEnv(container, envAgentSidecar)
+		removeAgentTokenSecretMount(pod)
+		removeContainer(pod, AgentContainerName)
+		return m.deleteAgentTokenSecret(ctx, workspace)
+	}
+	token, err := m.AgentToken(workspace, owner)
+	if err != nil {
+		return err
+	}
+	secretName := AgentTokenSecretName(workspace)
+	if err := m.ensureAgentTokenSecret(ctx, workspace, token); err != nil {
+		return err
+	}
 	setEnv(container, envAgentSidecar, "true")
 	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName)
 	return nil
@@ -71,7 +91,9 @@ const (
 func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName string) {
 	container := agentSidecar(image, agentURL, workspace, secretName)
 	mountAgentTokenState(pod, &container)
-	mountAgentTokenSecret(pod, &container, workspace)
+	if secretName != "" {
+		mountAgentTokenSecret(pod, &container, workspace)
+	}
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == AgentContainerName {
 			pod.Spec.Containers[i] = container
@@ -180,18 +202,23 @@ func removeAgentTokenSecretMountFromContainer(container *corev1.Container) {
 }
 
 func agentSidecar(image, agentURL, workspace, secretName string) corev1.Container {
+	env := []corev1.EnvVar{
+		{Name: envWorkspaceName, Value: workspace},
+	}
+	if agentURL != "" {
+		env = append(env,
+			corev1.EnvVar{Name: envAgentURL, Value: agentURL},
+			secretEnv(envAgentToken, secretName, agentTokenSecretKey),
+			corev1.EnvVar{Name: envAgentTokenFile, Value: agentTokenFile},
+			corev1.EnvVar{Name: envAgentRefreshFile, Value: agentTokenRefreshFile},
+		)
+	}
 	return corev1.Container{
 		Name:            AgentContainerName,
 		Image:           image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"/usr/local/bin/poddy-agent"},
-		Env: []corev1.EnvVar{
-			{Name: envAgentURL, Value: agentURL},
-			secretEnv(envAgentToken, secretName, agentTokenSecretKey),
-			{Name: envAgentTokenFile, Value: agentTokenFile},
-			{Name: envAgentRefreshFile, Value: agentTokenRefreshFile},
-			{Name: envWorkspaceName, Value: workspace},
-		},
+		Env:             env,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),
 			RunAsUser:                ptr.To[int64](65532),

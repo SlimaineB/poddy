@@ -2,10 +2,10 @@
 
 > Dernière mise à jour : 2026-11-19
 >
-> État : Option A cross-cluster implémentée (`PODDY_SSH_RELAY`), aucune
-> exposition réseau par région requise.
-> Objectif : ne plus exposer les bastions (hub et régions) sur un port public
-> par région, et faire du portail l'unique point d'entrée. Bénéfice direct pour
+> État : implémenté sans bastion ni relais séparé. Le portail hub termine SSH
+> en processus, sert le broker d'agents, et joint les régions par leur tunnel
+> WSS sortant (`tcp:<workspace>:22`). Aucune exposition réseau par région.
+> Objectif : faire du portail l'unique point d'entrée SSH. Bénéfice direct pour
 > le multi-région : une seule règle firewall/NAT, `sshHost`/`sshPort` publics
 > deviennent inutiles côté région.
 > Contexte multi-région : voir `PLAN-scale-regions.md` §0 (« SSH est le seul
@@ -43,9 +43,9 @@
   il pointe juste sur `sshHost` = hub.
 - Coût : le hub devient une dépendance de routage (SPOF si 1 replica) ; le
   relais ajoute une connexion WS interne bastion → portail.
-- Sécurité : le bastion transmet le certificat SSH court au portail, qui le
-  revérifie (CA, principal, scope workspace, owner/admin + approbation) avant
-  d'ouvrir le stream. Sans certificat, pas de relais (clé simple refusée en v1).
+- Sécurité : le portail vérifie le certificat SSH court (CA, principal, scope
+  workspace, owner/admin + approbation) avant d'ouvrir le stream. Sans
+  certificat, pas de forwarding cross-région (clé simple refusée en v1).
 
 ### Option B — Tunnel authentifié via le portail (recommandé à terme)
 
@@ -102,21 +102,23 @@ Option A (implémentée) :
 3. `internal/bastion/bastion.go` : si le workspace est local, comportement
    inchangé ; sinon relais vers `PODDY_PORTAL_URL` avec l'en-tête
    `X-Poddy-SSH-Cert`.
-4. `internal/server/regionssh.go` : `GET /api/internal/region/ssh` vérifie le
-   certificat, applique owner/admin + approbation, puis
+4. `internal/bastion/bastion.go` : `scopedCertAuthorized` vérifie le certificat,
+   applique owner/admin + approbation, puis `DialRegionWorkspace` ouvre
    `RegionTunnel.Dial(region, "tcp:<workspace>:22")`.
-5. Chart : `PODDY_SSH_RELAY=true` sur le portail et `PODDY_PORTAL_URL` sur le
-   bastion quand `regions`/`regionsExistingSecret` est défini.
-6. Tests : parsing de cible, aller-retour WS, relais `tcp:` de bout en bout,
-   vérification du certificat (scope, CA, admin).
+5. Chart : le portail hub reçoit `-ssh-addr=:2222`, `-agent-addr=:8091` et
+   `PODDY_POD_IP`/`PODDY_POD_NAMESPACE`; une région reçoit `-ssh-addr=` vide.
+6. HA : `internal/tunnel/presence.go` + `internal/k8s/presence.go` publient des
+   Leases par workspace/région; toute réplique forward le flux brut vers la
+   réplique propriétaire via `/api/internal/dial` (HMAC).
+7. Tests : parsing de cible, signature HMAC, Leases, et aller-retour WS `tcp:`.
 
-## Implémentation v1 (option A cross-cluster)
+## Implémentation (portal-native)
 
-- Portail : `PODDY_SSH_RELAY=true` (le chart le pose dès que `regions` ou
-  `regionsExistingSecret` est défini). `sshHost`/`sshPort` restent ceux du hub,
-  y compris pour les workspaces régionaux.
-- Bastion : `PODDY_PORTAL_URL=http://<release>:<http.service.port>` (posé par le
-  chart dans le même cas). Sans cette variable, le relais est désactivé.
+- Portail hub : SSH en processus, broker d'agents WSS, forwarding pair-à-pair.
+  `sshHost`/`sshPort` restent ceux du hub, y compris pour les workspaces
+  régionaux.
+- Aucun `PODDY_SSH_RELAY`, aucun `PODDY_PORTAL_URL`, aucun Deployment bastion.
+  Le binaire `poddy-bastion` reste un point d'entrée legacy non déployé.
 - Secret CA SSH **partagé** entre le hub et chaque région : le hub signe, le
   portail région vérifie. Un CA par cluster casse le relais.
 - Auth : certificat SSH court obligatoire. Le bastion transmet

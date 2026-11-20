@@ -397,13 +397,17 @@ func (h *Hub) Create(ctx context.Context, regionName string, req k8s.CreateReque
 	if client == nil {
 		return k8s.Workspace{}, fmt.Errorf("region %s is not configured", cfg.Name)
 	}
-	_, _, err := h.FindWorkspace(ctx, req.Name, identity)
-	if err == nil {
-		return k8s.Workspace{}, fmt.Errorf("workspace %q already exists", req.Name)
-	}
-	var httpErr *HTTPError
-	if !errors.As(err, &httpErr) || httpErr.Status != 404 {
-		return k8s.Workspace{}, err
+	// Check all reachable regions for a duplicate, but do not fail the create
+	// because another configured region is offline. The target client below
+	// returns the real error when its own region is unreachable.
+	for _, other := range h.Configs() {
+		probe := h.Client(other.Name)
+		if probe == nil {
+			continue
+		}
+		if _, err := probe.GetWorkspace(ctx, req.Name, identity); err == nil {
+			return k8s.Workspace{}, fmt.Errorf("workspace %q already exists in region %s", req.Name, other.Name)
+		}
 	}
 	created, err := client.Create(ctx, req, identity)
 	if err == nil {

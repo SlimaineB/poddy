@@ -1,11 +1,11 @@
-{{- if and .Values.ssh.enabled .Values.bastion.enabled }}
+{{- if and .Values.ssh.enabled (not .Values.regionManager.enabled) }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "poddy.fullname" . }}-ssh
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "poddy.bastion.labels" . | nindent 4 }}
+    {{- include "poddy.labels" . | nindent 4 }}
   {{- with .Values.ssh.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -30,5 +30,5 @@ spec:
       targetPort: ssh
       protocol: TCP
   selector:
-    {{- include "poddy.bastion.selectorLabels" . | nindent 4 }}
+    {{- include "poddy.selectorLabels" . | nindent 4 }}
 {{- end }}

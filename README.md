@@ -81,7 +81,7 @@ kubectl -n poddy-system create secret generic poddy-database \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 3. Install the portal and SSH bastion
+### 3. Install the portal
 
 ```bash
 helm upgrade --install poddy oci://ghcr.io/slimaineb/charts/poddy \
@@ -138,10 +138,10 @@ That is enough to create a workspace, open the browser terminal, open VS Code We
 Browser ──────────► Portal (:8080) ──────────► Kubernetes API
                                                (workspace lifecycle)
 
-VS Code / Cursor / PyCharm / ssh ──► Bastion (:2222) ──► workspace agent ──► sshd (:22)
+VS Code / Cursor / PyCharm / ssh ──► Portal (:2222) ──► workspace agent ──► sshd (:22)
 ```
 
-The portal and SSH bastion are separate Deployments built from the same image. The portal serves the UI/API and manages workspaces. The bastion provides a stable SSH entry point without exposing workspace pods. PostgreSQL stores the control plane: users, RBAC, quotas, access grants, encrypted tokens/secrets, share links, and audit events. Kubernetes remains the source of truth for workspaces, pods, and PVCs.
+The portal serves the UI/API, manages workspaces, and terminates SSH in the same Deployment without exposing workspace pods. Workspace agents connect outbound to the portal; regions use their outbound tunnel. PostgreSQL stores the control plane: users, RBAC, quotas, access grants, encrypted tokens/secrets, share links, and audit events. Kubernetes remains the source of truth for workspaces, pods, and PVCs.
 
 In multi-region mode, a central hub owns authentication and the UI while each region manager owns its Kubernetes cluster. Region managers connect outbound to the hub, so the hub does not need a private network path to every cluster.
 
@@ -198,7 +198,7 @@ go test ./...
 make image
 ```
 
-The portal and bastion use the same Go module. Workspace images build from the reusable `ghcr.io/slimaineb/poddy-workspace-base` image.
+The portal and workspace agent use the same Go module. Workspace images build from the reusable `ghcr.io/slimaineb/poddy-workspace-base` image.
 
 ## Security
 

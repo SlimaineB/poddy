@@ -568,7 +568,7 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 	if !hasContainer(pod, ContainerName) {
 		return resolvedCreate{}, fmt.Errorf("template %q must define a container named %q", templateName, ContainerName)
 	}
-	if m.AgentURL != "" && m.AgentToken != nil && m.AgentImage != "" {
+	if m.AgentURL != "" && m.AgentImage != "" && m.AgentToken != nil {
 		upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, AgentTokenSecretName(req.Name))
 	}
 	return resolvedCreate{

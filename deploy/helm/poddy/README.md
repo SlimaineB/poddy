@@ -1,8 +1,9 @@
 # poddy Helm chart
 
 Production-ready Helm chart for the poddy Kubernetes development portal. The
-chart runs the portal and SSH bastion as separate Deployments from the same
-image.
+portal serves the web UI, the API, the workspace agent broker, and SSH from a
+single Deployment. Regions connect outbound to the hub; no SSH bastion or
+per-region public SSH endpoint is required.
 
 ## Install
 
@@ -67,34 +68,27 @@ name (without the leading `v`) is used.
 | Parameter | Description |
 |-----------|-------------|
 | `auth.token` or `auth.existingSecret` or `oidc.enabled` | Authentication is required (token and/or OIDC). |
-| `ssh.enabled` | Enable SSH metadata and certificate issuance (default `true`). |
-| `bastion.enabled` | Deploy the SSH bastion (default `true`). Set `false` for a hub that only issues certificates. |
+| `ssh.enabled` | Enable SSH in the portal (default `true`). |
 | `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
 | `ssh.authorizedKeys` or `ssh.existingKeysSecret` | Optional administrator-managed SSH keys. Teams normally add their own key under **SSH keys** in the portal. The comment binds an administrator-managed key to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token`) or marks it admin (`admin`, `*`). |
-| `ssh.existingHostKeySecret` | **Required** when `bastion.replicaCount > 1`. Secret with private host key. |
+| `ssh.existingHostKeySecret` | Optional Secret with the SSH host key. Empty generates and preserves one; set it when `replicaCount > 1` to manage rotation yourself. |
 | `database.url` or `database.existingSecret` | **Required** unless `regionManager.enabled=true`. PostgreSQL 13+ connection string. |
 
 ## Key values
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `replicaCount` | `1` | Portal replicas. Scales independently from the bastion. |
-| `bastion.enabled` | `true` | Deploy the SSH bastion as a separate Deployment. |
-| `bastion.replicaCount` | `1` | Bastion replicas. >1 requires `ssh.existingHostKeySecret`. |
-| `bastion.drainDelay` | `3s` | Reject new SSH connections immediately, then keep the listener open for this long so endpoints drain. |
-| `bastion.drainTimeout` | `20s` | Keep existing SSH sessions during graceful shutdown. |
-| `bastion.terminationGracePeriodSeconds` | `30` | Pod grace period; keep above `drainDelay + drainTimeout`. |
-| `bastion.minReadySeconds` | `5` | Delay before a new bastion pod is considered available. |
-| `bastion.resources` | `{}` | Bastion resource requests/limits. |
-| `bastion.podDisruptionBudget.enabled` | `true` | Create a bastion PDB automatically when `bastion.replicaCount > 1`; set `false` to opt out. |
-| `image.repository` | `ghcr.io/your-org/poddy` | Portal and bastion image repository. |
-| `image.tag` | `latest` | Portal and bastion image tag. |
-| `imagePullSecrets` | `[]` | Secrets for portal/bastion images (use `workspace.imagePullSecrets` for workspaces). |
-| `hostAliases` | `[]` | Extra `/etc/hosts` entries for the portal and bastion pods. |
+| `replicaCount` | `1` | Portal replicas. SSH and the agent broker scale with the portal; replicas use Kubernetes Leases to forward sessions to the replica that owns a workspace agent or region tunnel. |
+| `image.repository` | `ghcr.io/your-org/poddy` | Portal image repository. |
+| `image.tag` | `latest` | Portal image tag. |
+| `imagePullSecrets` | `[]` | Secrets for portal images (use `workspace.imagePullSecrets` for workspaces). |
+| `hostAliases` | `[]` | Extra `/etc/hosts` entries for portal pods. |
 | `ssh.allowUnmappedKeys` | `false` | Legacy: allow keys without an owner comment to reach every workspace. Insecure. |
 | `ssh.requireAgent` | `true` | Require the outbound workspace agent tunnel and disable Kubernetes port-forward fallback. Custom workspace images must include `poddy-agent`; restart existing workspaces after upgrading. Set `false` to keep the port-forward fallback. |
-| `ssh.agent.enabled` | `true` | Run the bastion agent listener and inject agent URL/token into workspaces. |
-| `ssh.agent.port` | `8091` | Private ClusterIP port for the agent listener. |
+| `ssh.drainDelay` | `3s` | Reject new SSH connections immediately, then keep the listener open for this long so endpoints drain. |
+| `ssh.drainTimeout` | `20s` | Keep existing SSH sessions during graceful shutdown. |
+| `ssh.agent.enabled` | `true` | Run the portal agent listener and inject agent URL/token into hub workspaces. Region managers skip the agent and use the region tunnel. |
+| `ssh.agent.port` | `8091` | Private ClusterIP port for the agent listener and peer forwarding. |
 | `ssh.agent.url` | `""` | Agent URL injected into workspaces. Empty derives the in-cluster Service URL. |
 | `ssh.agent.tokenTtl` | `1h` | Workspace agent token lifetime. Tokens renew over the tunnel, are refreshed in the workspace Secret for reconnects, and are scoped to one workspace. |
 | `ssh.agent.existingSecret` | `""` | Existing Secret with the shared agent HMAC key. |
@@ -115,7 +109,7 @@ name (without the leading `v`) is used.
 | `vscodeExtension.releaseUrl` | GitHub release | Release page linked from the portal. Empty uses the metadata embedded in the image. |
 | `vscodeExtension.downloadUrl` | GitHub VSIX | VSIX download linked from the portal. Empty uses the metadata embedded in the image. |
 | `workspaceState.configMapName` | `""` (`<fullname>-state`) | Legacy ConfigMap read at startup to migrate stopped workspaces to StatefulSets. |
-| `regions` | `[]` | Central hub only. Region list with `name`, `key`, optional `url` fallback, `sshHost`, `sshPort`, `default`. Mounted as `regions.yaml`. |
+| `regions` | `[]` | Central hub only. Region list with `name`, `key`, optional `url` fallback, `default`. Mounted as `regions.yaml`. Region SSH and API traffic use the outbound region tunnel. |
 | `regionsExistingSecret` | `""` | Existing Secret containing `regionsKey` instead of inline `regions`. |
 | `regionsKey` | `regions.yaml` | Key in the regions Secret. |
 | `regionManager.enabled` | `false` | Run this release as a region manager trusted by a central hub. |
@@ -219,9 +213,6 @@ name (without the leading `v`) is used.
 | `podDisruptionBudget.minAvailable` | `1` | Pods guaranteed available during voluntary disruptions. |
 | `podDisruptionBudget.unhealthyPodEvictionPolicy` | `AlwaysAllow` | Allow eviction of unhealthy pods even when the PDB budget is exhausted. |
 | `topologySpreadConstraints` | `[]` | Portal spread constraints; defaults to host spread when `replicaCount > 1`. |
-| `bastion.topologySpreadConstraints` | `[]` | Bastion spread constraints; defaults to host spread when `bastion.replicaCount > 1`. |
-| `bastion.podDisruptionBudget.minAvailable` | `1` | Bastion pods guaranteed available during voluntary disruptions. |
-| `bastion.podDisruptionBudget.unhealthyPodEvictionPolicy` | `AlwaysAllow` | Allow eviction of unhealthy bastion pods even when the PDB budget is exhausted. |
 
 ## Workspace templates
 
@@ -319,10 +310,10 @@ Register `https://poddy.example.com/external-auth/<id>/callback` with each provi
 
 ## PostgreSQL control plane and audit
 
-PostgreSQL is required for the portal and bastion. It is the control plane for
-RBAC, users, quotas, access, shares, tokens, environment variables/secrets, and
+PostgreSQL is required for the hub portal. It is the control plane for RBAC,
+users, quotas, access, shares, tokens, environment variables/secrets, and
 append-only audit events. Region managers use the hub instead. The chart injects
-`PODDY_DATABASE_URL` into both the portal and bastion.
+`PODDY_DATABASE_URL` into the portal.
 
 ```yaml
 database:
@@ -351,7 +342,7 @@ or the schema is not ready, the portal retries for `database.connectTimeout`
 With the official `postgres` image on an EBS-backed PVC, set
 `PGDATA=/var/lib/postgresql/data/pgdata`; otherwise `initdb` fails on
 `lost+found`. The portal mirrors RBAC, OIDC users, templates, workspaces, and
-team/user quotas; the bastion records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
+team/user quotas; the portal records SSH connections. Admins and `rbac.auditors` can read the trail from the **Audit**
 page. See [PostgreSQL schema](https://slimaineb.github.io/poddy/postgres-schema/) for the
 schema, audit actions, backup, and limitations.
 
@@ -376,13 +367,13 @@ Then set:
 ssh:
   existingHostKeySecret: poddy-host-key
   hostKeySecretKey: ssh_host_ed25519_key
-bastion:
-  replicaCount: 3
+replicaCount: 3
 ```
 
-## Scaling portal and bastion independently
+## Scaling the portal
 
-The portal and bastion use the same image but run as separate Deployments:
+The portal serves HTTP, WebSocket, the agent broker, and SSH from the same
+Deployment, so `replicaCount` scales every path together:
 
 ```yaml
 replicaCount: 3
@@ -390,23 +381,18 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 1
 
-bastion:
-  enabled: true
-  replicaCount: 2
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      memory: 256Mi
-  podDisruptionBudget:
-    enabled: true
-    minAvailable: 1
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
 ```
 
-The portal scales on HTTP load. The bastion scales on SSH connections. The
-bastion uses `ssh.existingHostKeySecret`, so SSH clients see a stable host key
-across replicas.
+Portal replicas use Kubernetes Leases to find the replica that owns a workspace
+agent or region tunnel, then forward the raw stream over the internal agent port.
+Set `ssh.existingHostKeySecret` so SSH clients see a stable host key across
+replicas.
 
 ## Multi-region
 
@@ -428,11 +414,10 @@ The portal gets a Role in `workspaceNamespace` with:
 - `persistentvolumeclaims` (get, list, create, delete)
 - `configmaps` (get, list, watch, create, update, patch)
 - `secrets` (get, list, watch, create, update, patch) for external auth tokens
-- `leases` (get, create, update) for distributed workspace lifecycle locks
+- `leases` (get, list, watch, create, update, delete) for workspace lifecycle locks and tunnel presence
 
 Add extra rules via `rbac.extraRules`.
 
-The bastion has its own ServiceAccount and Role with only `pods` read access and `pods/portforward`. It has no ConfigMap or Secret permissions through the API.
 
 ### Workspace lifecycle
 
