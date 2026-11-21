@@ -103,6 +103,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		owner = decision.Owner
 	}
 	s.syncOwnerSSHKeys(r.Context(), owner)
+	s.syncWorkspaceSSHKeys(r.Context(), name)
 	if s.MeshEnabled {
 		sshHost = mesh.WorkspaceHostname(name)
 		sshPort = "22"
@@ -210,6 +211,7 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 		log.Printf("desktop: reload ssh keys: %v", err)
 	}
 	s.syncOwnerSSHKeys(r.Context(), claims.Owner)
+	s.syncWorkspaceSSHKeys(r.Context(), claims.Workspace)
 	if duplicate {
 		w.WriteHeader(http.StatusNoContent)
 		return

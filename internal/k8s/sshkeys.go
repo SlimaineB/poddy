@@ -40,6 +40,17 @@ func (m *Manager) SyncSSHKeysForOwner(ctx context.Context, owner string) error {
 	return nil
 }
 
+// SyncSSHKeysForWorkspace refreshes only the authorized_keys Secret of one
+// workspace. Desktop connections call this so a newly enrolled key reaches the
+// exact workspace being opened, even if an owner-wide sync raced creation.
+func (m *Manager) SyncSSHKeysForWorkspace(ctx context.Context, name string) error {
+	pod, err := m.Get(ctx, name)
+	if err != nil {
+		return err
+	}
+	return m.ensureSSHKeysSecret(ctx, name, Owner(pod))
+}
+
 func (m *Manager) applySSHKeys(ctx context.Context, pod *corev1.Pod, workspace, owner string) error {
 	if err := m.ensureSSHKeysSecret(ctx, workspace, owner); err != nil {
 		return err

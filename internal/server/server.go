@@ -147,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}/external-auth/{id}/token", s.workspaceExternalAuthToken)
 	mux.HandleFunc("GET /api/workspaces/{name}/git-askpass", s.workspaceGitAskpass)
 	mux.HandleFunc("PUT /api/internal/ssh-keys/{owner}", s.regionReplaceSSHKeys)
+	mux.HandleFunc("PUT /api/internal/region/workspaces/{name}/ssh-keys", s.regionSyncWorkspaceSSHKeys)
 	mux.HandleFunc("GET /api/internal/region/tunnel", s.regionTunnel)
 	mux.HandleFunc("POST /api/internal/region/dotfiles", s.regionDotfiles)
 	mux.HandleFunc("POST /api/internal/region/external-auth", s.regionExternalAuth)

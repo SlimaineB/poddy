@@ -102,14 +102,34 @@ func (q Quota) IsZero() bool {
 		strings.TrimSpace(q.Storage) == ""
 }
 
-// Normalize trims whitespace from resource fields.
+var bareQuantity = regexp.MustCompile(`^[+-]?(?:\d+\.?\d*|\.\d+)$`)
+
+// defaultQuantitySuffix makes unitless quota fields behave like the UI unit
+// pickers: memory defaults to Mi and storage to Gi. CPU stays in cores.
+func defaultQuantitySuffix(kind, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || !bareQuantity.MatchString(value) {
+		return value
+	}
+	switch kind {
+	case "memory":
+		return value + "Mi"
+	case "storage":
+		return value + "Gi"
+	default:
+		return value
+	}
+}
+
+// Normalize trims whitespace and gives unitless memory/storage fields the same
+// default unit the UI uses.
 func (q *Quota) Normalize() {
 	if q == nil {
 		return
 	}
 	q.CPU = strings.TrimSpace(q.CPU)
-	q.Memory = strings.TrimSpace(q.Memory)
-	q.Storage = strings.TrimSpace(q.Storage)
+	q.Memory = defaultQuantitySuffix("memory", q.Memory)
+	q.Storage = defaultQuantitySuffix("storage", q.Storage)
 }
 
 // Validate checks that quota values are non-negative Kubernetes quantities.
@@ -155,7 +175,7 @@ func (q Quota) Check(usage Usage) error {
 		{"storage", q.Storage, usage.Storage},
 	}
 	for _, check := range checks {
-		limit := strings.TrimSpace(check.limit)
+		limit := defaultQuantitySuffix(check.name, check.limit)
 		if limit == "" {
 			continue
 		}

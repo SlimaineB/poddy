@@ -343,6 +343,10 @@ func (c *Client) ReplaceSSHKeys(ctx context.Context, owner string, keys []string
 	return c.doJSON(ctx, http.MethodPut, "/api/internal/ssh-keys/"+url.PathEscape(owner), identity, body, nil)
 }
 
+func (c *Client) SyncWorkspaceSSHKeys(ctx context.Context, workspace string, identity Identity) error {
+	return c.doJSON(ctx, http.MethodPut, "/api/internal/region/workspaces/"+url.PathEscape(workspace)+"/ssh-keys", identity, nil, nil)
+}
+
 // DoJSON calls an internal hub endpoint with the region identity. It is used by
 // region components that must read shared state from the control plane instead
 // of connecting to its database.

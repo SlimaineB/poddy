@@ -504,15 +504,35 @@
             </label>
             <label class="quota-field">
               <span>CPU</span>
-              <input id="team-quota-cpu" type="text" placeholder="e.g. 8" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="team-quota-cpu" type="number" min="0" step="any" placeholder="e.g. 8" inputmode="decimal">
+                <select id="team-quota-cpu-unit">
+                  <option value="cores">cores</option>
+                  <option value="m">millicores</option>
+                </select>
+              </span>
             </label>
             <label class="quota-field">
               <span>Memory</span>
-              <input id="team-quota-memory" type="text" placeholder="e.g. 16Gi" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="team-quota-memory" type="number" min="0" step="any" placeholder="e.g. 16" inputmode="decimal">
+                <select id="team-quota-memory-unit">
+                  <option value="Mi">Mi</option>
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                </select>
+              </span>
             </label>
             <label class="quota-field">
               <span>Storage</span>
-              <input id="team-quota-storage" type="text" placeholder="e.g. 50Gi" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="team-quota-storage" type="number" min="0" step="any" placeholder="e.g. 50" inputmode="decimal">
+                <select id="team-quota-storage-unit">
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                  <option value="Pi">Pi</option>
+                </select>
+              </span>
             </label>
           </div>
           <div class="quota-preview-wrap">
@@ -1339,15 +1359,35 @@
             </label>
             <label class="quota-field">
               <span>CPU</span>
-              <input id="user-quota-cpu" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="user-quota-cpu" type="number" min="0" step="any" placeholder="Inherit" inputmode="decimal">
+                <select id="user-quota-cpu-unit">
+                  <option value="cores">cores</option>
+                  <option value="m">millicores</option>
+                </select>
+              </span>
             </label>
             <label class="quota-field">
               <span>Memory</span>
-              <input id="user-quota-memory" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="user-quota-memory" type="number" min="0" step="any" placeholder="Inherit" inputmode="decimal">
+                <select id="user-quota-memory-unit">
+                  <option value="Mi">Mi</option>
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                </select>
+              </span>
             </label>
             <label class="quota-field">
               <span>Storage</span>
-              <input id="user-quota-storage" type="text" placeholder="Inherit" autocomplete="off" spellcheck="false">
+              <span class="quota-input-row">
+                <input id="user-quota-storage" type="number" min="0" step="any" placeholder="Inherit" inputmode="decimal">
+                <select id="user-quota-storage-unit">
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                  <option value="Pi">Pi</option>
+                </select>
+              </span>
             </label>
           </div>
           <p class="hint">Empty fields inherit the most permissive quota from the user's teams. Clearing every field removes the override.</p>

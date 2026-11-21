@@ -175,7 +175,9 @@ async function waitForSSH(alias) {
         return;
       } catch (err) {
         lastError = err;
-        if (Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
+        const message = String(err && err.message || err);
+        const retryableKeySync = /permission denied|maxstartups|exceeded maxstartups/i.test(message);
+        if (!retryableKeySync && Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
       }
     }
     if (fastFailures >= 3) {

@@ -1813,6 +1813,21 @@ select {
   gap: 6px;
 }
 
+.quota-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.quota-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quota-input-row select {
+  flex: 0 0 auto;
+}
+
 .quota-summary {
   font-size: 11.5px;
 }

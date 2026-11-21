@@ -137,6 +137,43 @@ func (s *Server) regionReplaceSSHKeys(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) regionSyncWorkspaceSSHKeys(w http.ResponseWriter, r *http.Request) {
+	if !s.RegionMode || s.Workspaces == nil || s.SSHKeys == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	id, ok := s.currentIdentity(r)
+	if !ok || id.Method != "region" || !id.Admin {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	name := r.PathValue("name")
+	if err := s.Workspaces.SyncSSHKeysForWorkspace(r.Context(), name); err != nil {
+		log.Printf("region ssh keys: sync workspace %s: %v", name, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) syncWorkspaceSSHKeys(ctx context.Context, name string) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if s.Workspaces != nil {
+		if err := s.Workspaces.SyncSSHKeysForWorkspace(ctx, name); err != nil {
+			log.Printf("desktop: sync workspace %s: %v", name, err)
+		}
+		return
+	}
+	if s.Regions == nil {
+		return
+	}
+	for _, problem := range s.Regions.SyncWorkspaceSSHKeys(ctx, name, s.hubAdminIdentity()) {
+		log.Printf("desktop: sync workspace %s: %v", name, problem)
+	}
+}
+
 func regionConfigInfo(cfg region.Config, sshHost, sshPort string) map[string]any {
 	return map[string]any{
 		"name":        cfg.Name,

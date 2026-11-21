@@ -1,5 +1,7 @@
 "use strict";
 
+const QUOTA_DEFAULT_UNIT = { cpu: "cores", memory: "Mi", storage: "Gi" };
+
 function quotaInputs(scope) {
   if (scope === "team") {
     return {
@@ -19,8 +21,43 @@ function quotaInputs(scope) {
   };
 }
 
+function quotaUnitInputs(scope) {
+  if (scope === "team") {
+    return {
+      cpu: els.teamQuotaCPUUnit,
+      memory: els.teamQuotaMemoryUnit,
+      storage: els.teamQuotaStorageUnit,
+    };
+  }
+  return {
+    cpu: els.quotaCPUUnit,
+    memory: els.quotaMemoryUnit,
+    storage: els.quotaStorageUnit,
+  };
+}
+
+function splitQuotaValue(raw, kind) {
+  const text = String(raw ?? "").trim();
+  const fallback = QUOTA_DEFAULT_UNIT[kind] || "";
+  if (!text) return { value: "", unit: fallback };
+  const match = text.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([a-zA-Z]*)$/);
+  if (!match) return { value: text, unit: fallback };
+  if (kind === "cpu") {
+    return match[2] === "m" ? { value: match[1], unit: "m" } : { value: match[1], unit: "cores" };
+  }
+  return { value: match[1], unit: match[2] || fallback };
+}
+
+function combineQuotaValue(value, unit, kind) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  if (kind === "cpu") return unit === "m" ? `${text}m` : text;
+  return `${text}${unit || QUOTA_DEFAULT_UNIT[kind] || ""}`;
+}
+
 function readQuota(scope) {
   const inputs = quotaInputs(scope);
+  const units = quotaUnitInputs(scope);
   const quota = {};
   for (const [key, label] of [["workspaces", "Max workspaces"], ["backups", "Max backups"]]) {
     const text = inputs[key].value.trim();
@@ -33,7 +70,7 @@ function readQuota(scope) {
     else quota.maxBackups = value;
   }
   for (const key of ["cpu", "memory", "storage"]) {
-    const value = inputs[key].value.trim();
+    const value = combineQuotaValue(inputs[key].value, units[key]?.value, key);
     if (value) quota[key] = value;
   }
   return quota;
@@ -41,16 +78,20 @@ function readQuota(scope) {
 
 function setQuotaInputs(scope, quota) {
   const inputs = quotaInputs(scope);
+  const units = quotaUnitInputs(scope);
   inputs.workspaces.value = quota?.maxWorkspaces ?? "";
   inputs.backups.value = quota?.maxBackups ?? "";
-  inputs.cpu.value = quota?.cpu || "";
-  inputs.memory.value = quota?.memory || "";
-  inputs.storage.value = quota?.storage || "";
+  for (const key of ["cpu", "memory", "storage"]) {
+    const parts = splitQuotaValue(quota?.[key] || "", key);
+    inputs[key].value = parts.value;
+    if (units[key]) units[key].value = parts.unit;
+  }
   if (scope === "team") renderTeamQuotaPreview();
 }
 
 function setQuotaDisabled(scope, disabled) {
   for (const input of Object.values(quotaInputs(scope))) input.disabled = Boolean(disabled);
+  for (const unit of Object.values(quotaUnitInputs(scope))) unit.disabled = Boolean(disabled);
 }
 
 function quotaSummary(quota) {
@@ -74,6 +115,7 @@ function hasQuotaValues(scope) {
 
 function previewQuota(scope) {
   const inputs = quotaInputs(scope);
+  const units = quotaUnitInputs(scope);
   const quota = {};
   let invalid = false;
   for (const [key, target] of [["workspaces", "maxWorkspaces"], ["backups", "maxBackups"]]) {
@@ -84,7 +126,7 @@ function previewQuota(scope) {
     else invalid = true;
   }
   for (const key of ["cpu", "memory", "storage"]) {
-    const value = inputs[key].value.trim();
+    const value = combineQuotaValue(inputs[key].value, units[key]?.value, key);
     if (value) quota[key] = value;
   }
   return { quota, invalid };
@@ -140,7 +182,15 @@ function parseQuotaQuantity(value, kind) {
   const binary = { Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3, Ti: 1024 ** 4, Pi: 1024 ** 5, Ei: 1024 ** 6 };
   const decimal = { "": 1, n: 1e-9, u: 1e-6, m: 1e-3, k: 1e3, K: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, E: 1e18 };
   const suffix = match[2];
-  const factor = suffix in binary ? binary[suffix] : decimal[suffix];
+  let factor;
+  if (suffix in binary) factor = binary[suffix];
+  else if (suffix in decimal) factor = decimal[suffix];
+  else factor = undefined;
+  if (suffix === "") {
+    if (kind === "memory") factor = binary.Mi;
+    else if (kind === "storage") factor = binary.Gi;
+    else factor = 1;
+  }
   return factor === undefined ? null : amount * factor;
 }
 

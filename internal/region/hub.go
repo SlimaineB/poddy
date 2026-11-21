@@ -672,3 +672,32 @@ func (h *Hub) SyncSSHKeys(ctx context.Context, owner string, keys []string, iden
 	wg.Wait()
 	return problems
 }
+
+func (h *Hub) SyncWorkspaceSSHKeys(ctx context.Context, workspace string, identity Identity) []error {
+	if h == nil {
+		return nil
+	}
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		problems []error
+	)
+	for _, cfg := range h.Configs() {
+		client := h.clients[cfg.Name]
+		if client == nil || !client.available() {
+			continue
+		}
+		wg.Add(1)
+		go func(cfg Config, client *Client) {
+			defer wg.Done()
+			if err := client.SyncWorkspaceSSHKeys(ctx, workspace, identity); err != nil {
+				mu.Lock()
+				problems = append(problems, fmt.Errorf("%s: %w", cfg.Name, err))
+				mu.Unlock()
+				log.Printf("region %s: sync SSH keys for workspace %s: %v", strings.ReplaceAll(strings.ReplaceAll(cfg.Name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
+			}
+		}(cfg, client)
+	}
+	wg.Wait()
+	return problems
+}
