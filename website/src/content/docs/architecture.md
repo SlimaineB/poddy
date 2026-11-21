@@ -183,7 +183,7 @@ locally, so direct region creates bypass quota checks.
    pods receive their owner's keys through a read-only Secret mounted at
    `/etc/poddy/ssh/authorized_keys`.
 5. The portal records `ssh.connect` in PostgreSQL.
-6. VS Code, Cursor, and PyCharm through JetBrains Gateway connect through `ProxyCommand` using the same portal endpoint.
+6. VS Code and Cursor use the bundled `poddy-connect` helper as `ProxyCommand`; it carries SSH over WebSocket to the portal. PyCharm uses JetBrains Gateway with the generated portal or mesh SSH config.
 
 ### Browser VS Code
 

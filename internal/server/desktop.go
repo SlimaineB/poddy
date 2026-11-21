@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	desktopTicketTTL      = 2 * time.Minute
+	desktopTicketTTL      = 12 * time.Hour
 	desktopExtensionID    = "slimaineb.poddy-remote"
 	desktopRemoteUser     = "dev"
 	desktopTicketAudience = "poddy-vscode-desktop"

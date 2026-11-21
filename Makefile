@@ -49,7 +49,7 @@ export KUBECONFIG
         sync-templates check-templates check-helm-render \
         local-image local-images k3d-up k3d-load k3d-deploy k3d-down \
         kind-up kind-load kind-deploy kind-down local-up local-deploy local-down \
-        ui-test ui-test-install
+        ui-test ui-test-install vscode-helper
 
 all: build test vet
 
@@ -84,6 +84,16 @@ ui-test-install:
 
 ui-test:
 	cd ui-tests && npm test
+
+vscode-helper:
+	mkdir -p vscode-extension/bin
+	@for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do \
+		goos=$${target%/*}; goarch=$${target#*/}; ext=""; \
+		[ "$$goos" = windows ] && ext=".exe"; \
+		echo "building vscode-extension/bin/poddy-connect-$$goos-$$goarch$$ext"; \
+		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch $(GO) build -trimpath -ldflags="-s -w" \
+			-o "vscode-extension/bin/poddy-connect-$$goos-$$goarch$$ext" ./cmd/poddy-connect || exit 1; \
+	done
 
 kubeconfig: $(KUBECONFIG)
 

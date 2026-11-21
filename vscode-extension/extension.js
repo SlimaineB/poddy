@@ -14,14 +14,14 @@ const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
 function activate(context) {
   context.subscriptions.push(
     vscode.window.registerUriHandler({
-      handleUri: (uri) => handleUri(uri).catch((err) => {
+      handleUri: (uri) => handleUri(context, uri).catch((err) => {
         vscode.window.showErrorMessage(`Poddy: ${err.message || err}`);
       }),
     })
   );
 }
 
-async function handleUri(uri) {
+async function handleUri(context, uri) {
   const query = new URLSearchParams(uri.query);
   const encoded = query.get("payload");
   if (!encoded) throw new Error("missing connection payload");
@@ -41,7 +41,7 @@ async function handleUri(uri) {
 
   const keyPath = await ensureKey(payload.workspace);
   const publicKey = await readPublicKey(keyPath);
-  const alias = await writeSSHConfig(payload, keyPath);
+  const alias = await writeSSHConfig(payload, keyPath, context);
   await postJSON(`${payload.api.replace(/\/$/, "")}/api/desktop/enroll`, {
     ticket: payload.ticket,
     publicKey,
@@ -183,7 +183,7 @@ function postJSON(url, body) {
   });
 }
 
-async function writeSSHConfig(payload, priv) {
+async function writeSSHConfig(payload, priv, context) {
   const workspace = payload.workspace;
   const alias = `poddy-desktop-${workspace}`;
   const key = priv.replace(/\\/g, "/");
@@ -197,7 +197,13 @@ async function writeSSHConfig(payload, priv) {
     "  IdentitiesOnly yes",
   ];
   if (payload.mesh) {
-    lines.push("  StrictHostKeyChecking accept-new", "  LogLevel ERROR");
+    const helper = await ensureHelper(context);
+    const ticketFile = writeTicketFile(context, workspace, payload.ticket);
+    lines.push(
+      `  ProxyCommand "${helper}" --portal "${payload.api}" --workspace "${workspace}" --ticket-file "${ticketFile}"`,
+      "  StrictHostKeyChecking accept-new",
+      "  LogLevel ERROR"
+    );
   } else {
     const jump = `poddy-desktop-${workspace}-bastion`;
     lines.push(
@@ -233,6 +239,33 @@ async function writeSSHConfig(payload, priv) {
   if (current) current += "\n\n";
   fs.writeFileSync(config, current + block, { mode: 0o600 });
   return alias;
+}
+
+function writeTicketFile(context, workspace, ticket) {
+  const dir = path.join(context.globalStorageUri.fsPath, "tickets");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const target = path.join(dir, `${workspace}.ticket`);
+  fs.writeFileSync(target, `${ticket}\n`, { mode: 0o600 });
+  return target.replace(/\\/g, "/");
+}
+
+async function ensureHelper(context) {
+  const goos = { linux: "linux", darwin: "darwin", win32: "windows" }[process.platform];
+  const goarch = { x64: "amd64", arm64: "arm64" }[process.arch];
+  if (!goos || !goarch) {
+    throw new Error(`unsupported platform ${process.platform}/${process.arch}`);
+  }
+  const suffix = goos === "windows" ? ".exe" : "";
+  const source = path.join(context.extensionPath, "bin", `poddy-connect-${goos}-${goarch}${suffix}`);
+  if (!fs.existsSync(source)) {
+    throw new Error(`the extension is missing poddy-connect for ${goos}/${goarch}; reinstall the latest VSIX`);
+  }
+  const dir = path.join(context.globalStorageUri.fsPath, "bin");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const target = path.join(dir, `poddy-connect${suffix}`);
+  fs.copyFileSync(source, target);
+  if (goos !== "windows") fs.chmodSync(target, 0o755);
+  return target.replace(/\\/g, "/");
 }
 
 function removeBlock(content, workspace) {

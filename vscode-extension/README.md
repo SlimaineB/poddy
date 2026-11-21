@@ -7,6 +7,12 @@ machine key, enrolls the public key, writes a `# >>> poddy:<workspace>` block to
 the real `~/.ssh/config`, waits for the workspace to accept SSH, and opens
 Remote-SSH on `/home/dev`.
 
+The VSIX bundles a small `poddy-connect` helper for Linux, macOS, and Windows.
+The SSH config uses it as `ProxyCommand`; it tunnels the SSH transport to the
+portal over WebSocket. Users do not install Tailscale or run `tailscale up`,
+even when the portal uses the Headscale mesh internally. On a private CA, add
+`--ca-file <path>` to the generated `ProxyCommand`.
+
 The extension runs on the local UI side (`extensionKind: ui`). It is not
 installed in the workspace and requires the local `ssh` and `ssh-keygen` binaries
 (OpenSSH on Windows).
@@ -31,12 +37,15 @@ JetBrains Gateway with the SSH config from the **SSH** dialog.
 ## Build locally
 
 ```bash
+make vscode-helper
 cd vscode-extension
 npm ci
 npm run package
 ```
 
-The VSIX is written next to `package.json` and is ignored by Git. The
+`make vscode-helper` cross-compiles `cmd/poddy-connect` into
+`vscode-extension/bin/`; the VSIX is written next to `package.json` and is
+ignored by Git. The
 `VS Code extension` GitHub Actions workflow builds it on changes and attaches
 the VSIX to a `v*` release when the tag matches the extension version. Other
 app tags skip extension packaging and publishing instead of failing.

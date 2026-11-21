@@ -76,6 +76,26 @@ jobs:
           fi
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/setup-go@v7.1.0
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build poddy-connect helper
+        if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
+        run: |
+          mkdir -p vscode-extension/bin
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            ext=""
+            if [[ "$goos" == "windows" ]]; then ext=".exe"; fi
+            echo "building poddy-connect-${goos}-${goarch}${ext}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" \
+              -o "vscode-extension/bin/poddy-connect-${goos}-${goarch}${ext}" ./cmd/poddy-connect
+          done
+
       - name: Install dependencies
         if: steps.release.outputs.release_tag != '' || github.ref_type != 'tag'
         working-directory: vscode-extension

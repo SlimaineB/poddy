@@ -84,17 +84,19 @@ the new `PODDY_MESH_*` environment variables.
 
 ## Join users
 
-Users install Tailscale and join the same control server once. The browser
-opens the in-chart Dex login page:
+Desktop VS Code and Cursor do not require users to install Tailscale. The
+Poddy VSIX bundles `poddy-connect`, which uses `ProxyCommand` to tunnel the SSH
+transport to the portal over WebSocket. The portal resolves the workspace
+through the region tunnel or the local agent. The mesh remains an internal
+transport between the portal, regions, and workspace agents.
+
+Users who want a direct `ws-<workspace>` SSH session can still join the same
+control server once with Tailscale. The browser opens the in-chart Dex login
+page:
 
 ```bash
 tailscale up --login-server=https://mesh.example.com
 ```
-
-The SSH dialog shows the direct `ws-<workspace>` host and the generated
-`~/.ssh/config` block. No `ProxyCommand` is used. Desktop VS Code/Cursor still
-enrolls a workspace key through the portal, then connects directly over the
-tailnet.
 
 For automated onboarding without the browser flow, create a short-lived user
 key:

@@ -562,6 +562,31 @@ func Run(ctx context.Context, args []string) error {
 		log.Printf("Prometheus monitoring history disabled: PODDY_PROMETHEUS_URL is empty")
 	}
 
+	desktopDial := func(ctx context.Context, workspace string, port int) (net.Conn, error) {
+		if hub != nil && regionTunnel != nil {
+			regionCfg, _, err := hub.FindWorkspace(ctx, workspace, regionIdentity)
+			if err == nil {
+				return regionTunnel.Dial(ctx, regionCfg.Name, fmt.Sprintf("tcp:%s:%d", workspace, port))
+			}
+			if !region.IsNotFound(err) {
+				return nil, err
+			}
+		}
+		pod, err := manager.Get(ctx, workspace)
+		if err != nil {
+			return nil, err
+		}
+		if pod.Status.Phase != corev1.PodRunning {
+			return nil, fmt.Errorf("workspace %q is not running", workspace)
+		}
+		localPort, err := forwards.EnsurePort(manager, workspace, port)
+		if err != nil {
+			return nil, err
+		}
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", localPort))
+	}
+
 	srv := &server.Server{
 		Workspaces:     manager,
 		Backups:        backups,
@@ -609,6 +634,7 @@ func Run(ctx context.Context, args []string) error {
 		SSHAllowUnmapped:  allowUnmapped,
 		UserKeys:          userKeyStore,
 		DesktopSecret:     desktopSecret,
+		DesktopDial:       desktopDial,
 		CLISecret:         desktopSecret,
 		CLITokens:         cliTokens,
 		SSHKeyPath:        sshKeyPath,

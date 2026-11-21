@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"io/fs"
 	"mime"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -62,6 +64,7 @@ type Server struct {
 	SSHCertTTL        time.Duration
 	UserKeys          *userkeys.Store
 	DesktopSecret     []byte
+	DesktopDial       func(ctx context.Context, workspace string, port int) (net.Conn, error)
 	CLISecret         []byte
 	CLITokens         clitoken.Store
 	VSCodeExtension   extension.Metadata
@@ -205,6 +208,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/gateway", s.gateway)
 	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
 	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)
+	mux.HandleFunc("GET /api/desktop/ssh", s.desktopSSH)
 	mux.HandleFunc("/api/workspaces/{name}/code/", s.browserVSCode)
 	mux.HandleFunc("/api/workspaces/{name}/lab", s.browserJupyterRedirect)
 	mux.HandleFunc("/api/workspaces/{name}/lab/", s.browserJupyter)

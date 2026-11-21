@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 /website/site/
 vscode-extension/*.vsix
+vscode-extension/bin/
 vscode-extension/node_modules/
 node_modules/
 .astro/

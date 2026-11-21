@@ -1,0 +1,189 @@
+// Command poddy-connect is the ProxyCommand used by the Poddy desktop editor
+// extension. It carries the SSH transport over a WebSocket to the portal.
+package main
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+func main() {
+	log.SetFlags(0)
+	log.SetPrefix("poddy-connect: ")
+	if err := run(); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	portal := flag.String("portal", "", "portal URL, for example https://poddy.example.com")
+	workspace := flag.String("workspace", "", "workspace name")
+	ticket := flag.String("ticket", "", "desktop connection ticket")
+	ticketFile := flag.String("ticket-file", "", "file containing the desktop connection ticket")
+	caFile := flag.String("ca-file", "", "additional CA bundle for a private portal certificate")
+	insecure := flag.Bool("insecure", false, "disable portal TLS certificate verification")
+	timeout := flag.Duration("timeout", 20*time.Second, "WebSocket handshake timeout")
+	flag.Parse()
+
+	if strings.TrimSpace(*portal) == "" || strings.TrimSpace(*workspace) == "" {
+		return errors.New("--portal and --workspace are required")
+	}
+	connectionTicket := strings.TrimSpace(*ticket)
+	if connectionTicket == "" && strings.TrimSpace(*ticketFile) != "" {
+		data, err := os.ReadFile(*ticketFile)
+		if err != nil {
+			return fmt.Errorf("read ticket file: %w", err)
+		}
+		connectionTicket = strings.TrimSpace(string(data))
+	}
+	if connectionTicket == "" {
+		return errors.New("--ticket or --ticket-file is required")
+	}
+	target, err := sshURL(*portal, *workspace, connectionTicket)
+	if err != nil {
+		return err
+	}
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: *timeout,
+		Proxy:            http.ProxyFromEnvironment,
+	}
+	if target.Scheme == "wss" {
+		tlsConfig, err := portalTLSConfig(*caFile, *insecure)
+		if err != nil {
+			return err
+		}
+		dialer.TLSClientConfig = tlsConfig
+	}
+
+	ws, resp, err := dialer.Dial(target.String(), nil)
+	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("portal returned %s: %w", resp.Status, err)
+		}
+		return err
+	}
+	defer ws.Close()
+	ws.SetReadLimit(1 << 20)
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+
+	done := make(chan error, 2)
+	go func() {
+		done <- copyWebSocketToStdout(ws)
+	}()
+	go func() {
+		done <- copyStdinToWebSocket(ws)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil || isExpectedClose(err) {
+			return nil
+		}
+		return err
+	case <-stop:
+		_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		return nil
+	}
+}
+
+func sshURL(portal, workspace, ticket string) (*url.URL, error) {
+	target, err := url.Parse(strings.TrimSpace(portal))
+	if err != nil {
+		return nil, fmt.Errorf("invalid portal URL: %w", err)
+	}
+	switch target.Scheme {
+	case "http":
+		target.Scheme = "ws"
+	case "https":
+		target.Scheme = "wss"
+	case "ws", "wss":
+	default:
+		return nil, fmt.Errorf("unsupported portal scheme %q", target.Scheme)
+	}
+	target.Path = "/api/desktop/ssh"
+	target.RawPath = ""
+	target.RawQuery = ""
+	target.Fragment = ""
+	query := target.Query()
+	query.Set("workspace", workspace)
+	query.Set("ticket", ticket)
+	target.RawQuery = query.Encode()
+	return target, nil
+}
+
+func portalTLSConfig(caFile string, insecure bool) (*tls.Config, error) {
+	config := &tls.Config{MinVersion: tls.VersionTLS12}
+	if insecure {
+		config.InsecureSkipVerify = true
+	}
+	if strings.TrimSpace(caFile) == "" {
+		return config, nil
+	}
+	pem, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("read CA file: %w", err)
+	}
+	roots, err := x509.SystemCertPool()
+	if err != nil || roots == nil {
+		roots = x509.NewCertPool()
+	}
+	if !roots.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("CA file %q contains no certificates", caFile)
+	}
+	config.RootCAs = roots
+	return config, nil
+}
+
+func copyWebSocketToStdout(ws *websocket.Conn) error {
+	for {
+		_, reader, err := ws.NextReader()
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(os.Stdout, reader); err != nil {
+			return err
+		}
+	}
+}
+
+func copyStdinToWebSocket(ws *websocket.Conn) error {
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if n > 0 {
+			if writeErr := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+				return writeErr
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func isExpectedClose(err error) bool {
+	return websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived)
+}
