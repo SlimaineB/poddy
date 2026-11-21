@@ -98,7 +98,44 @@ func (n *Node) DialHost(ctx context.Context, host string, port int) (net.Conn, e
 }
 
 func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error) {
-	return n.DialHost(ctx, WorkspaceHostname(workspace), port)
+	host := WorkspaceHostname(workspace)
+	conn, err := n.DialHost(ctx, host, port)
+	if err == nil {
+		return conn, nil
+	}
+	ip, findErr := n.findPeerIP(ctx, host)
+	if findErr != nil {
+		return nil, err
+	}
+	return n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+}
+
+func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {
+	client, err := n.srv.LocalClient()
+	if err != nil {
+		return "", err
+	}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return "", err
+	}
+	if status == nil {
+		return "", fmt.Errorf("mesh: status is empty")
+	}
+	for _, peer := range status.Peer {
+		if peer == nil || !peer.Online {
+			continue
+		}
+		for _, name := range []string{peer.HostName, strings.TrimSuffix(peer.DNSName, ".")} {
+			name = strings.ToLower(name)
+			if name == prefix || strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+".") {
+				if ip := peerIP(peer); ip != "" {
+					return ip, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("mesh: workspace peer %q not found", prefix)
 }
 
 func (n *Node) DialRegion(ctx context.Context, regionName string, port int) (net.Conn, error) {

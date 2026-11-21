@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -10,15 +11,19 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"poddy/internal/mesh"
 )
 
 func main() {
@@ -35,13 +40,26 @@ func run() error {
 	workspace := flag.String("workspace", "", "workspace name")
 	ticket := flag.String("ticket", "", "desktop connection ticket")
 	ticketFile := flag.String("ticket-file", "", "file containing the desktop connection ticket")
-	caFile := flag.String("ca-file", "", "additional CA bundle for a private portal certificate")
+	mode := flag.String("mode", "", "connection mode: portal or mesh")
+	controlURL := flag.String("control-url", "", "mesh control server URL")
+	authKey := flag.String("auth-key", "", "mesh auth key")
+	authKeyFile := flag.String("auth-key-file", "", "file containing the mesh auth key")
+	stateDir := flag.String("state-dir", "", "writable mesh state directory")
+	hostname := flag.String("hostname", "", "mesh hostname for this client")
+	port := flag.Int("port", 22, "workspace SSH port")
+	caFile := flag.String("ca-file", "", "additional CA bundle for a private portal or mesh certificate")
 	insecure := flag.Bool("insecure", false, "disable portal TLS certificate verification")
 	timeout := flag.Duration("timeout", 20*time.Second, "WebSocket handshake timeout")
 	flag.Parse()
 
-	if strings.TrimSpace(*portal) == "" || strings.TrimSpace(*workspace) == "" {
-		return errors.New("--portal and --workspace are required")
+	if strings.TrimSpace(*workspace) == "" {
+		return errors.New("--workspace is required")
+	}
+	if strings.EqualFold(strings.TrimSpace(*mode), "mesh") || strings.TrimSpace(*controlURL) != "" {
+		return runMeshBridge(*controlURL, *workspace, *hostname, *authKey, *authKeyFile, *stateDir, *caFile, *port)
+	}
+	if strings.TrimSpace(*portal) == "" {
+		return errors.New("--portal is required")
 	}
 	connectionTicket := strings.TrimSpace(*ticket)
 	if connectionTicket == "" && strings.TrimSpace(*ticketFile) != "" {
@@ -182,6 +200,79 @@ func copyStdinToWebSocket(ws *websocket.Conn) error {
 			return err
 		}
 	}
+}
+
+func runMeshBridge(controlURL, workspace, hostname, authKey, authKeyFile, stateDir, caFile string, port int) error {
+	if strings.TrimSpace(controlURL) == "" {
+		return errors.New("--control-url is required in mesh mode")
+	}
+	key := strings.TrimSpace(authKey)
+	if key == "" && strings.TrimSpace(authKeyFile) != "" {
+		data, err := os.ReadFile(authKeyFile)
+		if err != nil {
+			return fmt.Errorf("read auth key file: %w", err)
+		}
+		key = strings.TrimSpace(string(data))
+	}
+	if key == "" {
+		return errors.New("--auth-key or --auth-key-file is required in mesh mode")
+	}
+	if strings.TrimSpace(caFile) != "" {
+		_ = os.Setenv("SSL_CERT_FILE", caFile)
+	}
+	if strings.TrimSpace(hostname) == "" {
+		hostname = "poddy-client-" + mesh.SanitizeHostname(workspace)
+	}
+	if strings.TrimSpace(stateDir) == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return fmt.Errorf("mesh state directory: %w", err)
+		}
+		stateDir = filepath.Join(cache, "poddy", "mesh", mesh.SanitizeHostname(workspace))
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	node, err := mesh.Start(ctx, mesh.Config{
+		ControlURL: controlURL,
+		AuthKey:    key,
+		Hostname:   hostname,
+		StateDir:   stateDir,
+		Ephemeral:  false,
+	})
+	if err != nil {
+		return err
+	}
+	defer node.Close()
+
+	conn, err := node.DialWorkspace(ctx, workspace, port)
+	if err != nil {
+		return fmt.Errorf("mesh dial %s: %w", workspace, err)
+	}
+	defer conn.Close()
+
+	done := make(chan error, 2)
+	go func() { done <- copyConnToStdout(conn) }()
+	go func() { done <- copyStdinToConn(conn) }()
+	select {
+	case err := <-done:
+		if err == nil || errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func copyConnToStdout(conn net.Conn) error {
+	_, err := io.Copy(os.Stdout, conn)
+	return err
+}
+
+func copyStdinToConn(conn net.Conn) error {
+	_, err := io.Copy(conn, os.Stdin)
+	return err
 }
 
 func isExpectedClose(err error) bool {

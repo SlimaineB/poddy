@@ -644,6 +644,8 @@ func Run(ctx context.Context, args []string) error {
 		SSHCA:             sshCA,
 		MeshEnabled:       meshNode != nil,
 		MeshLoginURL:      cfg.MeshLoginURL,
+		MeshControlURL:    cfg.MeshControlURL,
+		MeshClientAuthKey: cfg.MeshClientAuthKey,
 		SSHCertTTL:        cfg.SSHCertTTL,
 		VSCodeExtension: extension.Metadata{
 			ID:          cfg.VSCodeExtensionID,

@@ -10,17 +10,44 @@ HOST="${DEMO_HOST:-$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 REGIONS="${DEMO_REGIONS:-eu us}"
 HEADSCALE_PORT="${HEADSCALE_PORT:-30090}"
+HEADSCALE_HOST="${HEADSCALE_HOST:-headscale.local}"
 STUN_PORT="${STUN_PORT:-30347}"
 STATE_DIR="${STATE_DIR:-/tmp/opencode}"
-mkdir -p "$STATE_DIR"
+TLS_DIR="${STATE_DIR}/headscale-tls"
+mkdir -p "$STATE_DIR" "$TLS_DIR"
 
 echo "==> Demo host: $HOST"
+echo "==> Headscale: https://${HEADSCALE_HOST}"
 echo "==> Regions: $REGIONS"
 
+# Local CA for the demo ingress. Install ca.crt on client machines; the
+# certificate covers both the DNS name and the node IP for LAN access.
+if [[ ! -s "${TLS_DIR}/ca.crt" || ! -s "${TLS_DIR}/server.crt" || ! -s "${TLS_DIR}/server.key" ]]; then
+  openssl req -x509 -newkey rsa:4096 -nodes -days 3650 \
+    -keyout "${TLS_DIR}/ca.key" -out "${TLS_DIR}/ca.crt" \
+    -subj "/CN=Poddy demo local CA" >/dev/null 2>&1
+  openssl req -newkey rsa:2048 -nodes \
+    -keyout "${TLS_DIR}/server.key" -out "${TLS_DIR}/server.csr" \
+    -subj "/CN=${HEADSCALE_HOST}" >/dev/null 2>&1
+  cat > "${TLS_DIR}/server.ext" <<EOF
+subjectAltName=DNS:${HEADSCALE_HOST},IP:${HOST}
+extendedKeyUsage=serverAuth
+EOF
+  openssl x509 -req -in "${TLS_DIR}/server.csr" \
+    -CA "${TLS_DIR}/ca.crt" -CAkey "${TLS_DIR}/ca.key" -CAcreateserial \
+    -out "${TLS_DIR}/server.crt" -days 825 -sha256 \
+    -extfile "${TLS_DIR}/server.ext" >/dev/null 2>&1
+fi
+kubectl -n "$NS" create secret generic poddy-headscale-tls \
+  --from-file=tls.crt="${TLS_DIR}/server.crt" \
+  --from-file=tls.key="${TLS_DIR}/server.key" \
+  --from-file=ca.crt="${TLS_DIR}/ca.crt" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
 # The demo Dex is already deployed by demo.sh. Add Headscale as an OIDC client.
-python3 - "$ROOT/deploy/demo/dex.yaml" "$HOST" "$HEADSCALE_PORT" <<'PY' > /tmp/poddy-dex-mesh.yaml
+python3 - "$ROOT/deploy/demo/dex.yaml" "$HOST" "$HEADSCALE_PORT" "$HEADSCALE_HOST" <<'PY' > /tmp/poddy-dex-mesh.yaml
 import sys
-path, host, port = sys.argv[1:4]
+path, host, port, headscale_host = sys.argv[1:5]
 s = open(path).read()
 needle = "    enablePasswordDB: true\n"
 client = f'''      - id: headscale
@@ -28,6 +55,7 @@ client = f'''      - id: headscale
         secret: headscale-secret
         redirectURIs:
           - http://{host}:{port}/oidc/callback
+          - https://{headscale_host}/oidc/callback
 
 '''
 s = s.replace(needle, client + needle, 1).replace("__DEMO_HOST__", host)
@@ -48,7 +76,9 @@ helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent \
   --set mesh.enabled=false \
   --set mesh.headscale.enabled=true \
-  --set mesh.headscale.serverUrl="http://${HOST}:${HEADSCALE_PORT}" \
+  --set mesh.headscale.host="$HEADSCALE_HOST" \
+  --set mesh.headscale.serverUrl="https://${HEADSCALE_HOST}" \
+  --set mesh.headscale.tlsSecret=poddy-headscale-tls \
   --set mesh.headscale.service.type=NodePort \
   --set mesh.headscale.service.httpNodePort="$HEADSCALE_PORT" \
   --set mesh.headscale.oidc.enabled=true \
@@ -75,7 +105,7 @@ helm upgrade poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   --set replicaCount=1 \
   --set mesh.enabled=true \
   --set mesh.controlUrl="http://${HOST}:${HEADSCALE_PORT}" \
-  --set mesh.loginUrl="http://${HOST}:${HEADSCALE_PORT}" \
+  --set mesh.loginUrl="https://${HEADSCALE_HOST}" \
   --set mesh.authKey="$AUTH_KEY" \
   --wait --timeout 10m >/dev/null
 kubectl -n "$NS" rollout status deploy/poddy --timeout=300s >/dev/null
@@ -113,7 +143,7 @@ defaultTemplate: base
 mesh:
   enabled: true
   controlUrl: http://${HOST}:${HEADSCALE_PORT}
-  loginUrl: http://${HOST}:${HEADSCALE_PORT}
+  loginUrl: https://${HEADSCALE_HOST}
   authKey: ${AUTH_KEY}
   headscale:
     enabled: false
@@ -168,16 +198,21 @@ cat <<MSG
 Mesh multi-region demo is ready.
 
   Hub:        http://${HOST}:30081
-  Headscale:  http://${HOST}:${HEADSCALE_PORT}
+  Headscale:  https://${HEADSCALE_HOST}
   Dex:        http://${HOST}:30556/dex
   Regions:    ${REGIONS}
   DERP STUN:  udp/${HOST}:${STUN_PORT}
+  Demo CA:    ${TLS_DIR}/ca.crt
 
 The workspace SSH dialog shows ws-<workspace> on port 22 for mesh peers.
 
-Remote laptops require HTTPS for the Headscale ingress and embedded DERP; this
-HTTP demo validates the in-cluster multi-region mesh. To join a laptop, put
-Headscale behind a trusted TLS certificate and run:
+For a laptop on the same LAN, add the demo hostname, trust the CA, then join
+the tailnet:
 
-  tailscale up --login-server=https://headscale.example.com
+  echo "${HOST} ${HEADSCALE_HOST}" | sudo tee -a /etc/hosts
+  sudo cp "${TLS_DIR}/ca.crt" /usr/local/share/ca-certificates/poddy-demo.crt
+  sudo update-ca-certificates
+  tailscale up --login-server=https://${HEADSCALE_HOST}
+
+The certificate also covers IP ${HOST}, but the ingress routes by hostname.
 MSG

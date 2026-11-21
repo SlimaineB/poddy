@@ -95,12 +95,13 @@ type Config struct {
 	AgentKey             string
 	AgentTokenTTL        time.Duration
 
-	MeshEnabled    bool
-	MeshControlURL string
-	MeshAuthKey    string
-	MeshStateDir   string
-	MeshHostname   string
-	MeshLoginURL   string
+	MeshEnabled       bool
+	MeshControlURL    string
+	MeshAuthKey       string
+	MeshClientAuthKey string
+	MeshStateDir      string
+	MeshHostname      string
+	MeshLoginURL      string
 
 	VSCodeExtensionID          string
 	VSCodeExtensionVersion     string
@@ -208,6 +209,7 @@ func Load(args []string) (Config, error) {
 		MeshEnabled:          envBool("PODDY_MESH_ENABLED", strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")) != ""),
 		MeshControlURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_CONTROL_URL")), "/"),
 		MeshAuthKey:          strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")),
+		MeshClientAuthKey:    strings.TrimSpace(os.Getenv("PODDY_MESH_CLIENT_AUTH_KEY")),
 		MeshStateDir:         env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"),
 		MeshHostname:         strings.TrimSpace(os.Getenv("PODDY_MESH_HOSTNAME")),
 		MeshLoginURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_LOGIN_URL")), "/"),
@@ -311,6 +313,7 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.MeshEnabled, "mesh-enabled", cfg.MeshEnabled, "join the WireGuard mesh (Headscale/Tailscale) for workspace SSH")
 	fs.StringVar(&cfg.MeshControlURL, "mesh-control-url", cfg.MeshControlURL, "mesh control server URL (empty uses Tailscale)")
 	fs.StringVar(&cfg.MeshAuthKey, "mesh-auth-key", cfg.MeshAuthKey, "mesh auth key injected into workspace agents")
+	fs.StringVar(&cfg.MeshClientAuthKey, "mesh-client-auth-key", cfg.MeshClientAuthKey, "reusable mesh auth key issued to desktop clients (defaults to mesh-auth-key)")
 	fs.StringVar(&cfg.MeshStateDir, "mesh-state-dir", cfg.MeshStateDir, "writable directory for mesh state")
 	fs.StringVar(&cfg.MeshHostname, "mesh-hostname", cfg.MeshHostname, "mesh hostname for the portal node (defaults to the pod name)")
 	fs.StringVar(&cfg.MeshLoginURL, "mesh-login-url", cfg.MeshLoginURL, "public mesh login server shown to users")
@@ -351,6 +354,9 @@ func Load(args []string) (Config, error) {
 		if cfg.RegionKey == "" {
 			return cfg, fmt.Errorf("region-key is required in region mode")
 		}
+	}
+	if cfg.MeshClientAuthKey == "" {
+		cfg.MeshClientAuthKey = cfg.MeshAuthKey
 	}
 	return cfg, nil
 }

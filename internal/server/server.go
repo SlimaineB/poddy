@@ -57,6 +57,8 @@ type Server struct {
 	SSHEnabled        bool
 	MeshEnabled       bool
 	MeshLoginURL      string
+	MeshControlURL    string
+	MeshClientAuthKey string
 	SSHKeys           *sshkeys.Dynamic
 	SSHAdminKeys      []string
 	SSHAllowUnmapped  bool
@@ -209,6 +211,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/desktop", s.desktop)
 	mux.HandleFunc("POST /api/desktop/enroll", s.desktopEnroll)
 	mux.HandleFunc("GET /api/desktop/ssh", s.desktopSSH)
+	mux.HandleFunc("GET /api/desktop/mesh", s.desktopMesh)
+	mux.HandleFunc("GET /api/me/mesh", s.cliMesh)
 	mux.HandleFunc("/api/workspaces/{name}/code/", s.browserVSCode)
 	mux.HandleFunc("/api/workspaces/{name}/lab", s.browserJupyterRedirect)
 	mux.HandleFunc("/api/workspaces/{name}/lab/", s.browserJupyter)
