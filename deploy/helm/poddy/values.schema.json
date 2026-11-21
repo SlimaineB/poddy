@@ -218,6 +218,8 @@
         "authKey": { "type": "string" },
         "existingSecret": { "type": "string" },
         "authKeyKey": { "type": "string" },
+        "caSecret": { "type": "string" },
+        "caKey": { "type": "string" },
         "stateDir": { "type": "string" },
         "derpUrls": {
           "type": "array",

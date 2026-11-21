@@ -67,11 +67,13 @@ type cliMeshConfig struct {
 	ControlURL string `json:"controlUrl"`
 	LoginURL   string `json:"loginUrl,omitempty"`
 	AuthKey    string `json:"authKey"`
+	CACert     string `json:"caCert,omitempty"`
 	Workspace  string `json:"workspace,omitempty"`
 	SSHHost    string `json:"sshHost,omitempty"`
 
 	keyFile  string
 	stateDir string
+	caFile   string
 	hostname string
 }
 
@@ -485,6 +487,9 @@ func cliMeshSSHArgs(cfg cliMeshConfig, keyPath, workspace string, noCommand bool
 	proxy := fmt.Sprintf("%s connect --control-url %s --auth-key-file %s --workspace %s --state-dir %s --hostname %s",
 		shellQuote(exe), shellQuote(cfg.ControlURL), shellQuote(cfg.keyFile), shellQuote(workspace),
 		shellQuote(cfg.stateDir), shellQuote(cfg.hostname))
+	if strings.TrimSpace(cfg.caFile) != "" {
+		proxy += " --ca-file " + shellQuote(cfg.caFile)
+	}
 	args := []string{
 		"-o", "ProxyCommand=" + proxy,
 		"-o", "StrictHostKeyChecking=accept-new",
@@ -530,6 +535,12 @@ func prepareCLIMesh(cfg *cliMeshConfig, workspace string) error {
 	cfg.keyFile = filepath.Join(root, "authkey")
 	cfg.stateDir = filepath.Join(root, "state")
 	cfg.hostname = "poddy-cli-" + cliSlug(workspace)
+	if strings.TrimSpace(cfg.CACert) != "" {
+		cfg.caFile = filepath.Join(root, "ca.crt")
+		if err := writeSecureFile(cfg.caFile, []byte(strings.TrimSpace(cfg.CACert)+"\n"), 0o600); err != nil {
+			return err
+		}
+	}
 	return writeSecureFile(cfg.keyFile, []byte(strings.TrimSpace(cfg.AuthKey)+"\n"), 0o600)
 }
 

@@ -69,6 +69,7 @@ const (
 	envMeshControlURL   = "PODDY_MESH_CONTROL_URL"
 	envMeshAuthKey      = "PODDY_MESH_AUTH_KEY" // #nosec G101 -- Environment variable name, not a credential.
 	envMeshStateDir     = "PODDY_MESH_STATE_DIR"
+	envMeshCACert       = "PODDY_MESH_CA_CERT"
 )
 
 var (
@@ -164,6 +165,7 @@ type Manager struct {
 	AgentTokenTTL       time.Duration
 	MeshControlURL      string
 	MeshAuthKey         string
+	MeshCACert          string
 
 	stateOnce sync.Once
 	state     *StateStore
@@ -579,7 +581,7 @@ func (m *Manager) resolveCreate(req CreateRequest) (resolvedCreate, error) {
 			secretName = AgentTokenSecretName(req.Name)
 		}
 		if m.AgentURL == "" || m.AgentToken != nil {
-			upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, secretName, m.MeshControlURL, m.MeshAuthKey)
+			upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, req.Name, secretName, m.MeshControlURL, m.MeshAuthKey, m.MeshCACert)
 		}
 	}
 	return resolvedCreate{

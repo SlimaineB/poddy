@@ -402,6 +402,10 @@ mesh:
   authKey: ""
   existingSecret: ""
   authKeyKey: auth-key
+  # Optional Secret containing the CA bundle for the mesh control/DERP TLS
+  # certificate. Clients receive it so private certificates are trusted.
+  caSecret: ""
+  caKey: ca.crt
   # Writable tsnet state directory inside the portal pod.
   stateDir: /var/lib/poddy/tsnet
   # Optional external DERP map URLs. Empty by default so an air-gapped install

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"poddy/internal/mesh"
@@ -11,6 +12,7 @@ type meshClientConfig struct {
 	ControlURL string `json:"controlUrl"`
 	LoginURL   string `json:"loginUrl,omitempty"`
 	AuthKey    string `json:"authKey"`
+	CACert     string `json:"caCert,omitempty"`
 	Workspace  string `json:"workspace,omitempty"`
 	SSHHost    string `json:"sshHost,omitempty"`
 }
@@ -25,6 +27,14 @@ func (s *Server) meshClientConfig(workspace string) meshClientConfig {
 		LoginURL:   strings.TrimSpace(s.MeshLoginURL),
 		AuthKey:    strings.TrimSpace(s.MeshClientAuthKey),
 		Workspace:  workspace,
+	}
+	out.CACert = strings.TrimSpace(s.MeshCACert)
+	if out.CACert == "" {
+		if path := strings.TrimSpace(os.Getenv("PODDY_MESH_CA_FILE")); path != "" {
+			if pem, err := os.ReadFile(path); err == nil {
+				out.CACert = strings.TrimSpace(string(pem))
+			}
+		}
 	}
 	if workspace != "" {
 		out.SSHHost = mesh.WorkspaceHostname(workspace)

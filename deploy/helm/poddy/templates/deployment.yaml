@@ -512,6 +512,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "poddy.meshSecretName" . }}
                   key: {{ .Values.mesh.authKeyKey }}
+            {{- with .Values.mesh.caSecret }}
+            - name: PODDY_MESH_CA_FILE
+              value: /etc/poddy-mesh-ca/ca.crt
+            {{- end }}
             {{- end }}
             {{- if .Values.ssh.enabled }}
             - name: PODDY_SSH_CA_KEY_FILE
@@ -590,6 +594,11 @@ spec:
             - name: mesh-state
               mountPath: /var/lib/poddy
             {{- end }}
+            {{- if .Values.mesh.caSecret }}
+            - name: poddy-mesh-ca
+              mountPath: /etc/poddy-mesh-ca
+              readOnly: true
+            {{- end }}
             {{- if or .Values.regions .Values.regionsExistingSecret }}
             - name: regions
               mountPath: /etc/poddy/regions
@@ -608,6 +617,15 @@ spec:
         {{- if .Values.mesh.enabled }}
         - name: mesh-state
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.mesh.caSecret }}
+        - name: poddy-mesh-ca
+          secret:
+            secretName: {{ .Values.mesh.caSecret }}
+            defaultMode: 0444
+            items:
+              - key: {{ default "ca.crt" .Values.mesh.caKey }}
+                path: ca.crt
         {{- end }}
         {{- if .Values.ssh.enabled }}
         - name: ssh-keys

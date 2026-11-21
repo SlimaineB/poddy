@@ -226,6 +226,7 @@ func Run(ctx context.Context, args []string) error {
 		AgentImage:          cfg.AgentImage,
 		MeshControlURL:      cfg.MeshControlURL,
 		MeshAuthKey:         cfg.MeshAuthKey,
+		MeshCACert:          cfg.MeshCACert,
 	}
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
@@ -496,6 +497,7 @@ func Run(ctx context.Context, args []string) error {
 			Hostname:   hostname,
 			StateDir:   cfg.MeshStateDir,
 			Ephemeral:  true,
+			CACert:     cfg.MeshCACert,
 		})
 		cancel()
 		if err != nil {
@@ -646,6 +648,7 @@ func Run(ctx context.Context, args []string) error {
 		MeshLoginURL:      cfg.MeshLoginURL,
 		MeshControlURL:    cfg.MeshControlURL,
 		MeshClientAuthKey: cfg.MeshClientAuthKey,
+		MeshCACert:        cfg.MeshCACert,
 		SSHCertTTL:        cfg.SSHCertTTL,
 		VSCodeExtension: extension.Metadata{
 			ID:          cfg.VSCodeExtensionID,
@@ -834,6 +837,7 @@ func RunBastion(ctx context.Context, args []string) error {
 		AgentImage:      cfg.AgentImage,
 		MeshControlURL:  cfg.MeshControlURL,
 		MeshAuthKey:     cfg.MeshAuthKey,
+		MeshCACert:      cfg.MeshCACert,
 	}
 
 	agentKey := agentSecret(cfg)

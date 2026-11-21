@@ -27,6 +27,7 @@ func main() {
 	meshControlURL := flag.String("mesh-control-url", os.Getenv("PODDY_MESH_CONTROL_URL"), "mesh control server URL")
 	meshAuthKey := flag.String("mesh-auth-key", os.Getenv("PODDY_MESH_AUTH_KEY"), "mesh auth key")
 	meshStateDir := flag.String("mesh-state-dir", env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"), "writable mesh state directory")
+	meshCACert := flag.String("mesh-ca-cert", os.Getenv("PODDY_MESH_CA_CERT"), "mesh control/DERP CA bundle (PEM)")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -56,7 +57,7 @@ func main() {
 	}
 	if strings.TrimSpace(*meshAuthKey) != "" {
 		go func() {
-			errors <- runMesh(ctx, name, *meshControlURL, *meshAuthKey, *meshStateDir, *target)
+			errors <- runMesh(ctx, name, *meshControlURL, *meshAuthKey, *meshStateDir, *meshCACert, *target)
 		}()
 	}
 
@@ -69,13 +70,14 @@ func main() {
 	}
 }
 
-func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, target string) error {
+func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, caCert, target string) error {
 	node, err := mesh.Start(ctx, mesh.Config{
 		ControlURL: controlURL,
 		AuthKey:    authKey,
 		Hostname:   mesh.WorkspaceHostname(workspace),
 		StateDir:   stateDir,
 		Ephemeral:  true,
+		CACert:     caCert,
 	})
 	if err != nil {
 		return err

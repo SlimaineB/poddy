@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const crypto = require("crypto");
 
 const SSH_KEY_PREFIX = "poddy";
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
@@ -236,8 +237,14 @@ async function writeSSHConfig(payload, priv, context, mesh) {
     const authKeyFile = path.join(meshDir, "authkey");
     fs.writeFileSync(authKeyFile, `${mesh.authKey}\n`, { mode: 0o600 });
     const stateDir = path.join(meshDir, "state");
+    let caArg = "";
+    if (mesh.caCert) {
+      const caFile = path.join(meshDir, "ca.crt");
+      fs.writeFileSync(caFile, `${mesh.caCert.trim()}\n`, { mode: 0o600 });
+      caArg = ` --ca-file "${caFile.replace(/\\/g, "/")}"`;
+    }
     lines.push(
-      `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile}" --workspace "${workspace}" --state-dir "${stateDir}" --hostname "poddy-desktop-${workspace}"`,
+      `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile.replace(/\\/g, "/")}" --workspace "${workspace}" --state-dir "${stateDir.replace(/\\/g, "/")}" --hostname "poddy-desktop-${workspace}"${caArg}`,
       "  StrictHostKeyChecking accept-new",
       "  LogLevel ERROR"
     );
@@ -291,8 +298,13 @@ async function ensureHelper(context) {
   }
   const dir = path.join(context.globalStorageUri.fsPath, "bin");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const target = path.join(dir, `poddy-connect${suffix}`);
-  fs.copyFileSync(source, target);
+  const hash = crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex").slice(0, 12);
+  const target = path.join(dir, `poddy-connect-${hash}-${process.pid}${suffix}`);
+  if (!fs.existsSync(target)) {
+    const tmp = `${target}.${Date.now()}.tmp`;
+    fs.copyFileSync(source, tmp);
+    fs.renameSync(tmp, target);
+  }
   if (goos !== "windows") fs.chmodSync(target, 0o755);
   return target.replace(/\\/g, "/");
 }

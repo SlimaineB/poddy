@@ -99,6 +99,7 @@ type Config struct {
 	MeshControlURL    string
 	MeshAuthKey       string
 	MeshClientAuthKey string
+	MeshCACert        string
 	MeshStateDir      string
 	MeshHostname      string
 	MeshLoginURL      string
@@ -210,6 +211,7 @@ func Load(args []string) (Config, error) {
 		MeshControlURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_CONTROL_URL")), "/"),
 		MeshAuthKey:          strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")),
 		MeshClientAuthKey:    strings.TrimSpace(os.Getenv("PODDY_MESH_CLIENT_AUTH_KEY")),
+		MeshCACert:           meshCACert(),
 		MeshStateDir:         env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"),
 		MeshHostname:         strings.TrimSpace(os.Getenv("PODDY_MESH_HOSTNAME")),
 		MeshLoginURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_LOGIN_URL")), "/"),
@@ -442,4 +444,19 @@ func envFloat(key string, fallback float64) float64 {
 		}
 	}
 	return fallback
+}
+
+func meshCACert() string {
+	if value := strings.TrimSpace(os.Getenv("PODDY_MESH_CA_CERT")); value != "" {
+		return value
+	}
+	path := strings.TrimSpace(os.Getenv("PODDY_MESH_CA_FILE"))
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }

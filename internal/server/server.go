@@ -59,6 +59,7 @@ type Server struct {
 	MeshLoginURL      string
 	MeshControlURL    string
 	MeshClientAuthKey string
+	MeshCACert        string
 	SSHKeys           *sshkeys.Dynamic
 	SSHAdminKeys      []string
 	SSHAllowUnmapped  bool

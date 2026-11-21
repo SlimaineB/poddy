@@ -83,7 +83,7 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 			return err
 		}
 	}
-	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName, m.MeshControlURL, m.MeshAuthKey)
+	upsertAgentSidecar(pod, m.agentSidecarImage(), m.AgentURL, workspace, secretName, m.MeshControlURL, m.MeshAuthKey, m.MeshCACert)
 	return nil
 }
 
@@ -112,8 +112,8 @@ const (
 	agentTokenFile       = agentStateMountPath + "/agent-token"
 )
 
-func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName, meshControlURL, meshAuthKey string) {
-	container := agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey)
+func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName, meshControlURL, meshAuthKey, meshCACert string) {
+	container := agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey, meshCACert)
 	mountAgentTokenState(pod, &container)
 	if secretName != "" {
 		mountAgentTokenSecret(pod, &container, workspace)
@@ -225,7 +225,7 @@ func removeAgentTokenSecretMountFromContainer(container *corev1.Container) {
 	container.VolumeMounts = kept
 }
 
-func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey string) corev1.Container {
+func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey, meshCACert string) corev1.Container {
 	env := []corev1.EnvVar{
 		{Name: envWorkspaceName, Value: workspace},
 	}
@@ -245,6 +245,9 @@ func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAu
 			corev1.EnvVar{Name: envMeshAuthKey, Value: strings.TrimSpace(meshAuthKey)},
 			corev1.EnvVar{Name: envMeshStateDir, Value: agentStateMountPath + "/tsnet"},
 		)
+		if ca := strings.TrimSpace(meshCACert); ca != "" {
+			env = append(env, corev1.EnvVar{Name: envMeshCACert, Value: ca})
+		}
 	}
 	return corev1.Container{
 		Name:            AgentContainerName,

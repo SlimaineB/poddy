@@ -6,6 +6,7 @@ package mesh
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -30,6 +31,7 @@ type Config struct {
 	Ephemeral  bool
 	Silent     bool
 	RandomPort bool
+	CACert     string
 }
 
 type Node struct {
@@ -47,6 +49,11 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 	}
 	if strings.TrimSpace(cfg.AuthKey) == "" {
 		return nil, fmt.Errorf("mesh: auth key is required")
+	}
+	if strings.TrimSpace(cfg.CACert) != "" {
+		if err := installCARoots([]byte(cfg.CACert)); err != nil {
+			return nil, err
+		}
 	}
 	dir := strings.TrimSpace(cfg.StateDir)
 	if dir == "" {
@@ -279,4 +286,18 @@ func SanitizeHostname(value string) string {
 		out = strings.Trim(out, "-")
 	}
 	return out
+}
+
+func installCARoots(pem []byte) error {
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		return fmt.Errorf("mesh: CA bundle contains no certificates")
+	}
+	godebug := strings.TrimSpace(os.Getenv("GODEBUG"))
+	if godebug != "" {
+		godebug += ","
+	}
+	_ = os.Setenv("GODEBUG", godebug+"x509usefallbackroots=1")
+	x509.SetFallbackRoots(roots)
+	return nil
 }

@@ -34,8 +34,13 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	if strings.TrimSpace(cfg.AuthKey) == "" {
 		return errors.New("mesh auth key is required")
 	}
+	caCert := ""
 	if strings.TrimSpace(cfg.CAFile) != "" {
-		_ = os.Setenv("SSL_CERT_FILE", cfg.CAFile)
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return fmt.Errorf("read CA file: %w", err)
+		}
+		caCert = string(pem)
 	}
 	hostname := strings.TrimSpace(cfg.Hostname)
 	if hostname == "" {
@@ -60,8 +65,9 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 		Hostname:   hostname,
 		StateDir:   stateDir,
 		Ephemeral:  false,
-		Silent:     true,
+		Silent:     os.Getenv("PODDY_MESH_DEBUG") == "",
 		RandomPort: true,
+		CACert:     caCert,
 	})
 	if err != nil {
 		return err
