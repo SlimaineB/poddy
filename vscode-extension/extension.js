@@ -40,7 +40,7 @@ async function handleUri(context, uri) {
     throw new Error("invalid workspace name");
   }
 
-  const keyPath = await ensureKey(payload.workspace);
+  const keyPath = await ensureKey();
   const publicKey = await readPublicKey(keyPath);
   const mesh = payload.mesh ? await fetchMesh(payload) : null;
   const alias = await writeSSHConfig(payload, keyPath, context, mesh);
@@ -64,15 +64,43 @@ function sshDir() {
   return path.join(os.homedir(), ".ssh");
 }
 
-function keyPath(workspace) {
-  return path.join(sshDir(), `${SSH_KEY_PREFIX}_${workspace}_ed25519`);
+function keyPath() {
+  return path.join(sshDir(), `${SSH_KEY_PREFIX}_ed25519`);
 }
 
-async function ensureKey(workspace) {
-  const target = keyPath(workspace);
+function legacyKeys() {
+  try {
+    return fs
+      .readdirSync(sshDir())
+      .filter((name) => name.startsWith(`${SSH_KEY_PREFIX}_`) && name.endsWith("_ed25519"))
+      .map((name) => path.join(sshDir(), name))
+      .filter((candidate) => fs.existsSync(candidate))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  } catch {
+    return [];
+  }
+}
+
+function adoptLegacyKey(source, target) {
+  fs.copyFileSync(source, target);
+  fs.chmodSync(target, 0o600);
+  if (fs.existsSync(`${source}.pub`)) {
+    fs.copyFileSync(`${source}.pub`, `${target}.pub`);
+  }
+}
+
+async function ensureKey() {
+  const target = keyPath();
   if (fs.existsSync(target)) return target;
 
   fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 });
+  for (const legacy of legacyKeys()) {
+    try {
+      adoptLegacyKey(legacy, target);
+      return target;
+    } catch {}
+  }
+
   const candidates = ["ssh-keygen"];
   if (process.platform === "win32") {
     candidates.push("C:\\Windows\\System32\\OpenSSH\\ssh-keygen.exe");
@@ -80,7 +108,7 @@ async function ensureKey(workspace) {
   let lastError;
   for (const bin of candidates) {
     try {
-      await run(bin, ["-t", "ed25519", "-N", "", "-C", `poddy-remote:${workspace}`, "-f", target]);
+      await run(bin, ["-t", "ed25519", "-N", "", "-C", "poddy-remote", "-f", target]);
       return target;
     } catch (err) {
       lastError = err;

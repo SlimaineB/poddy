@@ -121,11 +121,32 @@ func (n *Node) DialHost(ctx context.Context, host string, port int) (net.Conn, e
 
 func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error) {
 	host := WorkspaceHostname(workspace)
-	ip, err := n.findPeerIP(ctx, host)
-	if err == nil {
-		return n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for {
+		ip, err := n.findPeerIP(ctx, host)
+		if err == nil {
+			conn, dialErr := n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+			if dialErr == nil {
+				return conn, nil
+			}
+			lastErr = dialErr
+		} else {
+			lastErr = err
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
-	return n.DialHost(ctx, host, port)
+	return nil, fmt.Errorf("mesh: dial workspace %q: %w", workspace, lastErr)
 }
 
 func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {
