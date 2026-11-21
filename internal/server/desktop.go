@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -101,6 +102,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		}
 		owner = decision.Owner
 	}
+	s.syncOwnerSSHKeys(r.Context(), owner)
 	if s.MeshEnabled {
 		sshHost = mesh.WorkspaceHostname(name)
 		sshPort = "22"
@@ -191,11 +193,12 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, err := s.UserKeys.Add(r.Context(), claims.Owner, req.PublicKey)
+	duplicate := errors.Is(err, userkeys.ErrDuplicate)
 	switch {
-	case errors.Is(err, userkeys.ErrDuplicate):
-		// Reconnecting with the same machine key is the normal case.
-		w.WriteHeader(http.StatusNoContent)
-		return
+	case duplicate:
+		// Reconnecting with the same machine key is the normal case, but the
+		// key still has to be present in every workspace of this owner, including
+		// workspaces created after the first enrollment.
 	case errors.Is(err, userkeys.ErrLimit):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -206,13 +209,24 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 	if err := s.reloadSSHKeys(r.Context()); err != nil {
 		log.Printf("desktop: reload ssh keys: %v", err)
 	}
+	s.syncOwnerSSHKeys(r.Context(), claims.Owner)
+	if duplicate {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusCreated, sshKeyInfoFor(key))
+}
+
+func (s *Server) syncOwnerSSHKeys(ctx context.Context, owner string) {
+	if strings.TrimSpace(owner) == "" {
+		return
+	}
 	if s.Workspaces != nil {
-		if err := s.Workspaces.SyncSSHKeysForOwner(r.Context(), claims.Owner); err != nil {
+		if err := s.Workspaces.SyncSSHKeysForOwner(ctx, owner); err != nil {
 			log.Printf("desktop: sync workspaces: %v", err)
 		}
 	}
-	s.hubSyncSSHKeys(r.Context(), claims.Owner)
-	writeJSON(w, http.StatusCreated, sshKeyInfoFor(key))
+	s.hubSyncSSHKeys(ctx, owner)
 }
 
 func (s *Server) signDesktopTicket(claims desktopClaims) (string, error) {
