@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +19,7 @@ import (
 const (
 	browserVSCodePort  = 3000
 	browserJupyterPort = 8888
+	ideReloadScript    = `<script src="/static/ide-reload.js" defer></script>`
 )
 
 type browserIDEConfig struct {
@@ -110,11 +114,17 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 	target := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", port)}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.FlushInterval = -1
+	if cfg.port == browserVSCodePort {
+		proxy.ModifyResponse = injectIDEReload
+	}
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		director(req)
 		stripPortalCookies(req.Header)
 		stripPortalAuth(req.Header, s.Token)
+		if cfg.port == browserVSCodePort && r.URL.Path == workspaceIDEPath(name, cfg.path) {
+			req.Header.Set("Accept-Encoding", "identity")
+		}
 		req.Host = r.Host
 		req.Header.Set("X-Forwarded-Host", r.Host)
 		if secureRequest(r) {
@@ -125,6 +135,13 @@ func (s *Server) browserIDE(w http.ResponseWriter, r *http.Request, cfg browserI
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("%s %s: proxy: %v", strings.ReplaceAll(strings.ReplaceAll(cfg.label, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
+		if wantsHTML(r) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, ideStartingPage)
+			return
+		}
 		http.Error(w, cfg.label+" is unavailable", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)
@@ -136,4 +153,38 @@ func workspaceLabURL(name string) string {
 
 func workspaceIDEPath(name, suffix string) string {
 	return "/api/workspaces/" + url.PathEscape(name) + suffix
+}
+
+const ideStartingPage = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="1">
+<title>Starting IDE</title>
+<style>body{font-family:system-ui,sans-serif;background:#1e1e1e;color:#ddd;display:grid;place-items:center;height:100vh;margin:0}main{text-align:center}span{display:block;margin-top:12px;color:#999}</style>
+</head>
+<body><main><strong>Starting the IDE</strong><span>This page reloads automatically when it is ready.</span></main></body>
+</html>`
+
+func injectIDEReload(resp *http.Response) error {
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Encoding") != "" {
+		return nil
+	}
+	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	if !bytes.Contains(body, []byte("</head>")) {
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return nil
+	}
+	body = bytes.Replace(body, []byte("</head>"), []byte(ideReloadScript+"</head>"), 1)
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	return nil
 }

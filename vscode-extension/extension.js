@@ -53,6 +53,7 @@ async function handleUri(context, uri) {
     { location: vscode.ProgressLocation.Notification, title: `Poddy: connecting to ${payload.workspace}` },
     () => waitForSSH(alias)
   );
+  await pinRemotePlatform(alias);
 
   const remote = vscode.Uri.parse(`vscode-remote://ssh-remote+${alias}/home/dev`);
   await vscode.commands.executeCommand("vscode.openFolder", remote, {
@@ -176,6 +177,20 @@ async function waitForSSH(alias) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   throw new Error(`workspace SSH is not ready: ${lastError ? lastError.message : "timed out"}`);
+}
+
+async function pinRemotePlatform(alias) {
+  const config = vscode.workspace.getConfiguration("remote.SSH");
+  const current = config.get("remotePlatform");
+  const platforms = current && typeof current === "object" && !Array.isArray(current) ? current : {};
+  if (platforms[alias] === "linux") return;
+  try {
+    await config.update(
+      "remotePlatform",
+      { ...platforms, [alias]: "linux" },
+      vscode.ConfigurationTarget.Global
+    );
+  } catch {}
 }
 
 function postJSON(url, body) {
@@ -327,7 +342,7 @@ async function ensureHelper(context) {
   const dir = path.join(context.globalStorageUri.fsPath, "bin");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const hash = crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex").slice(0, 12);
-  const target = path.join(dir, `poddy-connect-${hash}-${process.pid}${suffix}`);
+  const target = path.join(dir, `poddy-connect-${hash}${suffix}`);
   if (!fs.existsSync(target)) {
     const tmp = `${target}.${Date.now()}.tmp`;
     fs.copyFileSync(source, tmp);
