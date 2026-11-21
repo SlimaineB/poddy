@@ -832,6 +832,8 @@ func RunBastion(ctx context.Context, args []string) error {
 		SSHCA:           sshCA,
 		SSHRequireAgent: cfg.SSHRequireAgent,
 		AgentImage:      cfg.AgentImage,
+		MeshControlURL:  cfg.MeshControlURL,
+		MeshAuthKey:     cfg.MeshAuthKey,
 	}
 
 	agentKey := agentSecret(cfg)
