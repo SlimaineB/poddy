@@ -121,18 +121,25 @@ func (n *Node) DialHost(ctx context.Context, host string, port int) (net.Conn, e
 
 func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error) {
 	host := WorkspaceHostname(workspace)
-	deadline := time.Now().Add(90 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	var lastErr error
 	for {
-		ip, err := n.findPeerIP(ctx, host)
-		if err == nil {
-			conn, dialErr := n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+		ip, online, found, err := n.peerState(ctx, host)
+		switch {
+		case err != nil:
+			lastErr = err
+		case found && !online:
+			return nil, fmt.Errorf("mesh: workspace peer %q is offline", host)
+		case found:
+			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			conn, dialErr := n.srv.Dial(dialCtx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+			cancel()
 			if dialErr == nil {
 				return conn, nil
 			}
 			lastErr = dialErr
-		} else {
-			lastErr = err
+		default:
+			lastErr = fmt.Errorf("mesh: workspace peer %q not found", host)
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -147,6 +154,32 @@ func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (n
 		}
 	}
 	return nil, fmt.Errorf("mesh: dial workspace %q: %w", workspace, lastErr)
+}
+
+func (n *Node) peerState(ctx context.Context, prefix string) (ip string, online bool, found bool, err error) {
+	client, err := n.srv.LocalClient()
+	if err != nil {
+		return "", false, false, err
+	}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return "", false, false, err
+	}
+	if status == nil {
+		return "", false, false, fmt.Errorf("mesh: status is empty")
+	}
+	for _, peer := range status.Peer {
+		if peer == nil {
+			continue
+		}
+		for _, name := range []string{peer.HostName, strings.TrimSuffix(peer.DNSName, ".")} {
+			name = strings.ToLower(name)
+			if name == prefix || strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+".") {
+				return peerIP(peer), peer.Online, true, nil
+			}
+		}
+	}
+	return "", false, false, nil
 }
 
 func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {

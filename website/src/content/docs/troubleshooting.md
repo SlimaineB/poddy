@@ -514,6 +514,82 @@ region Deployment and the hub logs.
 - SSH always uses the hub endpoint; region `sshHost`/`sshPort` values are legacy.
 - Restart workspaces created before a CA change.
 
+## Mesh, Tailscale, and Headscale
+
+### The VS Code Desktop button is missing
+
+- The desktop IDE buttons are hidden unless the workspace is `Running`, `apps`
+  contains `vscode`, and the portal allows remote launch: `/api/config` must show
+  `ssh: true` (mesh or SSH bastion enabled) or `localMode: true` with
+  `localVSCode: true`.
+- Check the API, not the UI cache:
+
+  ```bash
+  curl -s -H "Authorization: Bearer $TOKEN" $PORTAL/api/config | jq '{ssh,mesh,localMode,localVSCode}'
+  curl -s -H "Authorization: Bearer $TOKEN" $PORTAL/api/workspaces | jq '.[] | {name,phase,apps,access}'
+  ```
+
+- If `mesh: false` but Helm has `mesh.enabled: true`, check the portal logs for
+  `mesh: portal joined tailnet`. After a cluster restart the portal can try to
+  join before Headscale/Ingress are ready; restart it once:
+
+  ```bash
+  kubectl -n poddy-system logs -l app.kubernetes.io/name=poddy-portal --tail=200 | grep -i mesh
+  kubectl -n poddy-system rollout restart deploy/poddy
+  ```
+
+### Windows `poddy-connect` hangs or SSH times out during banner exchange
+
+- Kill stale helpers first; an old process can confuse debugging:
+
+  ```powershell
+  tasklist | findstr poddy-connect
+  Get-Process poddy-connect* -ErrorAction SilentlyContinue | Stop-Process -Force
+  ```
+
+- Use VSIX `0.1.8+`: it fails fast instead of hanging when the target peer is
+  offline, with `mesh: workspace peer "ws-<workspace>" is offline`.
+- Re-run the click in the portal so the extension rewrites the `~/.ssh/config`
+  block with the current helper hash, `--ca-file`, and `state-v2` directory.
+- Capture a client log:
+
+  ```powershell
+  $env:PODDY_MESH_DEBUG="1"
+  ssh -vvv poddy-desktop-<workspace> true 2>&1 | Tee-Object "$env:TEMP\poddy-ssh.log"
+  ```
+
+### Headscale / DERP checks
+
+- Control URL must be reachable and TLS-trusted by clients. The ingress exposes
+  `https://<headscale-host>` on 443; the NodePort `30090` is plain HTTP for
+  debugging only.
+
+  ```bash
+  curl -k -sS -o /dev/null -w '%{http_code}\n' https://<headscale-host>/key
+  curl -k -sS https://<headscale-host>/derp   # expect 426 DERP requires connection upgrade
+  ```
+
+- Headscale should authenticate nodes and keep the workspace node online:
+
+  ```bash
+  kubectl -n poddy-system logs deploy/poddy-headscale --tail=200 | grep -E 'AuthKey|ERR|WRN'
+  kubectl -n poddy-system exec deploy/poddy-headscale -- \
+    headscale --config /etc/headscale/config.yaml nodes list
+  ```
+
+  `ws-<workspace>` must be `online`. If the client logs show
+  `derp-999 does not know about peer` or repeated `Handshake did not complete`,
+  the target node is offline or unreachable, not a client SSH config problem.
+  Check the workspace agent:
+
+  ```bash
+  kubectl -n <workspace-namespace> get pod poddy-<workspace>-0
+  kubectl -n <workspace-namespace> logs poddy-<workspace>-0 -c poddy-agent --tail=200
+  ```
+
+- DERP/STUN uses UDP `30347` in addition to HTTPS `443`; both must be allowed
+  through firewalls/ingress.
+
 ## Collect a debug bundle
 
 ```bash

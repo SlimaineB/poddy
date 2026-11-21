@@ -159,8 +159,10 @@ async function waitForSSH(alias) {
   }
   const deadline = Date.now() + 240000;
   let lastError;
+  let fastFailures = 0;
   while (Date.now() < deadline) {
     for (const bin of candidates) {
+      const started = Date.now();
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
@@ -173,7 +175,11 @@ async function waitForSSH(alias) {
         return;
       } catch (err) {
         lastError = err;
+        if (Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
       }
+    }
+    if (fastFailures >= 3) {
+      throw new Error(`workspace SSH is not ready: ${lastError ? lastError.message : "proxy command failed"}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }

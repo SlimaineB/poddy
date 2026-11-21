@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"tailscale.com/net/netns"
 
@@ -59,7 +60,8 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 		port = 22
 	}
 	netns.SetEnabled(false)
-	node, err := mesh.Start(ctx, mesh.Config{
+	startCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	node, err := mesh.Start(startCtx, mesh.Config{
 		ControlURL: cfg.ControlURL,
 		AuthKey:    cfg.AuthKey,
 		Hostname:   hostname,
@@ -69,7 +71,11 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 		RandomPort: true,
 		CACert:     caCert,
 	})
+	cancel()
 	if err != nil {
+		if errors.Is(startCtx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("mesh: join tailnet timed out after 60s: %w", err)
+		}
 		return err
 	}
 	defer node.Close()
