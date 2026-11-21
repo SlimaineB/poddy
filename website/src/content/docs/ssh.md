@@ -265,10 +265,13 @@ CLI login endpoints are rate-limited per client IP. Use `--token` or
 into `~/.ssh/config` without touching the rest of the file. `poddy ssh` creates
 a per-workspace key, requests a short-lived certificate when certificates are
 enabled, falls back to enrolling the public key, then runs the system `ssh`
-client. `poddy port-forward` uses the same tunnel and only forwards the requested
-local port. `poddy cp` streams a `tar` archive between two workspaces through
-the same SSH path; it works across regions, does not store the data in
-the portal, and applies the same workspace access checks. Copying a directory is
+client. When the mesh is enabled, `poddy ssh`, `poddy cp`, and
+`poddy port-forward` use the bundled helper to join the Headscale/Tailscale
+tailnet and dial the workspace over WireGuard instead of the portal SSH
+endpoint. `poddy port-forward` only forwards the requested local port.
+`poddy cp` streams a `tar` archive between two workspaces through the same SSH
+path; it works across regions, does not store the data in the portal, and
+applies the same workspace access checks. Copying a directory is
 recursive, and an existing destination directory receives the source basename,
 matching `cp` semantics. Both workspaces must be running and have `tar`
 installed. Use `--key` to reuse one local private key; the CLI creates separate

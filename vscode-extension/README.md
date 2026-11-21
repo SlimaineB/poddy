@@ -8,10 +8,11 @@ the real `~/.ssh/config`, waits for the workspace to accept SSH, and opens
 Remote-SSH on `/home/dev`.
 
 The VSIX bundles a small `poddy-connect` helper for Linux, macOS, and Windows.
-The SSH config uses it as `ProxyCommand`; it tunnels the SSH transport to the
-portal over WebSocket. Users do not install Tailscale or run `tailscale up`,
-even when the portal uses the Headscale mesh internally. On a private CA, add
-`--ca-file <path>` to the generated `ProxyCommand`.
+The SSH config uses it as `ProxyCommand`; it joins the Poddy Tailscale/Headscale
+tailnet directly with a mesh preauth key and dials the workspace over
+WireGuard. Users do not install Tailscale or run `tailscale up`. The helper
+discovers the online workspace peer by its `ws-<workspace>` prefix, so Headscale
+hostname suffixes do not break the connection.
 
 The extension runs on the local UI side (`extensionKind: ui`). It is not
 installed in the workspace and requires the local `ssh` and `ssh-keygen` binaries

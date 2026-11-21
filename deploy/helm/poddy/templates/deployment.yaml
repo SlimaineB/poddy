@@ -507,6 +507,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "poddy.meshSecretName" . }}
                   key: {{ .Values.mesh.authKeyKey }}
+            - name: PODDY_MESH_CLIENT_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.meshSecretName" . }}
+                  key: {{ .Values.mesh.authKeyKey }}
             {{- end }}
             {{- if .Values.ssh.enabled }}
             - name: PODDY_SSH_CA_KEY_FILE

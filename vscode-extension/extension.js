@@ -41,7 +41,8 @@ async function handleUri(context, uri) {
 
   const keyPath = await ensureKey(payload.workspace);
   const publicKey = await readPublicKey(keyPath);
-  const alias = await writeSSHConfig(payload, keyPath, context);
+  const mesh = payload.mesh ? await fetchMesh(payload) : null;
+  const alias = await writeSSHConfig(payload, keyPath, context, mesh);
   await postJSON(`${payload.api.replace(/\/$/, "")}/api/desktop/enroll`, {
     ticket: payload.ticket,
     publicKey,
@@ -132,7 +133,7 @@ async function waitForSSH(alias) {
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
-          "-o", "ConnectTimeout=5",
+          "-o", "ConnectTimeout=30",
           "-o", "StrictHostKeyChecking=no",
           "-o", `UserKnownHostsFile=${NULL_DEVICE}`,
           alias,
@@ -183,7 +184,38 @@ function postJSON(url, body) {
   });
 }
 
-async function writeSSHConfig(payload, priv, context) {
+function getText(url) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const client = target.protocol === "https:" ? https : http;
+    const req = client.get(target, { timeout: 15000 }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8").trim();
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(text);
+          return;
+        }
+        reject(new Error(text || `HTTP ${res.statusCode}`));
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("request timed out")));
+    req.on("error", reject);
+  });
+}
+
+async function fetchMesh(payload) {
+  const api = payload.api.replace(/\/$/, "");
+  const target = `${api}/api/desktop/mesh?ticket=${encodeURIComponent(payload.ticket)}`;
+  const mesh = JSON.parse(await getText(target));
+  if (!mesh.controlUrl || !mesh.authKey) {
+    throw new Error("the portal returned an incomplete mesh configuration");
+  }
+  return mesh;
+}
+
+async function writeSSHConfig(payload, priv, context, mesh) {
   const workspace = payload.workspace;
   const alias = `poddy-desktop-${workspace}`;
   const key = priv.replace(/\\/g, "/");
@@ -197,10 +229,15 @@ async function writeSSHConfig(payload, priv, context) {
     "  IdentitiesOnly yes",
   ];
   if (payload.mesh) {
+    if (!mesh) throw new Error("missing mesh configuration");
     const helper = await ensureHelper(context);
-    const ticketFile = writeTicketFile(context, workspace, payload.ticket);
+    const meshDir = path.join(context.globalStorageUri.fsPath, "mesh", workspace);
+    fs.mkdirSync(meshDir, { recursive: true, mode: 0o700 });
+    const authKeyFile = path.join(meshDir, "authkey");
+    fs.writeFileSync(authKeyFile, `${mesh.authKey}\n`, { mode: 0o600 });
+    const stateDir = path.join(meshDir, "state");
     lines.push(
-      `  ProxyCommand "${helper}" --portal "${payload.api}" --workspace "${workspace}" --ticket-file "${ticketFile}"`,
+      `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile}" --workspace "${workspace}" --state-dir "${stateDir}" --hostname "poddy-desktop-${workspace}"`,
       "  StrictHostKeyChecking accept-new",
       "  LogLevel ERROR"
     );
@@ -239,14 +276,6 @@ async function writeSSHConfig(payload, priv, context) {
   if (current) current += "\n\n";
   fs.writeFileSync(config, current + block, { mode: 0o600 });
   return alias;
-}
-
-function writeTicketFile(context, workspace, ticket) {
-  const dir = path.join(context.globalStorageUri.fsPath, "tickets");
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const target = path.join(dir, `${workspace}.ticket`);
-  fs.writeFileSync(target, `${ticket}\n`, { mode: 0o600 });
-  return target.replace(/\\/g, "/");
 }
 
 async function ensureHelper(context) {

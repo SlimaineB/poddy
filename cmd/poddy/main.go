@@ -97,6 +97,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "login", "logout", "status", "list", "ls", "config", "ssh", "cp", "port-forward", "forward":
 		return runCLI(args, stdout, stderr)
+	case "connect":
+		return runCLIConnect(args[1:], stdout, stderr)
 	case "external-auth", "ext-auth":
 		return runExternalAuth(args[1:], stdout, stderr)
 	case "git-askpass":

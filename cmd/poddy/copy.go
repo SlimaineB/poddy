@@ -26,6 +26,7 @@ type copySSHTarget struct {
 	KeyPath string
 	Host    string
 	Port    string
+	Mesh    *cliMeshConfig
 }
 
 func runCLICP(args []string, stdout, stderr io.Writer) int {
@@ -88,9 +89,9 @@ func runCLICP(args []string, stdout, stderr io.Writer) int {
 	targetTarget := targets[target.Workspace]
 	sourceBase := path.Base(source.Path)
 
-	sourceArgs := cliSSHArgs(sourceTarget.Host, sourceTarget.Port, sourceTarget.KeyPath, source.Workspace, false, "")
+	sourceArgs := copySSHArgs(sourceTarget, source.Workspace, false, "")
 	sourceArgs = append(sourceArgs, copySourceCommand(source.Path))
-	targetArgs := cliSSHArgs(targetTarget.Host, targetTarget.Port, targetTarget.KeyPath, target.Workspace, false, "")
+	targetArgs := copySSHArgs(targetTarget, target.Workspace, false, "")
 	targetArgs = append(targetArgs, copyTargetCommand(target.Path, target.Dir, sourceBase))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -168,14 +169,29 @@ func resolveCopyTargets(settings cliSettings, keyFlag string, workspaces []strin
 			cleanup()
 			return nil, func() {}, err
 		}
-		host, port, err := cliSSHEndpoint(settings, workspace)
+		meshCfg, err := fetchCLIMesh(settings, workspace)
 		if err != nil {
 			cleanup()
 			return nil, func() {}, err
 		}
-		targets[workspace] = copySSHTarget{KeyPath: keyPath, Host: host, Port: port}
+		host, port := "", ""
+		if meshCfg == nil {
+			host, port, err = cliSSHEndpoint(settings, workspace)
+			if err != nil {
+				cleanup()
+				return nil, func() {}, err
+			}
+		}
+		targets[workspace] = copySSHTarget{KeyPath: keyPath, Host: host, Port: port, Mesh: meshCfg}
 	}
 	return targets, cleanup, nil
+}
+
+func copySSHArgs(target copySSHTarget, workspace string, noCommand bool, forward string) []string {
+	if target.Mesh != nil {
+		return cliMeshSSHArgs(*target.Mesh, target.KeyPath, workspace, noCommand, forward)
+	}
+	return cliSSHArgs(target.Host, target.Port, target.KeyPath, workspace, noCommand, forward)
 }
 
 func copyKeyPaths(keyFlag string, workspaces []string) (map[string]string, func(), error) {

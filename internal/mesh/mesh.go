@@ -8,8 +8,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +28,8 @@ type Config struct {
 	Hostname   string
 	StateDir   string
 	Ephemeral  bool
+	Silent     bool
+	RandomPort bool
 }
 
 type Node struct {
@@ -48,13 +52,24 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 	if dir == "" {
 		dir = "/tmp/poddy-mesh/" + hostname
 	}
+	port := uint16(41641)
+	if cfg.RandomPort {
+		port = 0
+	}
 	srv := &tsnet.Server{
 		Hostname:   hostname,
 		AuthKey:    cfg.AuthKey,
 		ControlURL: strings.TrimSpace(cfg.ControlURL),
 		Dir:        dir,
 		Ephemeral:  cfg.Ephemeral,
-		Port:       41641,
+		Port:       port,
+	}
+	if cfg.Silent {
+		srv.Logf = func(string, ...any) {}
+		srv.UserLogf = func(string, ...any) {}
+	} else if os.Getenv("PODDY_MESH_DEBUG") != "" {
+		srv.Logf = log.Printf
+		srv.UserLogf = log.Printf
 	}
 	if _, err := srv.Up(ctx); err != nil {
 		_ = srv.Close()
@@ -99,15 +114,11 @@ func (n *Node) DialHost(ctx context.Context, host string, port int) (net.Conn, e
 
 func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error) {
 	host := WorkspaceHostname(workspace)
-	conn, err := n.DialHost(ctx, host, port)
+	ip, err := n.findPeerIP(ctx, host)
 	if err == nil {
-		return conn, nil
+		return n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
 	}
-	ip, findErr := n.findPeerIP(ctx, host)
-	if findErr != nil {
-		return nil, err
-	}
-	return n.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
+	return n.DialHost(ctx, host, port)
 }
 
 func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {

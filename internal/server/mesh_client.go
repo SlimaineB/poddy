@@ -62,11 +62,22 @@ func (s *Server) cliMesh(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		admin := s.isAdmin(id, cfg)
 		if s.Regions != nil {
-			_, _, err := s.Regions.FindWorkspace(r.Context(), workspace, s.hubIdentity(id, s.isAdmin(id, cfg)))
+			_, info, err := s.Regions.FindWorkspace(r.Context(), workspace, s.hubIdentity(id, admin))
 			if err != nil {
 				writeRegionError(w, err)
 				return
+			}
+			if info.Owner != "" && !strings.EqualFold(info.Owner, ownerID(id.User)) {
+				if !admin {
+					http.Error(w, "workspace not found", http.StatusNotFound)
+					return
+				}
+				if info.Access != nil && !info.Access.Allowed {
+					s.denyInteractive(w, id, cfg)
+					return
+				}
 			}
 		} else if s.Workspaces != nil {
 			decision, err := s.interactiveAccess(r, workspace, id, cfg)

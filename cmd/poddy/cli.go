@@ -51,6 +51,7 @@ type cliWorkspace struct {
 
 type cliPortalConfig struct {
 	SSHEnabled     bool   `json:"ssh"`
+	Mesh           bool   `json:"mesh"`
 	SSHHost        string `json:"sshHost"`
 	SSHPort        string `json:"sshPort"`
 	SSHKeyPath     string `json:"sshKeyPath"`
@@ -60,6 +61,18 @@ type cliPortalConfig struct {
 		SSHHost string `json:"sshHost"`
 		SSHPort string `json:"sshPort"`
 	} `json:"regions"`
+}
+
+type cliMeshConfig struct {
+	ControlURL string `json:"controlUrl"`
+	LoginURL   string `json:"loginUrl,omitempty"`
+	AuthKey    string `json:"authKey"`
+	Workspace  string `json:"workspace,omitempty"`
+	SSHHost    string `json:"sshHost,omitempty"`
+
+	keyFile  string
+	stateDir string
+	hostname string
 }
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
@@ -346,12 +359,22 @@ func runCLISSH(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "poddy: %v\n", err)
 		return 1
 	}
-	host, port, err := cliSSHEndpoint(settings, workspace)
+	meshCfg, err := fetchCLIMesh(settings, workspace)
 	if err != nil {
 		fmt.Fprintf(stderr, "poddy: %v\n", err)
 		return 1
 	}
-	sshArgs := cliSSHArgs(host, port, keyPath, workspace, false, "")
+	var sshArgs []string
+	if meshCfg != nil {
+		sshArgs = cliMeshSSHArgs(*meshCfg, keyPath, workspace, false, "")
+	} else {
+		host, port, err := cliSSHEndpoint(settings, workspace)
+		if err != nil {
+			fmt.Fprintf(stderr, "poddy: %v\n", err)
+			return 1
+		}
+		sshArgs = cliSSHArgs(host, port, keyPath, workspace, false, "")
+	}
 	sshArgs = append(sshArgs, command...)
 	return runSSHCommand(sshArgs)
 }
@@ -398,12 +421,22 @@ func runCLIPortForward(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "poddy: %v\n", err)
 		return 1
 	}
-	host, port, err := cliSSHEndpoint(settings, workspace)
+	meshCfg, err := fetchCLIMesh(settings, workspace)
 	if err != nil {
 		fmt.Fprintf(stderr, "poddy: %v\n", err)
 		return 1
 	}
-	sshArgs := cliSSHArgs(host, port, keyPath, workspace, true, forward)
+	var sshArgs []string
+	if meshCfg != nil {
+		sshArgs = cliMeshSSHArgs(*meshCfg, keyPath, workspace, true, forward)
+	} else {
+		host, port, err := cliSSHEndpoint(settings, workspace)
+		if err != nil {
+			fmt.Fprintf(stderr, "poddy: %v\n", err)
+			return 1
+		}
+		sshArgs = cliSSHArgs(host, port, keyPath, workspace, true, forward)
+	}
 	return runSSHCommand(sshArgs)
 }
 
@@ -442,6 +475,74 @@ func cliSSHArgs(host, port, keyPath, workspace string, noCommand bool, forward s
 		args = append([]string{"-N", "-o", "ExitOnForwardFailure=yes", "-L", forward}, args...)
 	}
 	return args
+}
+
+func cliMeshSSHArgs(cfg cliMeshConfig, keyPath, workspace string, noCommand bool, forward string) []string {
+	exe, err := os.Executable()
+	if err != nil || strings.TrimSpace(exe) == "" {
+		exe = "poddy"
+	}
+	proxy := fmt.Sprintf("%s connect --control-url %s --auth-key-file %s --workspace %s --state-dir %s --hostname %s",
+		shellQuote(exe), shellQuote(cfg.ControlURL), shellQuote(cfg.keyFile), shellQuote(workspace),
+		shellQuote(cfg.stateDir), shellQuote(cfg.hostname))
+	args := []string{
+		"-o", "ProxyCommand=" + proxy,
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "IdentitiesOnly=yes",
+		"-o", "LogLevel=ERROR",
+		"-i", keyPath,
+		"dev@ws-" + workspace,
+	}
+	if noCommand {
+		args = append([]string{"-N", "-o", "ExitOnForwardFailure=yes", "-L", forward}, args...)
+	}
+	return args
+}
+
+func fetchCLIMesh(settings cliSettings, workspace string) (*cliMeshConfig, error) {
+	if strings.TrimSpace(settings.PortalURL) == "" || strings.TrimSpace(settings.Token) == "" {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cfg, err := cliRequest[cliMeshConfig](ctx, settings, http.MethodGet, "/api/me/mesh?workspace="+url.QueryEscape(workspace), nil)
+	if err != nil {
+		var statusErr *cliHTTPError
+		if errors.As(err, &statusErr) && (statusErr.StatusCode == http.StatusNotImplemented || statusErr.StatusCode == http.StatusNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(cfg.ControlURL) == "" || strings.TrimSpace(cfg.AuthKey) == "" {
+		return nil, errors.New("portal returned an incomplete mesh configuration")
+	}
+	if err := prepareCLIMesh(&cfg, workspace); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func prepareCLIMesh(cfg *cliMeshConfig, workspace string) error {
+	root, err := cliMeshDir(workspace)
+	if err != nil {
+		return err
+	}
+	cfg.keyFile = filepath.Join(root, "authkey")
+	cfg.stateDir = filepath.Join(root, "state")
+	cfg.hostname = "poddy-cli-" + cliSlug(workspace)
+	return writeSecureFile(cfg.keyFile, []byte(strings.TrimSpace(cfg.AuthKey)+"\n"), 0o600)
+}
+
+func cliMeshDir(workspace string) (string, error) {
+	path, err := cliConfigPath()
+	if err != nil {
+		cache, cacheErr := os.UserCacheDir()
+		if cacheErr != nil {
+			return "", err
+		}
+		return filepath.Join(cache, "poddy", "mesh", cliSlug(workspace)), nil
+	}
+	return filepath.Join(filepath.Dir(path), "mesh", cliSlug(workspace)), nil
 }
 
 func prepareCLIAccess(settings cliSettings, workspace, keyPath string, stderr io.Writer) error {
