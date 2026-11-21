@@ -33,6 +33,7 @@ type desktopClaims struct {
 
 type desktopPayload struct {
 	API       string `json:"api"`
+	Transport string `json:"transport,omitempty"`
 	Workspace string `json:"workspace"`
 	User      string `json:"user"`
 	SSHHost   string `json:"sshHost"`
@@ -119,8 +120,15 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot create ticket", http.StatusInternalServerError)
 		return
 	}
+	transport := "direct"
+	if s.MeshEnabled && s.meshClientConfig("").AuthKey != "" {
+		transport = "mesh"
+	} else if s.DesktopDial != nil {
+		transport = "portal"
+	}
 	payload, err := json.Marshal(desktopPayload{
 		API:       requestBaseURL(r),
+		Transport: transport,
 		Workspace: name,
 		User:      desktopRemoteUser,
 		SSHHost:   sshHost,

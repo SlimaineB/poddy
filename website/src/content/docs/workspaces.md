@@ -93,8 +93,9 @@ extension:
 1. Install the Poddy VSIX once in that editor.
 2. Click the portal button.
 3. The extension enrolls a dedicated key, writes the SSH config with the
-   bundled `poddy-connect` `ProxyCommand`, and opens the workspace. No
-   Tailscale installation is required.
+   bundled `poddy-connect` `ProxyCommand`, and opens the workspace using the
+   transport the portal advertises: Headscale mesh when enabled, otherwise an
+   authenticated portal WebSocket. No Tailscale installation is required.
 
 In a local deployment the portal can also write the SSH config and start a
 port-forward for you. In cluster mode it returns a short-lived signed editor

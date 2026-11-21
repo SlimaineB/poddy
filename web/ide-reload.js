@@ -12,11 +12,7 @@
       sessionStorage.setItem(key, String(Date.now()));
     } catch {}
   };
-  const rendered = () => {
-    if (document.querySelector(".monaco-workbench")) return true;
-    const text = document.body ? document.body.innerText.trim() : "";
-    return text.length > 80;
-  };
+  const rendered = () => Boolean(document.querySelector(".monaco-workbench, .monaco-editor, #workbench\.parts\.editor"));
   const check = (attempt) => {
     if (rendered()) return;
     if (document.readyState !== "complete" && attempt < 5) {

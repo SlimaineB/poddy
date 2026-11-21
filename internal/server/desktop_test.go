@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -151,6 +153,7 @@ func TestDesktopUsesDirectMeshHost(t *testing.T) {
 	s := desktopTestServer(t)
 	s.MeshEnabled = true
 	s.MeshLoginURL = "https://mesh.example.com"
+	s.MeshClientAuthKey = "mesh-client-key"
 	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
 
 	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"})
@@ -164,6 +167,30 @@ func TestDesktopUsesDirectMeshHost(t *testing.T) {
 	payload := decodeDesktopPayload(t, rec)
 	if !payload.Mesh || payload.SSHHost != "ws-alice-ws" || payload.SSHPort != "22" {
 		t.Fatalf("mesh payload = %+v", payload)
+	}
+	if payload.Transport != "mesh" {
+		t.Fatalf("transport = %q, want mesh", payload.Transport)
+	}
+}
+
+func TestDesktopPrefersPortalTransport(t *testing.T) {
+	s := desktopTestServer(t)
+	s.DesktopDial = func(context.Context, string, int) (net.Conn, error) {
+		return nil, nil
+	}
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/desktop", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("desktop = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeDesktopPayload(t, rec)
+	if payload.Transport != "portal" {
+		t.Fatalf("transport = %q, want portal", payload.Transport)
 	}
 }
 

@@ -26,6 +26,9 @@ func TestInjectIDEReload(t *testing.T) {
 	if resp.ContentLength != int64(len(body)) {
 		t.Fatalf("content length = %d, want %d", resp.ContentLength, len(body))
 	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("cache control = %q, want no-store", got)
+	}
 }
 
 func TestInjectIDEReloadSkipsNonHTML(t *testing.T) {

@@ -19,6 +19,13 @@ but it no longer listens on port 2222 and the chart does not create an SSH
 Service when `mesh.enabled=true`. The browser terminal continues to use the
 Kubernetes/region API and is unaffected.
 
+Mesh is the preferred desktop transport when `mesh.enabled=true` and a client
+auth key is configured. When mesh is disabled or no client key is available,
+the Poddy extension falls back to the authenticated portal WebSocket
+(`/api/desktop/ssh`) and the portal port-forwards to the workspace. Both modes
+use the same VSIX; the portal selects the transport and the extension follows
+it.
+
 ## Install Headscale through the chart
 
 The chart runs a single-replica Headscale server with SQLite and a PVC. It
@@ -84,12 +91,18 @@ the new `PODDY_MESH_*` environment variables.
 
 ## Join users
 
-Desktop VS Code and Cursor do not require users to install Tailscale. The
-Poddy VSIX bundles `poddy-connect`, which uses `ProxyCommand` to join the
-Headscale/Tailscale tailnet directly with a mesh key and dial the workspace over
-WireGuard. The helper resolves the online `ws-<workspace>` peer by prefix, so
-Headscale hostname suffixes do not break the connection. `poddy ssh`,
+Desktop VS Code and Cursor do not require users to install Tailscale. When the
+portal advertises `transport: mesh`, the Poddy VSIX uses the bundled
+`poddy-connect` helper as `ProxyCommand` to join the Headscale/Tailscale tailnet
+directly with a mesh key and dial the workspace over WireGuard. The helper keeps
+a per-workspace `state-v2` directory and allows a cold workspace up to four
+minutes to accept SSH. It resolves the online `ws-<workspace>` peer by prefix,
+so Headscale hostname suffixes do not break the connection. `poddy ssh`,
 `poddy cp`, and `poddy port-forward` use the same mesh helper.
+
+If the portal is not configured for mesh, the same VSIX uses the authenticated
+portal WebSocket instead. Users do not choose a transport; the same extension
+release supports both.
 
 Users who want a standalone `ws-<workspace>` SSH session can still join the same
 control server once with Tailscale. The browser opens the in-chart Dex login

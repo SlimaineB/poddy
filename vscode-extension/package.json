@@ -3,7 +3,7 @@
   "displayName": "Poddy Remote",
   "description": "Open Poddy workspaces in VS Code or Cursor Remote-SSH without editing your SSH config.",
   "publisher": "slimaineb",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "license": "MIT",
   "repository": {
     "type": "git",

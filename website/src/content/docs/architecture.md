@@ -183,7 +183,7 @@ locally, so direct region creates bypass quota checks.
    pods receive their owner's keys through a read-only Secret mounted at
    `/etc/poddy/ssh/authorized_keys`.
 5. The portal records `ssh.connect` in PostgreSQL.
-6. VS Code and Cursor use the bundled `poddy-connect` helper as `ProxyCommand`; it joins the Headscale/Tailscale mesh and dials the workspace over WireGuard. PyCharm uses JetBrains Gateway with the generated portal or mesh SSH config.
+6. The Poddy extension follows the transport in the signed desktop payload. With mesh enabled, the bundled `poddy-connect` helper joins the Headscale/Tailscale tailnet and dials the workspace over WireGuard. Otherwise it opens an authenticated WebSocket to `/api/desktop/ssh`, and the portal reaches the workspace through the Kubernetes port-forward API or the regional tunnel. PyCharm uses JetBrains Gateway with the generated portal or mesh SSH config.
 
 ### Browser VS Code
 

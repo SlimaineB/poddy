@@ -138,8 +138,13 @@ That is enough to create a workspace, open the browser terminal, open VS Code We
 Browser ──────────► Portal (:8080) ──────────► Kubernetes API
                                                (workspace lifecycle)
 
-VS Code / Cursor / PyCharm / ssh ──► Portal (:2222) ──► workspace agent ──► sshd (:22)
+VS Code / Cursor ──► Headscale mesh ─────────► workspace agent ──► sshd (:22)
+                 └─► Portal WSS ──► port-forward / region tunnel ─► sshd (:22)
+
+ssh / PyCharm ─────► Portal (:2222) ─────────► workspace agent ──► sshd (:22)
 ```
+
+Desktop SSH has two transports. With `mesh.enabled=true`, VS Code and Cursor use the bundled helper to join a Headscale/Tailscale tailnet and dial the workspace over WireGuard. Without mesh, they open an authenticated WebSocket to the portal, which reaches the workspace through the Kubernetes port-forward API or the regional tunnel. Manual SSH and JetBrains Gateway use the portal SSH listener; `poddy ssh` uses the mesh when it is enabled. The portal selects the transport and the extension follows it, so users do not choose a mode.
 
 The portal serves the UI/API, manages workspaces, and terminates SSH in the same Deployment without exposing workspace pods. Workspace agents connect outbound to the portal; regions use their outbound tunnel. PostgreSQL stores the control plane: users, RBAC, quotas, access grants, encrypted tokens/secrets, share links, and audit events. Kubernetes remains the source of truth for workspaces, pods, and PVCs.
 

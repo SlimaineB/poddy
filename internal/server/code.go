@@ -186,5 +186,6 @@ func injectIDEReload(resp *http.Response) error {
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	resp.ContentLength = int64(len(body))
 	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	resp.Header.Set("Cache-Control", "no-store")
 	return nil
 }

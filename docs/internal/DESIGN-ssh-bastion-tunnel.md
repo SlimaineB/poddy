@@ -10,6 +10,15 @@
 > deviennent inutiles côté région.
 > Contexte multi-région : voir `PLAN-scale-regions.md` §0 (« SSH est le seul
 > flux qui ne se route pas comme HTTP »).
+>
+> Mise à jour (2026-11-21) : deux transports desktop sont conservés et choisis
+> par le portail. Si `mesh.enabled=true` et une clé client sont configurés, le
+> portail renvoie `transport: mesh` et l'extension joint `ws-<workspace>` via
+> WireGuard/Headscale. Sinon il renvoie `transport: portal` et l'extension ouvre
+> un WebSocket authentifié vers `/api/desktop/ssh`, que le portail termine par
+> port-forward Kubernetes ou tunnel région. Le listener SSH reste utilisé par
+> `ssh` et Gateway ; `poddy ssh` suit le même choix mesh/portal. Le mesh n'est
+> pas un remplacement forcé.
 
 ## Constat
 

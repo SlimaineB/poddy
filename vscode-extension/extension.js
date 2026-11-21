@@ -42,7 +42,8 @@ async function handleUri(context, uri) {
 
   const keyPath = await ensureKey();
   const publicKey = await readPublicKey(keyPath);
-  const mesh = payload.mesh ? await fetchMesh(payload) : null;
+  const useMesh = payload.mesh || payload.transport === "mesh";
+  const mesh = useMesh && payload.transport !== "portal" ? await fetchMesh(payload) : null;
   const alias = await writeSSHConfig(payload, keyPath, context, mesh);
   await postJSON(`${payload.api.replace(/\/$/, "")}/api/desktop/enroll`, {
     ticket: payload.ticket,
@@ -156,14 +157,14 @@ async function waitForSSH(alias) {
   if (process.platform === "win32") {
     candidates.push("C:\\Windows\\System32\\OpenSSH\\ssh.exe");
   }
-  const deadline = Date.now() + 180000;
+  const deadline = Date.now() + 240000;
   let lastError;
   while (Date.now() < deadline) {
     for (const bin of candidates) {
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
-          "-o", "ConnectTimeout=30",
+          "-o", "ConnectTimeout=120",
           "-o", "StrictHostKeyChecking=no",
           "-o", `UserKnownHostsFile=${NULL_DEVICE}`,
           alias,
@@ -261,6 +262,7 @@ async function fetchMesh(payload) {
 
 async function writeSSHConfig(payload, priv, context, mesh) {
   const workspace = payload.workspace;
+  const useMesh = payload.mesh || payload.transport === "mesh";
   const alias = `poddy-desktop-${workspace}`;
   const key = priv.replace(/\\/g, "/");
   const lines = [
@@ -271,15 +273,27 @@ async function writeSSHConfig(payload, priv, context, mesh) {
     `  User ${payload.user}`,
     `  IdentityFile "${key}"`,
     "  IdentitiesOnly yes",
+    "  ConnectTimeout 120",
   ];
-  if (payload.mesh) {
+  if (payload.transport === "portal") {
+    const helper = await ensureHelper(context);
+    const portalDir = path.join(context.globalStorageUri.fsPath, "portal", workspace);
+    fs.mkdirSync(portalDir, { recursive: true, mode: 0o700 });
+    const ticketFile = path.join(portalDir, "ticket");
+    fs.writeFileSync(ticketFile, `${payload.ticket}\n`, { mode: 0o600 });
+    lines.push(
+      `  ProxyCommand "${helper}" --portal "${payload.api.replace(/\/$/, "")}" --workspace "${workspace}" --ticket-file "${ticketFile.replace(/\\/g, "/")}" --timeout 60s`,
+      "  StrictHostKeyChecking accept-new",
+      "  LogLevel ERROR"
+    );
+  } else if (useMesh) {
     if (!mesh) throw new Error("missing mesh configuration");
     const helper = await ensureHelper(context);
     const meshDir = path.join(context.globalStorageUri.fsPath, "mesh", workspace);
     fs.mkdirSync(meshDir, { recursive: true, mode: 0o700 });
     const authKeyFile = path.join(meshDir, "authkey");
     fs.writeFileSync(authKeyFile, `${mesh.authKey}\n`, { mode: 0o600 });
-    const stateDir = path.join(meshDir, "state");
+    const stateDir = path.join(meshDir, "state-v2");
     let caArg = "";
     if (mesh.caCert) {
       const caFile = path.join(meshDir, "ca.crt");

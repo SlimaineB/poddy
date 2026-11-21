@@ -1,29 +1,54 @@
 ---
 title: "SSH access"
-description: "Connect to workspaces over SSH through the outbound agent or the Kubernetes port-forward fallback."
+description: "Connect to workspaces through the Headscale mesh, an authenticated portal WebSocket, or the portal SSH listener."
 ---
 
-poddy supports three SSH connection paths. With `mesh.enabled=true`, workspaces
-join a WireGuard tailnet and users connect directly to `ws-<workspace>`; see
-[Headscale mesh](/mesh). Without mesh, the outbound workspace agent is the
-default in the Helm chart and the Kubernetes port-forward path remains as a
-compatibility fallback.
+Poddy has two transports for the desktop Poddy extension, plus the portal SSH
+listener for other clients:
+
+- **Mesh** when `mesh.enabled=true`: workspaces join a WireGuard tailnet and the
+  extension dials `ws-<workspace>` over WireGuard/DERP; see
+  [Headscale mesh](/mesh). The portal does not need an SSH listener.
+- **Portal WebSocket** otherwise: the extension opens an authenticated WebSocket
+  to `/api/desktop/ssh`, and the portal dials the workspace through the
+  Kubernetes port-forward API or the regional tunnel.
+
+When mesh is disabled, the portal SSH listener (`sshHost:sshPort`) serves the
+generated `Host poddy-ssh-*` config, manual `ssh`, and JetBrains Gateway.
+`poddy ssh` uses the mesh when it is enabled.
 
 ## Connection paths
 
 ```text
-ssh / VS Code / Cursor / PyCharm
-     │
-     ▼
-portal :2222
-     │  direct-tcpip (port 22 only)
-     │
-     ├── workspace agent tunnel ──► poddy-agent ──► 127.0.0.1:22
-     │   (outbound WebSocket)      sidecar          workspace sshd
-     │
-     └── Kubernetes port-forward ──────────────────► workspace pod :22
-         (only when ssh.requireAgent=false)
+Desktop VS Code / Cursor (Poddy extension → poddy-connect)
+  ├─ mesh: WireGuard/DERP ─────────────────────► ws-<workspace>:22
+  │                                              workspace sshd
+  └─ portal: WSS /api/desktop/ssh
+       └─ portal ── port-forward / region tunnel ─► workspace pod :22
+
+ssh / JetBrains Gateway (when mesh is disabled)
+  └─ portal :2222
+       ├─ workspace agent tunnel ─► poddy-agent ─► 127.0.0.1:22
+       │  (outbound WebSocket)       sidecar         workspace sshd
+       └─ Kubernetes port-forward ──────────────────► workspace pod :22
+          (only when ssh.requireAgent=false)
 ```
+
+### Desktop transport selection
+
+The portal returns the transport in the signed desktop payload:
+
+1. `mesh` if `mesh.enabled=true` and a client auth key is configured
+   (`PODDY_MESH_CLIENT_AUTH_KEY`, which defaults to `mesh.authKey`).
+2. `portal` otherwise, when the portal can dial workspaces.
+3. Older portals that return no transport keep the SSH jump-host fallback.
+
+The extension follows this value automatically; users do not choose a mode. In
+mesh mode, `poddy-connect` joins Headscale with the client preauth key and dials
+the `ws-<workspace>` peer. In portal mode, it sends a short-lived desktop ticket
+to `/api/desktop/ssh`, and the portal opens the TCP stream. The portal mode works
+without a public SSH Service and is available when mesh is disabled or not
+configured.
 
 The workspace pod runs `poddy-agent` in a dedicated sidecar by default. It opens
 an outbound WebSocket to the portal and multiplexes TCP streams back to the
@@ -32,7 +57,7 @@ from the workspace, and the agent only permits `127.0.0.1:22`, `localhost:22`,
 or `[::1]:22`. The sidecar has its own memory limit, so a workspace memory spike
 cannot OOM-kill the agent and drop every SSH session.
 
-Desktop IDEs use the same portal endpoint: VS Code and Cursor through the Poddy
+Desktop IDEs use the transport above: VS Code and Cursor through the Poddy
 extension, and PyCharm through JetBrains Gateway and the generated SSH config.
 Gateway must parse `~/.ssh/config`; the generated block uses `ProxyCommand`
 because Gateway does not support `ProxyJump`.

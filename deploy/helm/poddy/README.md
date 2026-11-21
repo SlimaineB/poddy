@@ -38,6 +38,24 @@ Replace `0.1.10` with the published chart version when a new release is cut.
 
 Install the templates release in `workspaceNamespace` (the release namespace above when `workspaceNamespace` is empty).
 
+## Desktop SSH transports
+
+The Poddy extension supports two desktop transports and the portal chooses one:
+
+- With `mesh.enabled=true`, the portal returns `transport: mesh`. The bundled
+  `poddy-connect` helper joins the Headscale/Tailscale tailnet and dials
+  `ws-<workspace>` over WireGuard. The chart does not create an SSH Service or
+  SSH listener. `mesh.authKey` (or `mesh.existingSecret`) is required.
+- Otherwise the portal returns `transport: portal`. The extension opens an
+  authenticated WebSocket to `/api/desktop/ssh`, and the portal reaches the
+  workspace through the Kubernetes port-forward API or the region tunnel. This
+  mode does not need mesh or a public SSH Service.
+
+The manual SSH listener and `ssh.publicHost` remain relevant for `ssh` and
+JetBrains Gateway when mesh is disabled. See the website documentation for
+[SSH access](https://slimaineb.github.io/poddy/ssh/) and
+[Headscale mesh](https://slimaineb.github.io/poddy/mesh/).
+
 ## Metrics
 
 Metrics are enabled by default on port `9090` and served by a separate
@@ -68,8 +86,8 @@ name (without the leading `v`) is used.
 | Parameter | Description |
 |-----------|-------------|
 | `auth.token` or `auth.existingSecret` or `oidc.enabled` | Authentication is required (token and/or OIDC). |
-| `ssh.enabled` | Enable SSH in the portal (default `true`). |
-| `ssh.publicHost` | **Required** when SSH enabled. Hostname/IP users connect to. |
+| `ssh.enabled` | Enable the portal SSH listener (default `true`). Ignored for the listener when `mesh.enabled=true`. |
+| `ssh.publicHost` | **Required** when `ssh.enabled=true` and `mesh.enabled=false`. Hostname/IP users connect to. |
 | `ssh.authorizedKeys` or `ssh.existingKeysSecret` | Optional administrator-managed SSH keys. Teams normally add their own key under **SSH keys** in the portal. The comment binds an administrator-managed key to an owner (`alice@example.com`, `user:alice@example.com`, or `user:token`) or marks it admin (`admin`, `*`). |
 | `ssh.existingHostKeySecret` | Optional Secret with the SSH host key. Empty generates and preserves one; set it when `replicaCount > 1` to manage rotation yourself. |
 | `database.url` or `database.existingSecret` | **Required** unless `regionManager.enabled=true`. PostgreSQL 13+ connection string. |
@@ -96,6 +114,9 @@ name (without the leading `v`) is used.
 | `ssh.ca.existingSecret` | `""` | Existing Secret with the SSH CA private key. Share it across hub and regions. |
 | `ssh.ca.keyKey` | `ssh-ca-key` | Key in the CA Secret. |
 | `ssh.ca.key` | `""` | Inline CA private key (PEM). Empty generates and preserves a random key. |
+| `mesh.enabled` | `false` | Run workspace agents on a Headscale/Tailscale tailnet and make mesh the preferred desktop transport. The chart skips the portal SSH Service and listener when enabled. |
+| `mesh.controlUrl` | `""` | Mesh control server URL. Required when `mesh.enabled=true` unless `mesh.headscale.enabled=true`. |
+| `mesh.authKey` / `mesh.existingSecret` | `""` | Reusable mesh preauth key for workspaces and desktop clients. Required when `mesh.enabled=true` unless `mesh.existingSecret` is set. |
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
 | `dotfiles.url` | `""` | Portal-wide fallback dotfiles repository for users without a personal setting. |

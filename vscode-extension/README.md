@@ -8,11 +8,24 @@ the real `~/.ssh/config`, waits for the workspace to accept SSH, and opens
 Remote-SSH on `/home/dev`.
 
 The VSIX bundles a small `poddy-connect` helper for Linux, macOS, and Windows.
-The SSH config uses it as `ProxyCommand`; it joins the Poddy Tailscale/Headscale
-tailnet directly with a mesh preauth key and dials the workspace over
-WireGuard. Users do not install Tailscale or run `tailscale up`. The helper
-discovers the online workspace peer by its `ws-<workspace>` prefix, so Headscale
-hostname suffixes do not break the connection.
+The SSH config uses it as `ProxyCommand`. The signed desktop ticket selects one
+of two transports:
+
+- **Mesh (preferred when enabled).** `poddy-connect --mode mesh` joins the
+  Headscale/Tailscale tailnet with a preauth key and dials `ws-<workspace>` over
+  WireGuard. Users do not install Tailscale or run `tailscale up`. The helper
+  keeps a per-workspace state directory (`state-v2`) and waits up to four
+  minutes for a cold workspace to accept SSH.
+- **Portal WebSocket (fallback).** `poddy-connect --portal` opens an
+  authenticated WebSocket to `/api/desktop/ssh`; the portal reaches the
+  workspace through the Kubernetes port-forward API or the regional tunnel.
+  This path does not need mesh, Tailscale, or the portal SSH listener.
+
+The portal advertises the transport in the desktop payload: mesh when
+`mesh.enabled=true` and a client auth key is configured, otherwise portal when
+the portal can dial workspaces. Older portals that return no transport keep the
+SSH jump-host fallback. There is no user-facing transport setting; the extension
+follows the portal.
 
 The extension runs on the local UI side (`extensionKind: ui`). It is not
 installed in the workspace and requires the local `ssh` and `ssh-keygen` binaries
