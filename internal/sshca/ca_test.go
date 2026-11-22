@@ -46,6 +46,17 @@ func TestSignAndVerify(t *testing.T) {
 	if Admin(cert) {
 		t.Fatal("unexpected admin extension")
 	}
+	for _, option := range []string{
+		"permit-agent-forwarding",
+		"permit-port-forwarding",
+		"permit-pty",
+		"permit-user-rc",
+		"permit-X11-forwarding",
+	} {
+		if _, ok := cert.Permissions.Extensions[option]; !ok {
+			t.Fatalf("certificate missing permission extension %q", option)
+		}
+	}
 	if err := ca.VerifyCert(cert); err != nil {
 		t.Fatalf("verify: %v", err)
 	}

@@ -147,7 +147,13 @@ func (c *CA) Sign(public ssh.PublicKey, principal, owner, workspace string, admi
 		ValidAfter:      unixTime(now.Add(-time.Minute)),
 		ValidBefore:     unixTime(now.Add(ttl)),
 		Permissions: ssh.Permissions{
-			Extensions: map[string]string{},
+			Extensions: map[string]string{
+				"permit-agent-forwarding": "",
+				"permit-port-forwarding":  "",
+				"permit-pty":              "",
+				"permit-user-rc":          "",
+				"permit-X11-forwarding":   "",
+			},
 		},
 	}
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
