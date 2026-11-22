@@ -75,3 +75,21 @@ func TestRegionTunnelHTTP(t *testing.T) {
 		t.Fatalf("body = %q", body)
 	}
 }
+
+func TestRegionAgentReadinessTracksTunnel(t *testing.T) {
+	agent := NewRegionAgent(RegionAgentConfig{Region: "eu"})
+	if agent.Ready() {
+		t.Fatal("agent should not be ready before connecting")
+	}
+	agent.setConnected(true, nil)
+	if !agent.Ready() {
+		t.Fatal("agent should be ready after connecting")
+	}
+	agent.setConnected(false, errors.New("dial failed"))
+	if agent.Ready() {
+		t.Fatal("agent should not be ready after disconnect")
+	}
+	if got := agent.LastError(); got != "dial failed" {
+		t.Fatalf("last error = %q", got)
+	}
+}

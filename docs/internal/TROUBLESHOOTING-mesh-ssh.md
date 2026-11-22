@@ -351,40 +351,75 @@ Après un changement de signature, refaire une connexion neuve pour récupérer 
 certificat frais. Le `KeyId` peut être un utilisateur ou un token ; le workspace
 vérifie surtout le principal `dev` et la CA.
 
-## Problème 7 — Helm et clés mesh séparées
+## Problème 7 — Installation et configuration SSH éclatées
 
 ### Symptôme
 
-La clé utilisée par les agents workspace est aussi utilisée par les clients
-desktop, ce qui crée des nœuds persistants inutiles ou des conflits.
+L’installation demandait plusieurs étapes manuelles :
+
+1. installer Headscale avec `mesh.enabled=false` ;
+2. créer l’utilisateur et une clé avec `kubectl exec ... headscale ...` ;
+3. relancer un second `helm upgrade` avec `mesh.authKey`.
+
+Côté client, l’extension écrivait un bloc `Host poddy-desktop-<workspace>` par
+workspace, avec un fichier `authkey`, un répertoire d’état et parfois une clé
+SSH par workspace. Le fichier `~/.ssh/config` et `~/.ssh` accumulaient donc des
+dizaines d’entrées.
 
 ### Correctif
 
-Séparer les clés dans le chart Helm :
+Le chart intègre désormais le bootstrap Headscale et un seul bloc SSH wildcard.
 
-- `mesh.authKey` : agent workspace, réutilisable, non éphémère ;
-- `mesh.clientAuthKey` : client desktop, réutilisable, éphémère ;
-- `mesh.clientAuthKeyKey` : nom de la clé dans le Secret.
+- Headscale managé est activé automatiquement quand `mesh.enabled=true` et que
+  `mesh.controlUrl` est vide. `mesh.headscale.enabled` peut encore être forcé.
+- `mesh.headscale.host` est déduit de `ingress.hosts[0].host` sous la forme
+  `mesh.<host>` s’il n’est pas fourni.
+- Un sidecar `mesh-bootstrap` tourne dans le pod Headscale. Il crée l’utilisateur
+  `poddy`, une clé workspace réutilisable et une clé desktop éphémère, puis les
+  écrit dans le Secret `poddy-mesh`. Il reste vivant après le bootstrap : un
+  conteneur de Deployment qui sort est redémarré en boucle.
+- Le portail a un init container `mesh-bootstrap-wait` qui attend que les deux
+  fichiers de clés soient non vides. Le portail démarre ensuite avec
+  `PODDY_MESH_AUTH_KEY_FILE` et `PODDY_MESH_CLIENT_AUTH_KEY_FILE`.
+- `secret-mesh.yaml` utilise `lookup` pour conserver les clés déjà générées lors
+  des upgrades. Les valeurs `mesh.authKey`/`mesh.clientAuthKey` restent vides
+  pour laisser le bootstrap faire le travail.
+- L’extension écrit un seul bloc `Host poddy-desktop-*` avec `%n`, une seule clé
+  `mesh/authkey`, un seul répertoire `mesh/state` et un seul `mesh/ca.crt`.
+  Les tickets portail vont dans `portal/<workspace>.ticket` et
+  `poddy-connect` accepte `--ticket-dir`.
+- L’extension supprime les anciens blocs `# >>> poddy:<workspace>`, les anciens
+  répertoires par workspace et les anciennes clés `poddy_*_ed25519` après avoir
+  adopté la plus récente dans `poddy_ed25519`.
 
-Fichiers :
-
-- `deploy/helm/poddy/values.yaml`
-- `deploy/helm/poddy/values.schema.json`
-- `deploy/helm/poddy/templates/secret-mesh.yaml`
-- `deploy/helm/poddy/templates/deployment.yaml`
-  (`PODDY_MESH_CLIENT_AUTH_KEY`, fallback sur `authKeyKey`)
-
-Création d'une clé client (exemple, ne pas committer la valeur) :
+### Installation
 
 ```bash
-headscale preauthkeys create \
-  --user poddy \
-  --reusable \
-  --ephemeral \
-  --expiration 720h
+helm upgrade --install poddy deploy/helm/poddy -n poddy-system \
+  -f values.yaml \
+  --set mesh.enabled=true \
+  --set mesh.headscale.enabled=true \
+  --set mesh.headscale.host=mesh.example.com \
+  --set mesh.controlUrl=https://mesh.example.com \
+  --wait --timeout 10m
+
+kubectl -n poddy-system get secret poddy-mesh \
+  -o jsonpath='{.data.auth-key}' | base64 -d
+kubectl -n poddy-system logs deploy/poddy-headscale -c mesh-bootstrap
 ```
 
-Pour un agent workspace, retirer `--ephemeral`.
+Sans `mesh.controlUrl` ni `mesh.headscale.enabled`, le chart active Headscale
+et déduit l’hôte depuis l’ingress. Les clés sont créées automatiquement.
+
+### Piège
+
+- Si `mesh.authKey` ou `mesh.clientAuthKey` est fourni, le bootstrap est
+  volontairement désactivé : c’est le mode « contrôleur externe ».
+- Le sidecar doit rester vivant après le bootstrap. Le faire sortir avec le
+  code 0 provoque un `CrashLoopBackOff` et bloque `helm --wait`.
+- Le portail doit attendre les fichiers dans un init container, pas dans le
+  conteneur principal : sinon il démarre avec des clés vides et le nœud mesh du
+  portail ne rejoint jamais le tailnet.
 
 ## Problème 8 — Environnement de lab
 
@@ -503,7 +538,12 @@ ssh -F <config> -W 127.0.0.1:22 <host>
 | Certificats SSH | `internal/sshca/ca.go` |
 | Émission des certificats | `internal/server/sshcerts.go` |
 | Vérification côté bastion | `internal/bastion/bastion.go` |
+| Bootstrap Headscale | `cmd/poddy-mesh-bootstrap/main.go` |
 | Helm mesh | `deploy/helm/poddy/values.yaml`, `templates/secret-mesh.yaml`, `templates/deployment.yaml` |
+| RBAC bootstrap | `deploy/helm/poddy/templates/rbac-mesh-bootstrap.yaml` |
+| Sidecar Headscale | `deploy/helm/poddy/templates/headscale-deployment.yaml` |
+| Extension VS Code | `vscode-extension/extension.js` |
+| ProxyCommand | `cmd/poddy-connect/main.go` |
 
 ## Validation finale
 
@@ -521,4 +561,11 @@ Validation fonctionnelle effectuée en lab :
 - `ssh -W 127.0.0.1:22 <host>` : banner SSH, forwarding autorisé ;
 - VS Code Remote-SSH : après récupération d'un certificat frais, le tunnel `-D`
   est autorisé ; si le port cible a changé, une reconnexion recrée le VS Code
-  Server.
+  Server ;
+- installation en une passe : `mesh.enabled=true`, Headscale managé, aucune clé
+  fournie ; le sidecar écrit `poddy-mesh`, l’init container du portail attend
+  les fichiers, le portail et son nœud mesh démarrent ;
+- upgrade suivant : `lookup` conserve les clés du Secret, le sidecar les voit
+  déjà présentes et reste inactif ;
+- extension : un seul bloc `Host poddy-desktop-*`, un seul `mesh/authkey`, un
+  seul `mesh/state`, tickets portail par workspace.

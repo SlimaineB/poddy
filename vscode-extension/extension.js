@@ -86,11 +86,24 @@ function legacyKeys() {
     return fs
       .readdirSync(sshDir())
       .filter((name) => name.startsWith(`${SSH_KEY_PREFIX}_`) && name.endsWith("_ed25519"))
+      .filter((name) => name !== `${SSH_KEY_PREFIX}_ed25519`)
       .map((name) => path.join(sshDir(), name))
       .filter((candidate) => fs.existsSync(candidate))
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
   } catch {
     return [];
+  }
+}
+
+function cleanupLegacyKeys(target) {
+  for (const legacy of legacyKeys()) {
+    if (legacy === target) continue;
+    try {
+      fs.rmSync(legacy, { force: true });
+    } catch {}
+    try {
+      fs.rmSync(`${legacy}.pub`, { force: true });
+    } catch {}
   }
 }
 
@@ -104,12 +117,16 @@ function adoptLegacyKey(source, target) {
 
 async function ensureKey() {
   const target = keyPath();
-  if (fs.existsSync(target)) return target;
+  if (fs.existsSync(target)) {
+    cleanupLegacyKeys(target);
+    return target;
+  }
 
   fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 });
   for (const legacy of legacyKeys()) {
     try {
       adoptLegacyKey(legacy, target);
+      cleanupLegacyKeys(target);
       return target;
     } catch {}
   }
@@ -122,6 +139,7 @@ async function ensureKey() {
   for (const bin of candidates) {
     try {
       await run(bin, ["-t", "ed25519", "-N", "", "-C", "poddy-remote", "-f", target]);
+      cleanupLegacyKeys(target);
       return target;
     } catch (err) {
       lastError = err;
@@ -168,7 +186,7 @@ async function waitForSSH(alias) {
   if (process.platform === "win32") {
     candidates.push("C:\\Windows\\System32\\OpenSSH\\ssh.exe");
   }
-  const deadline = Date.now() + 240000;
+  const deadline = Date.now() + 120000;
   let lastError;
   let fastFailures = 0;
   while (Date.now() < deadline) {
@@ -177,7 +195,7 @@ async function waitForSSH(alias) {
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
-          "-o", "ConnectTimeout=120",
+          "-o", "ConnectTimeout=15",
           "-o", "StrictHostKeyChecking=no",
           "-o", `UserKnownHostsFile=${NULL_DEVICE}`,
           alias,
@@ -194,9 +212,9 @@ async function waitForSSH(alias) {
     if (fastFailures >= 3) {
       throw new Error(`workspace SSH is not ready: ${lastError ? lastError.message : "proxy command failed"}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error(`workspace SSH is not ready: ${lastError ? lastError.message : "timed out"}`);
+  throw new Error(`workspace SSH is not ready after 120s: ${lastError ? lastError.message : "timed out"}`);
 }
 
 async function pinRemotePlatform(alias) {
@@ -213,7 +231,31 @@ async function pinRemotePlatform(alias) {
   } catch {}
 }
 
+function retryableStatus(status) {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+async function withRetry(fn, attempts = 3) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (err && err.statusCode && !retryableStatus(err.statusCode)) throw err;
+      if (attempt + 1 >= attempts) break;
+      const wait = 1000 * 2 ** attempt + Math.floor(Math.random() * 250);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  throw lastError;
+}
+
 function postJSON(url, body) {
+  return withRetry(() => postJSONOnce(url, body));
+}
+
+function postJSONOnce(url, body) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const client = target.protocol === "https:" ? https : http;
@@ -237,7 +279,9 @@ function postJSON(url, body) {
             resolve(text);
             return;
           }
-          reject(new Error(text || `HTTP ${res.statusCode}`));
+          const error = new Error(text || `HTTP ${res.statusCode}`);
+          error.statusCode = res.statusCode;
+          reject(error);
         });
       }
     );
@@ -249,6 +293,10 @@ function postJSON(url, body) {
 }
 
 function getText(url) {
+  return withRetry(() => getTextOnce(url));
+}
+
+function getTextOnce(url) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const client = target.protocol === "https:" ? https : http;
@@ -261,7 +309,9 @@ function getText(url) {
           resolve(text);
           return;
         }
-        reject(new Error(text || `HTTP ${res.statusCode}`));
+        const error = new Error(text || `HTTP ${res.statusCode}`);
+        error.statusCode = res.statusCode;
+        reject(error);
       });
     });
     req.on("timeout", () => req.destroy(new Error("request timed out")));
@@ -284,49 +334,63 @@ async function writeSSHConfig(payload, priv, context, mesh) {
   const useMesh = payload.mesh || payload.transport === "mesh";
   const alias = `poddy-desktop-${workspace}`;
   const key = priv.replace(/\\/g, "/");
-  const lines = [
-    `# >>> poddy:${workspace}`,
-    `Host ${alias}`,
-    `  HostName ${payload.sshHost}`,
-    `  Port ${payload.sshPort}`,
-    `  User ${payload.user}`,
-    `  IdentityFile "${key}"`,
-    "  IdentitiesOnly yes",
-    "  ConnectTimeout 120",
-  ];
-  if (payload.transport === "portal") {
+  const lines = [];
+
+  if (useMesh || payload.transport === "portal") {
     const helper = await ensureHelper(context);
-    const portalDir = path.join(context.globalStorageUri.fsPath, "portal", workspace);
-    fs.mkdirSync(portalDir, { recursive: true, mode: 0o700 });
-    const ticketFile = path.join(portalDir, "ticket");
-    fs.writeFileSync(ticketFile, `${payload.ticket}\n`, { mode: 0o600 });
     lines.push(
-      `  ProxyCommand "${helper}" --portal "${payload.api.replace(/\/$/, "")}" --workspace "${workspace}" --ticket-file "${ticketFile.replace(/\\/g, "/")}" --timeout 60s`,
-      "  StrictHostKeyChecking accept-new",
-      "  LogLevel ERROR"
+      "# >>> poddy",
+      "Host poddy-desktop-*",
+      "  HostName %h",
+      `  Port ${payload.sshPort}`,
+      `  User ${payload.user}`,
+      `  IdentityFile "${key}"`,
+      "  IdentitiesOnly yes",
+      "  ConnectTimeout 20"
     );
-  } else if (useMesh) {
-    if (!mesh) throw new Error("missing mesh configuration");
-    const helper = await ensureHelper(context);
-    const meshDir = path.join(context.globalStorageUri.fsPath, "mesh", workspace);
-    fs.mkdirSync(meshDir, { recursive: true, mode: 0o700 });
-    const authKeyFile = path.join(meshDir, "authkey");
-    fs.writeFileSync(authKeyFile, `${mesh.authKey}\n`, { mode: 0o600 });
-    const stateDir = path.join(meshDir, "state-v2");
-    let caArg = "";
-    if (mesh.caCert) {
-      const caFile = path.join(meshDir, "ca.crt");
-      fs.writeFileSync(caFile, `${mesh.caCert.trim()}\n`, { mode: 0o600 });
-      caArg = ` --ca-file "${caFile.replace(/\\/g, "/")}"`;
+    if (payload.transport === "portal") {
+      const portalDir = path.join(context.globalStorageUri.fsPath, "portal");
+      fs.mkdirSync(portalDir, { recursive: true, mode: 0o700 });
+      cleanupLegacyDirs(portalDir);
+      const ticketFile = path.join(portalDir, `${workspace}.ticket`);
+      fs.writeFileSync(ticketFile, `${payload.ticket}\n`, { mode: 0o600 });
+      lines.push(
+        `  ProxyCommand "${helper}" --portal "${payload.api.replace(/\/$/, "")}" --workspace "%n" --ticket-dir "${portalDir.replace(/\\/g, "/")}" --timeout 15s`,
+        "  StrictHostKeyChecking accept-new",
+        "  LogLevel ERROR"
+      );
+    } else {
+      if (!mesh) throw new Error("missing mesh configuration");
+      const meshDir = path.join(context.globalStorageUri.fsPath, "mesh");
+      fs.mkdirSync(meshDir, { recursive: true, mode: 0o700 });
+      cleanupLegacyDirs(meshDir, "state");
+      const authKeyFile = path.join(meshDir, "authkey");
+      fs.writeFileSync(authKeyFile, `${mesh.authKey}\n`, { mode: 0o600 });
+      const stateDir = path.join(meshDir, "state");
+      let caArg = "";
+      if (mesh.caCert) {
+        const caFile = path.join(meshDir, "ca.crt");
+        fs.writeFileSync(caFile, `${mesh.caCert.trim()}\n`, { mode: 0o600 });
+        caArg = ` --ca-file "${caFile.replace(/\\/g, "/")}"`;
+      }
+      lines.push(
+        `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile.replace(/\\/g, "/")}" --workspace "%n" --state-dir "${stateDir.replace(/\\/g, "/")}" --hostname "%n" --join-timeout 30s${caArg}`,
+        "  StrictHostKeyChecking accept-new",
+        "  LogLevel ERROR"
+      );
     }
-    lines.push(
-      `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile.replace(/\\/g, "/")}" --workspace "${workspace}" --state-dir "${stateDir.replace(/\\/g, "/")}" --hostname "poddy-desktop-${workspace}"${caArg}`,
-      "  StrictHostKeyChecking accept-new",
-      "  LogLevel ERROR"
-    );
+    lines.push("# <<< poddy", "");
   } else {
     const jump = `poddy-desktop-${workspace}-bastion`;
     lines.push(
+      `# >>> poddy:${workspace}`,
+      `Host ${alias}`,
+      `  HostName ${payload.sshHost}`,
+      `  Port ${payload.sshPort}`,
+      `  User ${payload.user}`,
+      `  IdentityFile "${key}"`,
+      "  IdentitiesOnly yes",
+      "  ConnectTimeout 20",
       `  ProxyCommand ssh -W %h:%p ${jump}`,
       "  StrictHostKeyChecking no",
       `  UserKnownHostsFile ${NULL_DEVICE}`,
@@ -339,10 +403,11 @@ async function writeSSHConfig(payload, priv, context, mesh) {
       `  IdentityFile "${key}"`,
       "  IdentitiesOnly yes",
       "  StrictHostKeyChecking accept-new",
-      "  LogLevel ERROR"
+      "  LogLevel ERROR",
+      `# <<< poddy:${workspace}`,
+      ""
     );
   }
-  lines.push(`# <<< poddy:${workspace}`, "");
   const block = lines.join("\n");
 
   const dir = sshDir();
@@ -354,11 +419,23 @@ async function writeSSHConfig(payload, priv, context, mesh) {
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
-  current = removeBlock(current, workspace);
+  current = removePoddyBlocks(current);
   current = current.trimEnd();
   if (current) current += "\n\n";
   fs.writeFileSync(config, current + block, { mode: 0o600 });
   return alias;
+}
+
+function cleanupLegacyDirs(root, keep) {
+  try {
+    for (const name of fs.readdirSync(root)) {
+      if (keep && name === keep) continue;
+      const candidate = path.join(root, name);
+      try {
+        if (fs.statSync(candidate).isDirectory()) fs.rmSync(candidate, { recursive: true, force: true });
+      } catch {}
+    }
+  } catch {}
 }
 
 async function ensureHelper(context) {
@@ -385,10 +462,8 @@ async function ensureHelper(context) {
   return target.replace(/\\/g, "/");
 }
 
-function removeBlock(content, workspace) {
-  const escaped = workspace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`# >>> poddy:${escaped}\\r?\\n[\\s\\S]*?# <<< poddy:${escaped}\\r?\\n?`, "g");
-  return content.replace(re, "");
+function removePoddyBlocks(content) {
+  return content.replace(/# >>> poddy(?::[^\r\n]*)?\r?\n[\s\S]*?# <<< poddy(?::[^\r\n]*)?\r?\n?/g, "");
 }
 
 function deactivate() {}

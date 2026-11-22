@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"poddy/internal/mesh"
 	"poddy/internal/tunnel"
@@ -42,6 +43,14 @@ func main() {
 	}
 	log.Printf("workspace agent starting for %s", safe(name))
 
+	health := newAgentHealth()
+	healthAddr := env("PODDY_AGENT_HEALTH_ADDR", ":8081")
+	go func() {
+		if err := health.run(ctx, healthAddr); err != nil && ctx.Err() == nil {
+			log.Printf("health server: %v", err)
+		}
+	}()
+
 	errors := make(chan error, 2)
 	if *url != "" {
 		agent := tunnel.NewAgent(tunnel.AgentConfig{
@@ -57,8 +66,10 @@ func main() {
 	}
 	if strings.TrimSpace(*meshAuthKey) != "" {
 		go func() {
-			errors <- runMesh(ctx, name, *meshControlURL, *meshAuthKey, *meshStateDir, *meshCACert, *target)
+			errors <- runMesh(ctx, health, name, *meshControlURL, *meshAuthKey, *meshStateDir, *meshCACert, *target)
 		}()
+	} else {
+		health.setReady(true, "")
 	}
 
 	select {
@@ -70,7 +81,8 @@ func main() {
 	}
 }
 
-func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, caCert, target string) error {
+func runMesh(ctx context.Context, health *agentHealth, workspace, controlURL, authKey, stateDir, caCert, target string) error {
+	defer health.setReady(false, "mesh stopped")
 	node, err := mesh.Start(ctx, mesh.Config{
 		ControlURL: controlURL,
 		AuthKey:    authKey,
@@ -90,6 +102,13 @@ func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, caCe
 	}
 	defer listener.Close()
 	log.Printf("workspace %s joined the mesh as %s", safe(workspace), mesh.WorkspaceHostname(workspace))
+	health.setReady(true, "")
+
+	unhealthy := make(chan error, 1)
+	go monitorMesh(ctx, node, health, meshUnhealthyTimeout(), func(err error) {
+		unhealthy <- err
+		_ = listener.Close()
+	})
 
 	go func() {
 		<-ctx.Done()
@@ -101,10 +120,62 @@ func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, caCe
 			if ctx.Err() != nil {
 				return nil
 			}
+			select {
+			case monitorErr := <-unhealthy:
+				return monitorErr
+			default:
+			}
 			return err
 		}
 		go forward(conn, target)
 	}
+}
+
+// monitorMesh keeps the Kubernetes readiness signal tied to the actual
+// WireGuard backend, not just to the process being alive. If the backend stays
+// down past the configured budget, the agent exits and Kubernetes restarts it
+// with backoff; this recovers from a wedged tsnet state that would otherwise
+// leave a Running-but-unreachable workspace forever.
+func monitorMesh(ctx context.Context, node *mesh.Node, health *agentHealth, unhealthyAfter time.Duration, onUnhealthy func(error)) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	var unhealthySince time.Time
+	for {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := node.Ready(checkCtx)
+		cancel()
+		if err == nil {
+			health.setReady(true, "")
+			unhealthySince = time.Time{}
+		} else {
+			health.setReady(false, err.Error())
+			if unhealthySince.IsZero() {
+				unhealthySince = time.Now()
+			}
+			if unhealthyAfter > 0 && time.Since(unhealthySince) >= unhealthyAfter {
+				onUnhealthy(fmt.Errorf("mesh: backend unhealthy for %s: %w", unhealthyAfter, err))
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func meshUnhealthyTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("PODDY_MESH_UNHEALTHY_TIMEOUT"))
+	if raw == "" {
+		return 5 * time.Minute
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value < 0 {
+		log.Printf("invalid PODDY_MESH_UNHEALTHY_TIMEOUT %q; using 5m", safe(raw))
+		return 5 * time.Minute
+	}
+	return value
 }
 
 func forward(conn net.Conn, target string) {

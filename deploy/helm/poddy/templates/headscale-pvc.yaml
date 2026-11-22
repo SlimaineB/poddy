@@ -1,4 +1,4 @@
-{{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.storageClass) }}
+{{- if and (include "poddy.headscaleEnabled" .) (not .Values.mesh.headscale.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -8,22 +8,10 @@ metadata:
     {{- include "poddy.labels" . | nindent 4 }}
 spec:
   accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: {{ .Values.mesh.headscale.storage }}
-{{- else if .Values.mesh.headscale.enabled }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ include "poddy.fullname" . }}-headscale
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "poddy.labels" . | nindent 4 }}
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: {{ .Values.mesh.headscale.storageClass }}
+    - {{ .Values.mesh.headscale.storageAccessMode | default "ReadWriteOnce" }}
+  {{- with .Values.mesh.headscale.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.mesh.headscale.storage }}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -287,6 +288,11 @@ type RegionAgentConfig struct {
 type RegionAgent struct {
 	config RegionAgentConfig
 	dialer websocket.Dialer
+
+	mu          sync.RWMutex
+	connected   bool
+	connectedAt time.Time
+	lastError   string
 }
 
 func NewRegionAgent(config RegionAgentConfig) *RegionAgent {
@@ -306,6 +312,7 @@ func (a *RegionAgent) Run(ctx context.Context) error {
 	for {
 		start := time.Now()
 		err := a.connect(ctx)
+		a.setConnected(false, err)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -315,15 +322,60 @@ func (a *RegionAgent) Run(ctx context.Context) error {
 		if time.Since(start) > 30*time.Second {
 			backoff = time.Second
 		}
+		wait := backoff + jitter(backoff/2)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
+		case <-time.After(wait):
 		}
 		if backoff < 30*time.Second {
 			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
 		}
 	}
+}
+
+func jitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(max) + 1))
+}
+
+func (a *RegionAgent) setConnected(connected bool, err error) {
+	a.mu.Lock()
+	a.connected = connected
+	if connected {
+		a.connectedAt = time.Now()
+		a.lastError = ""
+	} else if err != nil {
+		a.lastError = err.Error()
+	}
+	a.mu.Unlock()
+}
+
+// Ready reports whether the outbound tunnel to the hub is currently
+// established. The region HTTP API is still reachable directly, but the hub
+// routes all cross-region traffic through this tunnel, so a region without a
+// tunnel is not ready to serve hub requests.
+func (a *RegionAgent) Ready() bool {
+	if a == nil {
+		return true
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.connected
+}
+
+func (a *RegionAgent) LastError() string {
+	if a == nil {
+		return ""
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.lastError
 }
 
 func (a *RegionAgent) connect(ctx context.Context) error {
@@ -357,6 +409,7 @@ func (a *RegionAgent) connect(ctx context.Context) error {
 	defer conn.Close()
 	conn.SetReadLimit(maxFrameSize)
 	log.Printf("region tunnel connected to %s as %s", endpoint, a.config.Region)
+	a.setConnected(true, nil)
 
 	targets := map[uint32]net.Conn{}
 	var mu sync.Mutex

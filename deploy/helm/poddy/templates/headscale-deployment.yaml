@@ -1,4 +1,4 @@
-{{- if .Values.mesh.headscale.enabled }}
+{{- if include "poddy.headscaleEnabled" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,9 +7,14 @@ metadata:
   labels:
     {{- include "poddy.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.mesh.headscale.replicas }}
+  {{- if gt (int .Values.mesh.headscale.replicas) 1 }}
+  strategy:
+    type: RollingUpdate
+  {{- else }}
   strategy:
     type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "poddy.selectorLabels" . | nindent 6 }}
@@ -20,9 +25,32 @@ spec:
         {{- include "poddy.labels" . | nindent 8 }}
         poddy.io/component: headscale
     spec:
+      {{- if include "poddy.meshBootstrapEnabled" . }}
+      serviceAccountName: {{ include "poddy.fullname" . }}-mesh-bootstrap
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if gt (int .Values.mesh.headscale.replicas) 1 }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "poddy.selectorLabels" . | nindent 20 }}
+                    poddy.io/component: headscale
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "poddy.selectorLabels" . | nindent 14 }}
+              poddy.io/component: headscale
       {{- end }}
       securityContext:
         runAsNonRoot: true
@@ -35,6 +63,14 @@ spec:
           imagePullPolicy: {{ .Values.mesh.headscale.imagePullPolicy }}
           args:
             - serve
+          {{- if eq .Values.mesh.headscale.database.type "postgres" }}
+          env:
+            - name: HEADSCALE_DATABASE_POSTGRES_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "poddy.headscaleDBSecretName" . }}
+                  key: {{ .Values.mesh.headscale.database.postgres.passwordKey }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -71,13 +107,52 @@ spec:
               mountPath: /etc/headscale-oidc
               readOnly: true
             {{- end }}
+        {{- if include "poddy.meshBootstrapEnabled" . }}
+        - name: mesh-bootstrap
+          image: "{{ .Values.mesh.bootstrap.image | default (printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion)) }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/poddy-mesh-bootstrap"]
+          env:
+            - name: PODDY_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PODDY_HEADSCALE_POD
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PODDY_HEADSCALE_SELECTOR
+              value: "app.kubernetes.io/instance={{ .Release.Name }},poddy.io/component=headscale"
+            - name: PODDY_HEADSCALE_CONTAINER
+              value: headscale
+            - name: PODDY_HEADSCALE_CONFIG
+              value: /etc/headscale/config.yaml
+            - name: PODDY_HEADSCALE_USER
+              value: {{ .Values.mesh.bootstrap.user | quote }}
+            - name: PODDY_HEADSCALE_EXPIRATION
+              value: {{ .Values.mesh.bootstrap.expiration | quote }}
+            - name: PODDY_MESH_SECRET_NAME
+              value: {{ include "poddy.meshSecretName" . | quote }}
+            - name: PODDY_MESH_AUTH_KEY_KEY
+              value: {{ .Values.mesh.authKeyKey | quote }}
+            - name: PODDY_MESH_CLIENT_AUTH_KEY_KEY
+              value: {{ .Values.mesh.clientAuthKeyKey | default .Values.mesh.authKeyKey | quote }}
+            - name: PODDY_MESH_BOOTSTRAP_WAIT
+              value: {{ .Values.mesh.bootstrap.waitTimeout | quote }}
+          {{- with .Values.mesh.bootstrap.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+        {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "poddy.fullname" . }}-headscale
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "poddy.fullname" . }}-headscale
+            claimName: {{ .Values.mesh.headscale.existingClaim | default (printf "%s-headscale" (include "poddy.fullname" .)) }}
         {{- if or .Values.mesh.headscale.oidc.enabled .Values.mesh.dex.enabled }}
         - name: oidc
           secret:

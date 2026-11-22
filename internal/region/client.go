@@ -395,6 +395,11 @@ func (c *Client) doJSON(ctx context.Context, method, path string, identity Ident
 	return &HTTPError{Status: resp.StatusCode, Message: strings.TrimSpace(string(message))}
 }
 
+func regionUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "2")
+	http.Error(w, "region unavailable", http.StatusServiceUnavailable)
+}
+
 func (c *Client) Proxy(w http.ResponseWriter, r *http.Request, identity Identity) {
 	c.proxy(w, r, &identity)
 }
@@ -405,7 +410,7 @@ func (c *Client) ProxyAnonymous(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) proxy(w http.ResponseWriter, r *http.Request, identity *Identity) {
 	if !c.available() {
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return
 	}
 	target, err := url.Parse(c.baseURL())
@@ -446,7 +451,7 @@ func (c *Client) proxy(w http.ResponseWriter, r *http.Request, identity *Identit
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("region %s proxy %s: %v", strings.ReplaceAll(strings.ReplaceAll(c.cfg.Name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(r.URL.Path, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 	}
 	proxy.ServeHTTP(w, r)
 }

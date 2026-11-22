@@ -124,3 +124,16 @@ func TestSyncSSHKeysSkipsUnavailableTunnelOnlyRegion(t *testing.T) {
 		t.Fatalf("problems = %v", problems)
 	}
 }
+
+func TestProxyUnavailableReturns503WithRetryAfter(t *testing.T) {
+	client := NewClient(Config{Name: "eu", Key: "secret"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/app", nil)
+	client.Proxy(rec, req, Identity{User: auth.User{Username: "alice"}, Admin: true})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "2" {
+		t.Fatalf("retry-after = %q", got)
+	}
+}

@@ -68,13 +68,13 @@ kubectl -n "$NS" rollout status deploy/dex --timeout=180s >/dev/null
 # Preserve the existing demo values while letting new chart defaults apply.
 helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml" 2>/dev/null || true
 
-# Install Headscale without enabling the SSH data plane yet, so we can mint the
-# reusable workspace preauth key first.
+# Install Headscale and enable the SSH mesh in one pass. The chart sidecar
+# creates the reusable workspace key and the portal waits for it.
 helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   -f "${STATE_DIR}/poddy-hub-existing.yaml" \
   --set replicaCount=1 \
   --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent \
-  --set mesh.enabled=false \
+  --set mesh.enabled=true \
   --set mesh.headscale.enabled=true \
   --set mesh.headscale.host="$HEADSCALE_HOST" \
   --set mesh.headscale.serverUrl="https://${HEADSCALE_HOST}" \
@@ -87,28 +87,17 @@ helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   --set mesh.headscale.oidc.clientSecret=headscale-secret \
   --set mesh.derp.stunPort="$STUN_PORT" \
   --set mesh.derp.service.stunNodePort="$STUN_PORT" \
+  --set mesh.controlUrl="http://${HOST}:${HEADSCALE_PORT}" \
+  --set mesh.loginUrl="https://${HEADSCALE_HOST}" \
   --wait --timeout 10m >/dev/null
 
 kubectl -n "$NS" rollout status deploy/poddy-headscale --timeout=300s >/dev/null
-kubectl -n "$NS" exec deploy/poddy-headscale -- headscale users create poddy >/dev/null 2>&1 || true
-AUTH_KEY="$(kubectl -n "$NS" exec deploy/poddy-headscale -- \
-  headscale preauthkeys create --user poddy --reusable --expiration 720h 2>/dev/null | tail -1 | tr -d '\r\n')"
+kubectl -n "$NS" rollout status deploy/poddy --timeout=300s >/dev/null
+AUTH_KEY="$(kubectl -n "$NS" get secret poddy-mesh -o jsonpath='{.data.auth-key}' | base64 -d)"
 if [[ -z "$AUTH_KEY" ]]; then
-  echo "Could not create Headscale preauth key" >&2
+  echo "Could not read the Headscale preauth key from poddy-mesh" >&2
   exit 1
 fi
-
-# Enable the SSH mesh on the hub.
-helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml"
-helm upgrade poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
-  -f "${STATE_DIR}/poddy-hub-existing.yaml" \
-  --set replicaCount=1 \
-  --set mesh.enabled=true \
-  --set mesh.controlUrl="http://${HOST}:${HEADSCALE_PORT}" \
-  --set mesh.loginUrl="https://${HEADSCALE_HOST}" \
-  --set mesh.authKey="$AUTH_KEY" \
-  --wait --timeout 10m >/dev/null
-kubectl -n "$NS" rollout status deploy/poddy --timeout=300s >/dev/null
 
 REGION_ENTRIES=""
 for REGION in $REGIONS; do

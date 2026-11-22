@@ -1302,3 +1302,19 @@ func TestRefreshAgentTokens(t *testing.T) {
 		t.Fatalf("agent token was not refreshed: %q", got)
 	}
 }
+
+func TestAgentSidecarHasMeshHealthProbes(t *testing.T) {
+	agent := agentSidecar("image", "", "app", "", "https://mesh.example.com", "tskey-auth-test", "")
+	if len(agent.Ports) != 1 || agent.Ports[0].Name != "health" || agent.Ports[0].ContainerPort != 8081 {
+		t.Fatalf("health port = %+v", agent.Ports)
+	}
+	if agent.StartupProbe == nil || agent.StartupProbe.HTTPGet == nil || agent.StartupProbe.HTTPGet.Path != "/readyz" {
+		t.Fatalf("startup probe = %+v", agent.StartupProbe)
+	}
+	if agent.ReadinessProbe == nil || agent.ReadinessProbe.HTTPGet == nil || agent.ReadinessProbe.HTTPGet.Path != "/readyz" {
+		t.Fatalf("readiness probe = %+v", agent.ReadinessProbe)
+	}
+	if agent.LivenessProbe == nil || agent.LivenessProbe.HTTPGet == nil || agent.LivenessProbe.HTTPGet.Path != "/healthz" {
+		t.Fatalf("liveness probe = %+v", agent.LivenessProbe)
+	}
+}

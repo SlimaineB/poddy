@@ -44,12 +44,12 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			log.Printf("region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
-			http.Error(w, "region unavailable", http.StatusBadGateway)
+			regionUnavailable(w)
 			return
 		}
 		client := s.Regions.Client(regionCfg.Name)
 		if client == nil {
-			http.Error(w, "region unavailable", http.StatusBadGateway)
+			regionUnavailable(w)
 			return
 		}
 		client.ProxyAnonymous(w, r)
@@ -68,12 +68,12 @@ func (s *Server) proxyWorkspace(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return
 	}
 	client := s.Regions.Client(regionCfg.Name)
 	if client == nil {
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return
 	}
 	client.Proxy(w, r, identity)
@@ -233,6 +233,11 @@ func (s *Server) prepareRemoteCreate(r *http.Request, req *k8s.CreateRequest, te
 	return nil
 }
 
+func regionUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "2")
+	http.Error(w, "region unavailable", http.StatusServiceUnavailable)
+}
+
 func writeRegionError(w http.ResponseWriter, err error) {
 	var httpErr *region.HTTPError
 	if errors.As(err, &httpErr) {
@@ -246,7 +251,7 @@ func writeRegionError(w http.ResponseWriter, err error) {
 		case httpErr.Status >= 400 && httpErr.Status < 500:
 			http.Error(w, httpErr.Message, httpErr.Status)
 		default:
-			http.Error(w, "region unavailable", http.StatusBadGateway)
+			regionUnavailable(w)
 		}
 		return
 	}
@@ -255,7 +260,7 @@ func writeRegionError(w http.ResponseWriter, err error) {
 		return
 	}
 	log.Printf("region request: %v", strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
-	http.Error(w, "region unavailable", http.StatusBadGateway)
+	regionUnavailable(w)
 }
 
 func (s *Server) regionTunnel(w http.ResponseWriter, r *http.Request) {

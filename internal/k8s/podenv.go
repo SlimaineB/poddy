@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
 	"poddy/internal/templates"
@@ -309,6 +310,45 @@ func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAu
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"/usr/local/bin/poddy-agent"},
 		Env:             env,
+		Ports: []corev1.ContainerPort{{
+			Name:          "health",
+			ContainerPort: 8081,
+			Protocol:      corev1.ProtocolTCP,
+		}},
+		StartupProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/readyz",
+					Port: intstr.FromString("health"),
+				},
+			},
+			PeriodSeconds:    10,
+			TimeoutSeconds:   2,
+			FailureThreshold: 36,
+		},
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/readyz",
+					Port: intstr.FromString("health"),
+				},
+			},
+			PeriodSeconds:    5,
+			TimeoutSeconds:   2,
+			FailureThreshold: 3,
+		},
+		LivenessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/healthz",
+					Port: intstr.FromString("health"),
+				},
+			},
+			InitialDelaySeconds: 10,
+			PeriodSeconds:       20,
+			TimeoutSeconds:      2,
+			FailureThreshold:    3,
+		},
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),
 			RunAsUser:                ptr.To[int64](1000),

@@ -390,23 +390,38 @@ mesh:
   # Replace the SSH bastion with a direct WireGuard tailnet. Workspaces run
   # poddy-agent as a tsnet node and users connect straight to ws-<workspace>.
   # When enabled, the portal does not expose an SSH listener or Service.
+  # With no controlUrl the chart deploys and bootstraps Headscale for you.
   enabled: false
   # Control server URL. For Tailscale leave empty; for Headscale use the
   # public HTTPS URL. Defaults to mesh.headscale.serverUrl when deploying one.
   controlUrl: ""
   # Public login server shown in the UI. Defaults to controlUrl.
   loginUrl: ""
-  # Reusable Headscale preauth key injected into workspace agents. Create it
-  # with: headscale preauthkeys create --user poddy --reusable --expiration 720h
-  # Existing secret must contain mesh.authKeyKey.
+  # Reusable Headscale preauth key injected into workspace agents. Leave empty
+  # to let mesh.bootstrap create it in the managed Headscale. Existing secret
+  # must contain mesh.authKeyKey.
   authKey: ""
   existingSecret: ""
   authKeyKey: auth-key
-  # Optional reusable ephemeral key for desktop SSH clients. Create it with:
-  # headscale preauthkeys create --user poddy --reusable --ephemeral --expiration 720h
-  # Without it, every SSH invocation creates a persistent Headscale node.
+  # Optional reusable ephemeral key for desktop SSH clients. Leave empty to let
+  # mesh.bootstrap create it in the managed Headscale. Without it, desktop
+  # clients fall back to authKey.
   clientAuthKey: ""
   clientAuthKeyKey: client-auth-key
+  # Automatic Headscale bootstrap. When managed Headscale is enabled and no
+  # keys are supplied, a sidecar creates reusable workspace and ephemeral
+  # desktop keys and writes them to the mesh Secret. The portal waits for those
+  # keys in an init container, so a single helm install is enough.
+  bootstrap:
+    enabled: true
+    # Image for the bootstrap sidecar and the portal init container. Defaults
+    # to the portal image.
+    image: ""
+    user: poddy
+    expiration: 720h
+    # How long the portal waits for the generated keys at startup.
+    waitTimeout: 10m
+    resources: {}
   # Optional Secret containing the CA bundle for the mesh control/DERP TLS
   # certificate. Clients receive it so private certificates are trusted.
   caSecret: ""
@@ -430,20 +445,47 @@ mesh:
     ipv6: ""
     service:
       stunNodePort: 0
-  # Optional self-hosted Headscale control plane.
+  # Self-hosted Headscale control plane. It is enabled automatically when
+  # mesh.enabled=true and mesh.controlUrl is empty. Set it explicitly for a
+  # Headscale-only install.
   headscale:
     enabled: false
     image: ghcr.io/juanfont/headscale:v0.23.0
     imagePullPolicy: IfNotPresent
     # Public hostname served through the ingress, e.g. mesh.example.com.
+    # Defaults to mesh.<ingress.hosts[0].host>.
     host: ""
     # Override the advertised control URL. Defaults to https://<host>.
     serverUrl: ""
     ingressClassName: ""
     tlsSecret: ""
     annotations: {}
+    # Number of Headscale replicas. Keep this at 1 for SQLite. More than one
+    # requires a PostgreSQL database and a ReadWriteMany volume (or an existing
+    # ReadWriteMany claim) for the shared Headscale private keys.
+    replicas: 1
     storage: 1Gi
     storageClass: ""
+    storageAccessMode: ReadWriteOnce
+    # Use an existing ReadWriteMany PVC for Headscale private keys when running
+    # more than one replica. The claim must contain the private.key,
+    # noise_private.key and derp_server_private.key files.
+    existingClaim: ""
+    # Database used by the managed Headscale control plane. SQLite is fine for
+    # a single replica. Production multi-replica installs should use an
+    # external PostgreSQL database with backups and a stable Secret.
+    database:
+      type: sqlite
+      postgres:
+        host: ""
+        port: 5432
+        name: headscale
+        user: headscale
+        ssl: require
+        # Prefer an existing Secret. When set, password is ignored.
+        existingSecret: ""
+        passwordKey: password
+        password: ""
     resources: {}
     extraEnv: []
     service:

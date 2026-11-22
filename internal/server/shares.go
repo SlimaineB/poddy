@@ -195,7 +195,7 @@ func (s *Server) regionShareLink(w http.ResponseWriter, r *http.Request) {
 	}
 	client := s.Regions.Client(cfg.Name)
 	if client == nil {
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return
 	}
 	target := r.Clone(r.Context())

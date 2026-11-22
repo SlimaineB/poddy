@@ -1,4 +1,4 @@
-{{- if .Values.mesh.headscale.enabled }}
+{{- if include "poddy.headscaleEnabled" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -42,10 +42,21 @@ data:
       update_frequency: 24h
     disable_check_updates: true
     ephemeral_node_inactivity_timeout: 30m
+    {{- if eq .Values.mesh.headscale.database.type "postgres" }}
+    database:
+      type: postgres
+      postgres:
+        host: {{ required "mesh.headscale.database.postgres.host is required for PostgreSQL" .Values.mesh.headscale.database.postgres.host | quote }}
+        port: {{ .Values.mesh.headscale.database.postgres.port }}
+        name: {{ required "mesh.headscale.database.postgres.name is required for PostgreSQL" .Values.mesh.headscale.database.postgres.name | quote }}
+        user: {{ required "mesh.headscale.database.postgres.user is required for PostgreSQL" .Values.mesh.headscale.database.postgres.user | quote }}
+        ssl: {{ .Values.mesh.headscale.database.postgres.ssl | quote }}
+    {{- else }}
     database:
       type: sqlite
       sqlite:
         path: /var/lib/headscale/db.sqlite
+    {{- end }}
     log:
       level: info
     dns:

@@ -2,10 +2,11 @@
 
 VS Code and Cursor extension for Poddy. It handles the
 `vscode://slimaineb.poddy-remote/...` or `cursor://slimaineb.poddy-remote/...`
-link opened by the Poddy **VS Code** or **Cursor** button: it creates a dedicated
-machine key, enrolls the public key, writes a `# >>> poddy:<workspace>` block to
-the real `~/.ssh/config`, waits for the workspace to accept SSH, and opens
-Remote-SSH on `/home/dev`.
+link opened by the Poddy **VS Code** or **Cursor** button: it creates one
+dedicated machine key, enrolls the public key, writes a single
+`Host poddy-desktop-*` block to the real `~/.ssh/config`, waits for the
+workspace to accept SSH, and opens Remote-SSH on `/home/dev`. Legacy
+per-workspace blocks and `poddy_*_ed25519` keys are removed automatically.
 
 The VSIX bundles a small `poddy-connect` helper for Linux, macOS, and Windows.
 The SSH config uses it as `ProxyCommand`. The signed desktop ticket selects one
@@ -13,13 +14,15 @@ of two transports:
 
 - **Mesh (preferred when enabled).** `poddy-connect --mode mesh` joins the
   Headscale/Tailscale tailnet with a preauth key and dials `ws-<workspace>` over
-  WireGuard. Users do not install Tailscale or run `tailscale up`. The helper
-  keeps a per-workspace state directory (`state-v2`) and waits up to four
-  minutes for a cold workspace to accept SSH.
+  WireGuard. Users do not install Tailscale or run `tailscale up`. The extension
+  stores one `mesh/authkey`, one `mesh/ca.crt`, and one shared `mesh/state`
+  directory; each ProxyCommand invocation gets its own throwaway tsnet state
+  and waits up to four minutes for a cold workspace to accept SSH.
 - **Portal WebSocket (fallback).** `poddy-connect --portal` opens an
   authenticated WebSocket to `/api/desktop/ssh`; the portal reaches the
   workspace through the Kubernetes port-forward API or the regional tunnel.
-  This path does not need mesh, Tailscale, or the portal SSH listener.
+  The ticket is stored as `portal/<workspace>.ticket`; this path does not need
+  mesh, Tailscale, or the portal SSH listener.
 
 The portal advertises the transport in the desktop payload: mesh when
 `mesh.enabled=true` and a client auth key is configured, otherwise portal when

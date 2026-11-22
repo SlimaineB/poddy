@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -22,7 +23,10 @@ import (
 	"tailscale.com/tsnet"
 )
 
-const maxHostname = 63
+const (
+	maxHostname        = 63
+	joinAttemptTimeout = 45 * time.Second
+)
 
 type Config struct {
 	ControlURL string
@@ -68,24 +72,53 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 	if cfg.RandomPort {
 		port = 0
 	}
-	srv := &tsnet.Server{
-		Hostname:   hostname,
-		AuthKey:    cfg.AuthKey,
-		ControlURL: strings.TrimSpace(cfg.ControlURL),
-		Dir:        dir,
-		Ephemeral:  cfg.Ephemeral,
-		Port:       port,
+	newServer := func() *tsnet.Server {
+		srv := &tsnet.Server{
+			Hostname:   hostname,
+			AuthKey:    cfg.AuthKey,
+			ControlURL: strings.TrimSpace(cfg.ControlURL),
+			Dir:        dir,
+			Ephemeral:  cfg.Ephemeral,
+			Port:       port,
+		}
+		if cfg.Silent {
+			srv.Logf = func(string, ...any) {}
+			srv.UserLogf = func(string, ...any) {}
+		} else if os.Getenv("PODDY_MESH_DEBUG") != "" {
+			srv.Logf = log.Printf
+			srv.UserLogf = log.Printf
+		}
+		return srv
 	}
-	if cfg.Silent {
-		srv.Logf = func(string, ...any) {}
-		srv.UserLogf = func(string, ...any) {}
-	} else if os.Getenv("PODDY_MESH_DEBUG") != "" {
-		srv.Logf = log.Printf
-		srv.UserLogf = log.Printf
+	up := func(srv *tsnet.Server) error {
+		upCtx, cancel := context.WithTimeout(ctx, joinAttemptTimeout)
+		defer cancel()
+		if _, err := srv.Up(upCtx); err != nil {
+			if errors.Is(upCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("timed out after %s: %w", joinAttemptTimeout, err)
+			}
+			return err
+		}
+		return nil
 	}
-	if _, err := srv.Up(ctx); err != nil {
+
+	srv := newServer()
+	if err := up(srv); err != nil {
 		_ = srv.Close()
-		return nil, fmt.Errorf("mesh: join tailnet: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("mesh: join tailnet: %w", err)
+		}
+		// A state file can survive a crash while the backend is still in
+		// NoState. In that case tsnet ignores the auth key and Up blocks
+		// forever. Retry once with an explicit login, which re-enrolls the
+		// node instead of leaving the agent hung.
+		log.Printf("mesh: first join attempt failed (%v); retrying with forced login", err)
+		os.Setenv("TSNET_FORCE_LOGIN", "1")
+		srv = newServer()
+		if err := up(srv); err != nil {
+			_ = srv.Close()
+			return nil, fmt.Errorf("mesh: join tailnet: %w", err)
+		}
 	}
 	return &Node{srv: srv, peers: map[string]string{}}, nil
 }
@@ -108,6 +141,32 @@ func (n *Node) Close() error {
 		return nil
 	}
 	return n.srv.Close()
+}
+
+// Ready reports whether the local WireGuard backend is actually running. A
+// process can be alive and still be unable to reach the tailnet after a control
+// plane or DERP outage, so readiness must check the backend state rather than
+// just the listener.
+func (n *Node) Ready(ctx context.Context) error {
+	if n == nil || n.srv == nil {
+		return fmt.Errorf("mesh: node is not running")
+	}
+	client, err := n.srv.LocalClient()
+	if err != nil {
+		return fmt.Errorf("mesh: local client: %w", err)
+	}
+	status, err := client.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("mesh: status: %w", err)
+	}
+	if status.BackendState != "Running" {
+		state := strings.TrimSpace(status.BackendState)
+		if state == "" {
+			state = "unknown"
+		}
+		return fmt.Errorf("mesh: backend state is %s", state)
+	}
+	return nil
 }
 
 func (n *Node) Listen(network, addr string) (net.Listener, error) {

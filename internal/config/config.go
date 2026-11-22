@@ -95,14 +95,16 @@ type Config struct {
 	AgentKey             string
 	AgentTokenTTL        time.Duration
 
-	MeshEnabled       bool
-	MeshControlURL    string
-	MeshAuthKey       string
-	MeshClientAuthKey string
-	MeshCACert        string
-	MeshStateDir      string
-	MeshHostname      string
-	MeshLoginURL      string
+	MeshEnabled           bool
+	MeshControlURL        string
+	MeshAuthKey           string
+	MeshAuthKeyFile       string
+	MeshClientAuthKey     string
+	MeshClientAuthKeyFile string
+	MeshCACert            string
+	MeshStateDir          string
+	MeshHostname          string
+	MeshLoginURL          string
 
 	VSCodeExtensionID          string
 	VSCodeExtensionVersion     string
@@ -188,33 +190,35 @@ func Load(args []string) (Config, error) {
 		DotfilesURL:    os.Getenv("PODDY_DOTFILES_URL"),
 		DotfilesBranch: os.Getenv("PODDY_DOTFILES_BRANCH"),
 
-		SSHEnabled:           envBool("PODDY_SSH_ENABLED", true),
-		SSHAddr:              env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
-		SSHHostKey:           os.Getenv("PODDY_SSH_HOST_KEY"),
-		SSHKeys:              os.Getenv("PODDY_SSH_KEYS"),
-		SSHKeysFile:          os.Getenv("PODDY_SSH_KEYS_FILE"),
-		SSHPublicHost:        env("PODDY_SSH_PUBLIC_HOST", "127.0.0.1"),
-		SSHPublicPort:        env("PODDY_SSH_PUBLIC_PORT", "2222"),
-		SSHAllowUnmappedKeys: envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
-		SSHUserKeysConfigMap: env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
-		SSHRequireAgent:      envBool("PODDY_SSH_REQUIRE_AGENT", false),
-		SSHCertTTL:           envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
-		SSHDrainDelay:        envDuration("PODDY_SSH_DRAIN_DELAY", 3*time.Second),
-		SSHDrainTimeout:      envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
-		SSHCAKeyFile:         os.Getenv("PODDY_SSH_CA_KEY_FILE"),
-		AgentAddr:            os.Getenv("PODDY_AGENT_ADDR"),
-		AgentURL:             os.Getenv("PODDY_AGENT_URL"),
-		AgentImage:           os.Getenv("PODDY_AGENT_IMAGE"),
-		AgentKey:             os.Getenv("PODDY_AGENT_KEY"),
-		AgentTokenTTL:        envDuration("PODDY_AGENT_TOKEN_TTL", time.Hour),
-		MeshEnabled:          envBool("PODDY_MESH_ENABLED", strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")) != ""),
-		MeshControlURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_CONTROL_URL")), "/"),
-		MeshAuthKey:          strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")),
-		MeshClientAuthKey:    strings.TrimSpace(os.Getenv("PODDY_MESH_CLIENT_AUTH_KEY")),
-		MeshCACert:           meshCACert(),
-		MeshStateDir:         env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"),
-		MeshHostname:         strings.TrimSpace(os.Getenv("PODDY_MESH_HOSTNAME")),
-		MeshLoginURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_LOGIN_URL")), "/"),
+		SSHEnabled:            envBool("PODDY_SSH_ENABLED", true),
+		SSHAddr:               env("PODDY_SSH_ADDR", "127.0.0.1:2222"),
+		SSHHostKey:            os.Getenv("PODDY_SSH_HOST_KEY"),
+		SSHKeys:               os.Getenv("PODDY_SSH_KEYS"),
+		SSHKeysFile:           os.Getenv("PODDY_SSH_KEYS_FILE"),
+		SSHPublicHost:         env("PODDY_SSH_PUBLIC_HOST", "127.0.0.1"),
+		SSHPublicPort:         env("PODDY_SSH_PUBLIC_PORT", "2222"),
+		SSHAllowUnmappedKeys:  envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
+		SSHUserKeysConfigMap:  env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
+		SSHRequireAgent:       envBool("PODDY_SSH_REQUIRE_AGENT", false),
+		SSHCertTTL:            envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
+		SSHDrainDelay:         envDuration("PODDY_SSH_DRAIN_DELAY", 3*time.Second),
+		SSHDrainTimeout:       envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
+		SSHCAKeyFile:          os.Getenv("PODDY_SSH_CA_KEY_FILE"),
+		AgentAddr:             os.Getenv("PODDY_AGENT_ADDR"),
+		AgentURL:              os.Getenv("PODDY_AGENT_URL"),
+		AgentImage:            os.Getenv("PODDY_AGENT_IMAGE"),
+		AgentKey:              os.Getenv("PODDY_AGENT_KEY"),
+		AgentTokenTTL:         envDuration("PODDY_AGENT_TOKEN_TTL", time.Hour),
+		MeshEnabled:           envBool("PODDY_MESH_ENABLED", strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")) != "" || strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY_FILE")) != ""),
+		MeshControlURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_CONTROL_URL")), "/"),
+		MeshAuthKey:           strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY")),
+		MeshAuthKeyFile:       strings.TrimSpace(os.Getenv("PODDY_MESH_AUTH_KEY_FILE")),
+		MeshClientAuthKey:     strings.TrimSpace(os.Getenv("PODDY_MESH_CLIENT_AUTH_KEY")),
+		MeshClientAuthKeyFile: strings.TrimSpace(os.Getenv("PODDY_MESH_CLIENT_AUTH_KEY_FILE")),
+		MeshCACert:            meshCACert(),
+		MeshStateDir:          env("PODDY_MESH_STATE_DIR", "/var/lib/poddy/tsnet"),
+		MeshHostname:          strings.TrimSpace(os.Getenv("PODDY_MESH_HOSTNAME")),
+		MeshLoginURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("PODDY_MESH_LOGIN_URL")), "/"),
 
 		VSCodeExtensionID:          env("PODDY_VSCODE_EXTENSION_ID", ext.ID),
 		VSCodeExtensionVersion:     env("PODDY_VSCODE_EXTENSION_VERSION", ext.Version),
@@ -315,7 +319,9 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.MeshEnabled, "mesh-enabled", cfg.MeshEnabled, "join the WireGuard mesh (Headscale/Tailscale) for workspace SSH")
 	fs.StringVar(&cfg.MeshControlURL, "mesh-control-url", cfg.MeshControlURL, "mesh control server URL (empty uses Tailscale)")
 	fs.StringVar(&cfg.MeshAuthKey, "mesh-auth-key", cfg.MeshAuthKey, "mesh auth key injected into workspace agents")
+	fs.StringVar(&cfg.MeshAuthKeyFile, "mesh-auth-key-file", cfg.MeshAuthKeyFile, "file containing the mesh auth key injected into workspace agents")
 	fs.StringVar(&cfg.MeshClientAuthKey, "mesh-client-auth-key", cfg.MeshClientAuthKey, "reusable mesh auth key issued to desktop clients (defaults to mesh-auth-key)")
+	fs.StringVar(&cfg.MeshClientAuthKeyFile, "mesh-client-auth-key-file", cfg.MeshClientAuthKeyFile, "file containing the reusable mesh auth key issued to desktop clients")
 	fs.StringVar(&cfg.MeshStateDir, "mesh-state-dir", cfg.MeshStateDir, "writable directory for mesh state")
 	fs.StringVar(&cfg.MeshHostname, "mesh-hostname", cfg.MeshHostname, "mesh hostname for the portal node (defaults to the pod name)")
 	fs.StringVar(&cfg.MeshLoginURL, "mesh-login-url", cfg.MeshLoginURL, "public mesh login server shown to users")
@@ -356,6 +362,20 @@ func Load(args []string) (Config, error) {
 		if cfg.RegionKey == "" {
 			return cfg, fmt.Errorf("region-key is required in region mode")
 		}
+	}
+	if cfg.MeshAuthKey == "" && cfg.MeshAuthKeyFile != "" {
+		data, err := os.ReadFile(cfg.MeshAuthKeyFile)
+		if err != nil {
+			return cfg, fmt.Errorf("mesh auth key file: %w", err)
+		}
+		cfg.MeshAuthKey = strings.TrimSpace(string(data))
+	}
+	if cfg.MeshClientAuthKey == "" && cfg.MeshClientAuthKeyFile != "" {
+		data, err := os.ReadFile(cfg.MeshClientAuthKeyFile)
+		if err != nil {
+			return cfg, fmt.Errorf("mesh client auth key file: %w", err)
+		}
+		cfg.MeshClientAuthKey = strings.TrimSpace(string(data))
 	}
 	if cfg.MeshClientAuthKey == "" {
 		cfg.MeshClientAuthKey = cfg.MeshAuthKey

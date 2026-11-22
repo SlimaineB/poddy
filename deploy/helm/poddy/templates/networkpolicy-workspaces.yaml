@@ -54,7 +54,7 @@ spec:
         {{- end }}
         - protocol: UDP
           port: 41641
-    {{- if .Values.mesh.headscale.enabled }}
+    {{- if include "poddy.headscaleEnabled" . }}
     - to:
         - namespaceSelector:
             matchLabels:

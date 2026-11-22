@@ -332,7 +332,7 @@ func (s *Server) restoreVolumeHub(w http.ResponseWriter, r *http.Request, source
 	}
 	client := s.Regions.Client(targetRegion)
 	if client == nil {
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
@@ -571,7 +571,7 @@ func writeVolumeRegionError(w http.ResponseWriter, err error) {
 		}
 	}
 	log.Printf("region volume request: %v", strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
-	http.Error(w, "region unavailable", http.StatusBadGateway)
+	regionUnavailable(w)
 }
 
 // proxyVolume forwards a volume action to the region that owns the volume. It
@@ -605,7 +605,7 @@ func (s *Server) proxyVolume(w http.ResponseWriter, r *http.Request) bool {
 	}
 	client := s.Regions.Client(regionName)
 	if client == nil {
-		http.Error(w, "region unavailable", http.StatusBadGateway)
+		regionUnavailable(w)
 		return true
 	}
 	client.Proxy(w, r, identity)

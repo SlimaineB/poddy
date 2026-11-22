@@ -17,16 +17,22 @@ import (
 )
 
 type Config struct {
-	ControlURL string
-	AuthKey    string
-	Workspace  string
-	Hostname   string
-	StateDir   string
-	CAFile     string
-	Port       int
+	ControlURL  string
+	AuthKey     string
+	Workspace   string
+	Hostname    string
+	StateDir    string
+	CAFile      string
+	Port        int
+	JoinTimeout time.Duration
+}
+
+func NormalizeWorkspace(name string) string {
+	return strings.TrimPrefix(strings.TrimSpace(name), "poddy-desktop-")
 }
 
 func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) error {
+	cfg.Workspace = NormalizeWorkspace(cfg.Workspace)
 	if strings.TrimSpace(cfg.ControlURL) == "" {
 		return errors.New("mesh control URL is required")
 	}
@@ -75,7 +81,11 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	if os.Getenv("TSNET_FORCE_LOGIN") == "" {
 		os.Setenv("TSNET_FORCE_LOGIN", "1")
 	}
-	startCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	joinTimeout := cfg.JoinTimeout
+	if joinTimeout <= 0 {
+		joinTimeout = 60 * time.Second
+	}
+	startCtx, cancel := context.WithTimeout(ctx, joinTimeout)
 	node, err := mesh.Start(startCtx, mesh.Config{
 		ControlURL: cfg.ControlURL,
 		AuthKey:    cfg.AuthKey,
@@ -89,7 +99,7 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	cancel()
 	if err != nil {
 		if errors.Is(startCtx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("mesh: join tailnet timed out after 60s: %w", err)
+			return fmt.Errorf("mesh: join tailnet timed out after %s: %w", joinTimeout, err)
 		}
 		return err
 	}

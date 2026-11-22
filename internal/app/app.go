@@ -314,6 +314,9 @@ func Run(ctx context.Context, args []string) error {
 	if err := manager.MigrateLegacy(ctx); err != nil {
 		log.Printf("legacy workspace migration: %v", err)
 	}
+	if err := manager.ReconcileAgents(ctx); err != nil {
+		log.Printf("workspace agent reconcile: %v", err)
+	}
 	manager.StartInformers(ctx)
 
 	go manager.RunAgentTokenRefresh(ctx)
@@ -391,6 +394,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	var hub *region.Hub
 	var regionTunnel *tunnel.RegionBroker
+	var regionAgent *tunnel.RegionAgent
 	if len(registry.All()) > 0 {
 		if cfg.RegionMode {
 			return fmt.Errorf("regions: region mode cannot also act as a central hub")
@@ -430,7 +434,7 @@ func Run(ctx context.Context, args []string) error {
 		if target == "" {
 			return fmt.Errorf("region tunnel: cannot derive local HTTP target from %q", cfg.Addr)
 		}
-		agent := tunnel.NewRegionAgent(tunnel.RegionAgentConfig{
+		regionAgent = tunnel.NewRegionAgent(tunnel.RegionAgentConfig{
 			URL:    cfg.RegionHubURL,
 			Region: cfg.RegionName,
 			Target: target,
@@ -458,7 +462,7 @@ func Run(ctx context.Context, args []string) error {
 			},
 		})
 		go func() {
-			if err := agent.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			if err := regionAgent.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("region tunnel stopped: %v", err)
 			}
 		}()
@@ -625,6 +629,7 @@ func Run(ctx context.Context, args []string) error {
 		Forwards:          forwards,
 		Regions:           hub,
 		RegionTunnel:      regionTunnel,
+		RegionReady:       func() bool { return regionAgent == nil || regionAgent.Ready() },
 		RegionMode:        cfg.RegionMode,
 		RegionKey:         cfg.RegionKey,
 		RegionName:        cfg.RegionName,
@@ -1063,6 +1068,23 @@ func hostName() string {
 
 func startBastion(ctx context.Context, cfg config.Config, manager *k8s.Manager, keys sshkeys.Keyring, audit metadata.Auditor, signer *tunnel.TokenSigner, ca *sshca.CA, accessStore access.Store, regionTunnel *tunnel.RegionBroker, regionNames []string, presence tunnel.Presence, peerAddress, agentKey string) (*bastion.Bastion, error) {
 	if cfg.SSHAddr == "" {
+		// Mesh-only portals do not expose SSH, but they still need the
+		// cluster-internal peer dial endpoint so any replica can forward a
+		// region stream to the replica that owns the region tunnel.
+		if cfg.AgentAddr != "" && agentKey != "" && regionTunnel != nil {
+			handler := tunnel.DialHandler{Key: []byte(agentKey), RegionTunnel: regionTunnel}
+			agentServer, err := startAgentServer(cfg.AgentAddr, handler)
+			if err != nil {
+				return nil, err
+			}
+			go func() {
+				<-ctx.Done()
+				_ = agentServer.Close()
+			}()
+			if presence != nil {
+				go tunnel.ReportPresence(ctx, presence, nil, regionTunnel, peerAddress)
+			}
+		}
 		return nil, nil
 	}
 	if cfg.SSHRequireAgent && cfg.AgentAddr == "" {

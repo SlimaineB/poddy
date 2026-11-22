@@ -415,6 +415,40 @@ agent or region tunnel, then forward the raw stream over the internal agent port
 Set `ssh.existingHostKeySecret` so SSH clients see a stable host key across
 replicas.
 
+## Headscale HA and PostgreSQL
+
+The managed Headscale control plane defaults to SQLite and one replica. For a
+production control plane, point it at an external PostgreSQL database and use a
+shared ReadWriteMany volume for the Headscale private keys:
+
+```yaml
+mesh:
+  headscale:
+    replicas: 2
+    storageAccessMode: ReadWriteMany
+    database:
+      type: postgres
+      postgres:
+        host: headscale-db.internal
+        port: 5432
+        name: headscale
+        user: headscale
+        ssl: require
+        existingSecret: headscale-db
+        passwordKey: password
+  bootstrap:
+    enabled: false
+  existingSecret: poddy-mesh
+```
+
+Multi-replica Headscale requires a shared RWX claim (or `existingClaim`) for
+`private.key`, `noise_private.key`, and `derp_server_private.key`. It also
+requires the per-pod mesh bootstrap sidecar to be disabled; create the mesh
+preauth keys once and store them in `mesh.existingSecret`. Back up the
+PostgreSQL database and the private-key claim together. For a fully managed
+control plane, disable the in-chart Headscale and set `mesh.controlUrl` to an
+external Tailscale/Headscale endpoint.
+
 ## Multi-region
 
 Use one central hub and one `regionManager.enabled=true` release per region. The

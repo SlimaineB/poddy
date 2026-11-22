@@ -4,23 +4,39 @@
 {{- if and .Values.ssh.enabled .Values.ssh.requireAgent (not .Values.ssh.agent.enabled) }}
 {{- fail "ssh.agent.enabled must be true when ssh.requireAgent=true" }}
 {{- end }}
-{{- if and .Values.mesh.headscale.enabled (not .Values.mesh.headscale.host) (not .Values.mesh.headscale.serverUrl) }}
-{{- fail "mesh.headscale.host is required when mesh.headscale.enabled=true" }}
+{{- $headscale := include "poddy.headscaleEnabled" . }}
+{{- $bootstrap := include "poddy.meshBootstrapEnabled" . }}
+{{- if and $headscale (not (include "poddy.headscaleHost" .)) (not .Values.mesh.headscale.serverUrl) }}
+{{- fail "mesh.headscale.host (or mesh.headscale.serverUrl, or ingress.hosts[0].host) is required when managed Headscale is enabled" }}
 {{- end }}
-{{- if and .Values.mesh.headscale.enabled .Values.mesh.derp.embedded (eq .Values.mesh.headscale.service.type "NodePort") (ne (int .Values.mesh.derp.stunPort) (int .Values.mesh.derp.service.stunNodePort)) }}
+{{- if $headscale }}
+{{- if not (has .Values.mesh.headscale.database.type (list "sqlite" "postgres")) }}
+{{- fail "mesh.headscale.database.type must be sqlite or postgres" }}
+{{- end }}
+{{- if and (gt (int .Values.mesh.headscale.replicas) 1) (ne .Values.mesh.headscale.database.type "postgres") }}
+{{- fail "mesh.headscale.replicas > 1 requires mesh.headscale.database.type=postgres" }}
+{{- end }}
+{{- if and (gt (int .Values.mesh.headscale.replicas) 1) (not .Values.mesh.headscale.existingClaim) (ne .Values.mesh.headscale.storageAccessMode "ReadWriteMany") }}
+{{- fail "mesh.headscale.replicas > 1 requires a ReadWriteMany storageAccessMode or an existingClaim" }}
+{{- end }}
+{{- if and (gt (int .Values.mesh.headscale.replicas) 1) $bootstrap }}
+{{- fail "mesh.headscale.replicas > 1 is incompatible with the per-pod mesh bootstrap sidecar; set mesh.bootstrap.enabled=false and provide mesh keys" }}
+{{- end }}
+{{- if and (eq .Values.mesh.headscale.database.type "postgres") (not .Values.mesh.headscale.database.postgres.existingSecret) (not .Values.mesh.headscale.database.postgres.password) }}
+{{- fail "mesh.headscale.database.postgres.password or existingSecret is required for PostgreSQL" }}
+{{- end }}
+{{- end }}
+{{- if and $headscale .Values.mesh.derp.embedded (eq .Values.mesh.headscale.service.type "NodePort") (ne (int .Values.mesh.derp.stunPort) (int .Values.mesh.derp.service.stunNodePort)) }}
 {{- fail "mesh.derp.stunPort and mesh.derp.service.stunNodePort must match for NodePort DERP/STUN" }}
 {{- end }}
 {{- if .Values.mesh.enabled }}
-{{- if and (not .Values.mesh.authKey) (not .Values.mesh.existingSecret) }}
-{{- fail "mesh.authKey or mesh.existingSecret is required when mesh.enabled=true" }}
-{{- end }}
-{{- if and (not .Values.mesh.controlUrl) (not .Values.mesh.headscale.enabled) }}
-{{- fail "mesh.controlUrl is required when mesh.enabled=true and mesh.headscale.enabled=false" }}
+{{- if and (not .Values.mesh.authKey) (not .Values.mesh.existingSecret) (not $bootstrap) }}
+{{- fail "mesh.authKey or mesh.existingSecret is required when mesh.enabled=true (or leave mesh.bootstrap.enabled=true with managed Headscale)" }}
 {{- end }}
 {{- end }}
 {{- if .Values.mesh.dex.enabled }}
-{{- if not .Values.mesh.headscale.enabled }}
-{{- fail "mesh.headscale.enabled=true is required when mesh.dex.enabled=true" }}
+{{- if not $headscale }}
+{{- fail "managed Headscale is required when mesh.dex.enabled=true" }}
 {{- end }}
 {{- if .Values.mesh.headscale.oidc.enabled }}
 {{- fail "choose either mesh.dex.enabled or mesh.headscale.oidc.enabled, not both" }}
@@ -142,6 +158,27 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if include "poddy.meshBootstrapEnabled" . }}
+      initContainers:
+        - name: mesh-bootstrap-wait
+          image: "{{ .Values.mesh.bootstrap.image | default (printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion)) }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/poddy-mesh-bootstrap"]
+          args: ["--wait-for-files"]
+          env:
+            - name: PODDY_MESH_AUTH_KEY_FILE
+              value: /var/run/poddy-mesh/auth-key
+            - name: PODDY_MESH_CLIENT_AUTH_KEY_FILE
+              value: /var/run/poddy-mesh/client-auth-key
+            - name: PODDY_MESH_WAIT_TIMEOUT
+              value: {{ .Values.mesh.bootstrap.waitTimeout | quote }}
+          volumeMounts:
+            - name: mesh-keys
+              mountPath: /var/run/poddy-mesh
+              readOnly: true
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      {{- end }}
       containers:
         - name: portal
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -502,6 +539,12 @@ spec:
               value: {{ default (include "poddy.meshControlURL" .) .Values.mesh.loginUrl | quote }}
             - name: PODDY_MESH_STATE_DIR
               value: {{ .Values.mesh.stateDir | quote }}
+            {{- if include "poddy.meshBootstrapEnabled" . }}
+            - name: PODDY_MESH_AUTH_KEY_FILE
+              value: /var/run/poddy-mesh/auth-key
+            - name: PODDY_MESH_CLIENT_AUTH_KEY_FILE
+              value: /var/run/poddy-mesh/client-auth-key
+            {{- end }}
             - name: PODDY_MESH_AUTH_KEY
               valueFrom:
                 secretKeyRef:
@@ -593,6 +636,11 @@ spec:
             {{- if .Values.mesh.enabled }}
             - name: mesh-state
               mountPath: /var/lib/poddy
+            {{- if include "poddy.meshBootstrapEnabled" . }}
+            - name: mesh-keys
+              mountPath: /var/run/poddy-mesh
+              readOnly: true
+            {{- end }}
             {{- end }}
             {{- if .Values.mesh.caSecret }}
             - name: poddy-mesh-ca
@@ -617,6 +665,12 @@ spec:
         {{- if .Values.mesh.enabled }}
         - name: mesh-state
           emptyDir: {}
+        {{- if include "poddy.meshBootstrapEnabled" . }}
+        - name: mesh-keys
+          secret:
+            secretName: {{ include "poddy.meshSecretName" . }}
+            defaultMode: 0444
+        {{- end }}
         {{- end }}
         {{- if .Values.mesh.caSecret }}
         - name: poddy-mesh-ca

@@ -212,37 +212,107 @@
     "mesh": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "controlUrl": { "type": "string" },
-        "loginUrl": { "type": "string" },
-        "authKey": { "type": "string" },
-        "existingSecret": { "type": "string" },
-        "authKeyKey": { "type": "string" },
-        "clientAuthKey": { "type": "string" },
-        "clientAuthKeyKey": { "type": "string" },
-        "caSecret": { "type": "string" },
-        "caKey": { "type": "string" },
-        "stateDir": { "type": "string" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "controlUrl": {
+          "type": "string"
+        },
+        "loginUrl": {
+          "type": "string"
+        },
+        "authKey": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "authKeyKey": {
+          "type": "string"
+        },
+        "clientAuthKey": {
+          "type": "string"
+        },
+        "clientAuthKeyKey": {
+          "type": "string"
+        },
+        "bootstrap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string"
+            },
+            "user": {
+              "type": "string"
+            },
+            "expiration": {
+              "type": "string"
+            },
+            "waitTimeout": {
+              "type": "string"
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "caSecret": {
+          "type": "string"
+        },
+        "caKey": {
+          "type": "string"
+        },
+        "stateDir": {
+          "type": "string"
+        },
         "derpUrls": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "derp": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "embedded": { "type": "boolean" },
-            "regionId": { "type": "integer", "minimum": 1, "maximum": 999 },
-            "regionCode": { "type": "string" },
-            "regionName": { "type": "string" },
-            "stunPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "ipv4": { "type": "string" },
-            "ipv6": { "type": "string" },
+            "embedded": {
+              "type": "boolean"
+            },
+            "regionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 999
+            },
+            "regionCode": {
+              "type": "string"
+            },
+            "regionName": {
+              "type": "string"
+            },
+            "stunPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "ipv4": {
+              "type": "string"
+            },
+            "ipv6": {
+              "type": "string"
+            },
             "service": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "stunNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 }
+                "stunNodePort": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                }
               }
             }
           }
@@ -251,48 +321,198 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "image": { "type": "string" },
-            "imagePullPolicy": {
-              "enum": ["Always", "IfNotPresent", "Never"]
+            "enabled": {
+              "type": "boolean"
             },
-            "host": { "type": "string" },
-            "serverUrl": { "type": "string" },
-            "ingressClassName": { "type": "string" },
-            "tlsSecret": { "type": "string" },
-            "annotations": { "type": "object" },
-            "storage": { "type": "string" },
-            "storageClass": { "type": "string" },
-            "resources": { "type": "object" },
-            "extraEnv": { "type": "array" },
+            "image": {
+              "type": "string"
+            },
+            "imagePullPolicy": {
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            },
+            "host": {
+              "type": "string"
+            },
+            "serverUrl": {
+              "type": "string"
+            },
+            "ingressClassName": {
+              "type": "string"
+            },
+            "tlsSecret": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "storage": {
+              "type": "string"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "resources": {
+              "type": "object"
+            },
+            "extraEnv": {
+              "type": "array"
+            },
             "service": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "type": { "enum": ["", "ClusterIP", "NodePort", "LoadBalancer"] },
-                "httpNodePort": { "type": "integer", "minimum": 0, "maximum": 65535 },
-                "annotations": { "type": "object" }
+                "type": {
+                  "enum": [
+                    "",
+                    "ClusterIP",
+                    "NodePort",
+                    "LoadBalancer"
+                  ]
+                },
+                "httpNodePort": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "annotations": {
+                  "type": "object"
+                }
               }
             },
-            "nameservers": { "type": "array", "items": { "type": "string" } },
-            "searchDomains": { "type": "array", "items": { "type": "string" } },
+            "nameservers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "searchDomains": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "oidc": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "enabled": { "type": "boolean" },
-                "issuer": { "type": "string" },
-                "clientId": { "type": "string" },
-                "clientSecret": { "type": "string" },
-                "existingSecret": { "type": "string" },
-                "clientSecretKey": { "type": "string" },
-                "onlyStartIfAvailable": { "type": "boolean" },
-                "expiry": { "type": "string" },
-                "scopes": { "type": "array", "items": { "type": "string" } },
-                "allowedDomains": { "type": "array", "items": { "type": "string" } },
-                "allowedGroups": { "type": "array", "items": { "type": "string" } },
-                "allowedUsers": { "type": "array", "items": { "type": "string" } },
-                "stripEmailDomain": { "type": "boolean" }
+                "enabled": {
+                  "type": "boolean"
+                },
+                "issuer": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "clientSecretKey": {
+                  "type": "string"
+                },
+                "onlyStartIfAvailable": {
+                  "type": "boolean"
+                },
+                "expiry": {
+                  "type": "string"
+                },
+                "scopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowedDomains": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowedGroups": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowedUsers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "stripEmailDomain": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "storageAccessMode": {
+              "enum": [
+                "ReadWriteOnce",
+                "ReadWriteMany",
+                "ReadOnlyMany"
+              ]
+            },
+            "existingClaim": {
+              "type": "string"
+            },
+            "database": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "sqlite",
+                    "postgres"
+                  ]
+                },
+                "postgres": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "host": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "string"
+                    },
+                    "ssl": {
+                      "enum": [
+                        "disable",
+                        "require",
+                        "verify-ca",
+                        "verify-full"
+                      ]
+                    },
+                    "existingSecret": {
+                      "type": "string"
+                    },
+                    "passwordKey": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
@@ -301,25 +521,49 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "image": { "type": "string" },
-            "imagePullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] },
-            "issuer": { "type": "string" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string"
+            },
+            "imagePullPolicy": {
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            },
+            "issuer": {
+              "type": "string"
+            },
             "users": {
               "type": "array",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "properties": {
-                  "email": { "type": "string" },
-                  "username": { "type": "string" },
-                  "password": { "type": "string" },
-                  "passwordHash": { "type": "string" }
+                  "email": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "passwordHash": {
+                    "type": "string"
+                  }
                 }
               }
             },
-            "resources": { "type": "object" }
+            "resources": {
+              "type": "object"
+            }
           }
         }
       },

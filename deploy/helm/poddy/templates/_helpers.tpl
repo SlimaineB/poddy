@@ -101,6 +101,17 @@ Secret where the portal stores encrypted per-user external auth tokens.
 {{- end -}}
 
 {{/*
+Secret holding the optional PostgreSQL password for managed Headscale.
+*/}}
+{{- define "poddy.headscaleDBSecretName" -}}
+{{- if .Values.mesh.headscale.database.postgres.existingSecret -}}
+{{- .Values.mesh.headscale.database.postgres.existingSecret -}}
+{{- else -}}
+{{- printf "%s-headscale-db" (include "poddy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Secret holding the optional PostgreSQL connection string.
 */}}
 {{- define "poddy.databaseSecretName" -}}
@@ -199,13 +210,52 @@ Secret holding the SSH certificate authority private key.
 {{- end -}}
 
 {{/*
+Managed Headscale is enabled automatically when the mesh is enabled and no
+external control URL is configured. Users can still force it on or off.
+*/}}
+{{- define "poddy.headscaleEnabled" -}}
+{{- if .Values.mesh.headscale.enabled -}}
+true
+{{- else if and .Values.mesh.enabled (not .Values.mesh.controlUrl) -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Public Headscale hostname. Defaults to mesh.<first ingress host>.
+*/}}
+{{- define "poddy.headscaleHost" -}}
+{{- if .Values.mesh.headscale.host -}}
+{{- .Values.mesh.headscale.host -}}
+{{- else if .Values.ingress.hosts -}}
+{{- $first := index .Values.ingress.hosts 0 -}}
+{{- if $first.host -}}
+{{- printf "mesh.%s" $first.host -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Headscale public control URL.
 */}}
 {{- define "poddy.headscaleURL" -}}
 {{- if .Values.mesh.headscale.serverUrl -}}
 {{- .Values.mesh.headscale.serverUrl -}}
 {{- else -}}
-{{- printf "https://%s" .Values.mesh.headscale.host -}}
+{{- $host := include "poddy.headscaleHost" . -}}
+{{- if $host -}}
+{{- printf "https://%s" $host -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Bootstrap Headscale preauth keys automatically when the mesh is enabled, the
+managed control plane is used, and the user did not provide keys.
+*/}}
+{{- define "poddy.meshBootstrapEnabled" -}}
+{{- if and .Values.mesh.enabled .Values.mesh.bootstrap.enabled (include "poddy.headscaleEnabled" .) (not .Values.mesh.existingSecret) (not .Values.mesh.authKey) (not .Values.mesh.clientAuthKey) -}}
+true
 {{- end -}}
 {{- end -}}
 

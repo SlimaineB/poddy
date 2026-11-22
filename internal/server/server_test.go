@@ -215,6 +215,25 @@ func TestHealthIsPublic(t *testing.T) {
 	}
 }
 
+func TestRegionModeReadinessRequiresTunnel(t *testing.T) {
+	s := newTestServer("secret")
+	s.RegionMode = true
+	s.RegionReady = func() bool { return false }
+
+	rec := request(t, s, http.MethodGet, "/readyz", nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "2" {
+		t.Fatalf("retry-after = %q", got)
+	}
+
+	s.RegionReady = func() bool { return true }
+	if rec := request(t, s, http.MethodGet, "/readyz", nil); rec.Code != http.StatusOK {
+		t.Fatalf("ready status = %d", rec.Code)
+	}
+}
+
 func TestDrainingFailsReadinessAndNewRequests(t *testing.T) {
 	s := newTestServer("secret")
 	s.StartDraining()

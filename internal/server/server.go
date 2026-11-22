@@ -44,6 +44,7 @@ type Server struct {
 	Forwards     *Forwarder
 	Regions      *region.Hub
 	RegionTunnel *regiontunnel.RegionBroker
+	RegionReady  func() bool
 	RegionMode   bool
 	RegionKey    string
 	RegionName   string
@@ -259,6 +260,11 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if s.Draining() {
 		http.Error(w, "draining", http.StatusServiceUnavailable)
+		return
+	}
+	if s.RegionMode && s.RegionReady != nil && !s.RegionReady() {
+		w.Header().Set("Retry-After", "2")
+		http.Error(w, "region tunnel is not connected", http.StatusServiceUnavailable)
 		return
 	}
 	_, _ = w.Write([]byte("ok"))

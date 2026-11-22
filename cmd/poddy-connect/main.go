@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +42,7 @@ func run() error {
 	workspace := flag.String("workspace", "", "workspace name")
 	ticket := flag.String("ticket", "", "desktop connection ticket")
 	ticketFile := flag.String("ticket-file", "", "file containing the desktop connection ticket")
+	ticketDir := flag.String("ticket-dir", "", "directory containing per-workspace desktop connection tickets")
 	mode := flag.String("mode", "", "connection mode: portal or mesh")
 	controlURL := flag.String("control-url", "", "mesh control server URL")
 	authKey := flag.String("auth-key", "", "mesh auth key")
@@ -51,13 +53,15 @@ func run() error {
 	caFile := flag.String("ca-file", "", "additional CA bundle for a private portal or mesh certificate")
 	insecure := flag.Bool("insecure", false, "disable portal TLS certificate verification")
 	timeout := flag.Duration("timeout", 20*time.Second, "WebSocket handshake timeout")
+	joinTimeout := flag.Duration("join-timeout", 60*time.Second, "mesh join timeout")
 	flag.Parse()
 
-	if strings.TrimSpace(*workspace) == "" {
+	*workspace = meshclient.NormalizeWorkspace(*workspace)
+	if *workspace == "" {
 		return errors.New("--workspace is required")
 	}
 	if strings.EqualFold(strings.TrimSpace(*mode), "mesh") || strings.TrimSpace(*controlURL) != "" {
-		return runMeshBridge(*controlURL, *workspace, *hostname, *authKey, *authKeyFile, *stateDir, *caFile, *port)
+		return runMeshBridge(*controlURL, *workspace, *hostname, *authKey, *authKeyFile, *stateDir, *caFile, *port, *joinTimeout)
 	}
 	if strings.TrimSpace(*portal) == "" {
 		return errors.New("--portal is required")
@@ -70,8 +74,15 @@ func run() error {
 		}
 		connectionTicket = strings.TrimSpace(string(data))
 	}
+	if connectionTicket == "" && strings.TrimSpace(*ticketDir) != "" {
+		data, err := os.ReadFile(filepath.Join(*ticketDir, *workspace+".ticket"))
+		if err != nil {
+			return fmt.Errorf("read ticket file: %w", err)
+		}
+		connectionTicket = strings.TrimSpace(string(data))
+	}
 	if connectionTicket == "" {
-		return errors.New("--ticket or --ticket-file is required")
+		return errors.New("--ticket, --ticket-file, or --ticket-dir is required")
 	}
 	target, err := sshURL(*portal, *workspace, connectionTicket)
 	if err != nil {
@@ -203,7 +214,7 @@ func copyStdinToWebSocket(ws *websocket.Conn) error {
 	}
 }
 
-func runMeshBridge(controlURL, workspace, hostname, authKey, authKeyFile, stateDir, caFile string, port int) error {
+func runMeshBridge(controlURL, workspace, hostname, authKey, authKeyFile, stateDir, caFile string, port int, joinTimeout time.Duration) error {
 	key := strings.TrimSpace(authKey)
 	if key == "" && strings.TrimSpace(authKeyFile) != "" {
 		data, err := os.ReadFile(authKeyFile)
@@ -215,13 +226,14 @@ func runMeshBridge(controlURL, workspace, hostname, authKey, authKeyFile, stateD
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return meshclient.Run(ctx, meshclient.Config{
-		ControlURL: controlURL,
-		AuthKey:    key,
-		Workspace:  workspace,
-		Hostname:   hostname,
-		StateDir:   stateDir,
-		CAFile:     caFile,
-		Port:       port,
+		ControlURL:  controlURL,
+		AuthKey:     key,
+		Workspace:   workspace,
+		Hostname:    hostname,
+		StateDir:    stateDir,
+		CAFile:      caFile,
+		Port:        port,
+		JoinTimeout: joinTimeout,
 	}, os.Stdin, os.Stdout)
 }
 

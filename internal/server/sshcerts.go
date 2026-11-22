@@ -86,7 +86,7 @@ func (s *Server) issueSSHCertificate(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				log.Printf("ssh certificate: region lookup %s: %v", strings.ReplaceAll(strings.ReplaceAll(workspace, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(regionErr.Error(), "\n", " "), "\r", " "))
-				http.Error(w, "region unavailable", http.StatusBadGateway)
+				regionUnavailable(w)
 				return
 			}
 		}
