@@ -1,7 +1,9 @@
 "use strict";
 
-async function refreshTeams({ paginated = false, page = 1 } = {}) {
-  const data = await api(paginated ? pageURL("/api/teams", page, state.teamPerPage) : "/api/teams");
+async function refreshTeams({ paginated = false, page = 1, summary = false } = {}) {
+  let path = paginated ? pageURL("/api/teams", page, state.teamPerPage, state.teamQuery.trim()) : "/api/teams";
+  if (summary) path += `${path.includes("?") ? "&" : "?"}summary=1`;
+  const data = await api(path);
   if (Array.isArray(data)) {
     state.teams = data;
     state.teamTotal = data.length;
@@ -24,7 +26,7 @@ function renderTeamsPagination() {
     summary: `${state.teamTotal} team${state.teamTotal === 1 ? "" : "s"}`,
   }, (page) => {
     state.teamPage = page;
-    refreshTeams({ paginated: true, page }).then(renderTeamsPagination);
+    refreshTeams({ paginated: true, page, summary: true }).then(renderTeamsPagination);
   });
 }
 function memberInitials(entry) {
@@ -72,104 +74,51 @@ function combineTeamMembers(users, groups) {
   return out;
 }
 
-function teamMemberSummary(team) {
-  const members = Array.isArray(team.members) ? team.members : [];
-  if (!members.length) {
-    const count = Number(team.memberCount) || 0;
-    return count ? `${count} member${count === 1 ? "" : "s"}` : "No members";
-  }
-  const { users, groups } = splitTeamMembers(members);
-  const parts = [];
-  if (users.length) parts.push(`${users.length} user${users.length === 1 ? "" : "s"}`);
-  if (groups.length) parts.push(`${groups.length} OIDC group${groups.length === 1 ? "" : "s"}`);
-  return parts.length ? parts.join(" · ") : "No members";
-}
-
-function renderTeamMembers(team) {
-  const wrap = document.createElement("div");
-  wrap.className = "team-card-members";
-  const members = Array.isArray(team.members) ? team.members : [];
-  if (!members.length) {
-    const count = Number(team.memberCount) || 0;
-    const empty = document.createElement("span");
-    empty.className = "team-member-empty";
-    empty.textContent = count
-      ? `${count} member${count === 1 ? "" : "s"} · names visible to admins`
-      : "No users or OIDC groups yet.";
-    wrap.append(empty);
-    return wrap;
-  }
-
-  const { users, groups } = splitTeamMembers(members);
-  const ordered = [
-    ...users.map((value) => ({ value, group: false })),
-    ...groups.map((value) => ({ value: `group:${value}`, group: true })),
-  ];
-
-  const stack = document.createElement("span");
-  stack.className = "team-avatar-stack";
-  for (const entry of ordered.slice(0, 4)) {
-    const avatar = document.createElement("span");
-    avatar.className = "team-avatar";
-    if (entry.group) avatar.classList.add("group");
-    avatar.textContent = memberInitials(entry.value);
-    avatar.title = entry.group ? `OIDC group: ${directoryGroup(entry.value)}` : entry.value;
-    stack.append(avatar);
-  }
-  if (ordered.length > 4) {
-    const more = document.createElement("span");
-    more.className = "team-avatar more";
-    more.textContent = `+${ordered.length - 4}`;
-    stack.append(more);
-  }
-
-  const labels = document.createElement("span");
-  labels.className = "team-member-names";
-  const parts = [];
-  if (users.length) {
-    parts.push(users.slice(0, 3).join(", ") + (users.length > 3 ? ` +${users.length - 3}` : ""));
-  }
-  if (groups.length) {
-    const names = groups.slice(0, 2).map((group) => `OIDC: ${group}`).join(", ");
-    parts.push(names + (groups.length > 2 ? ` +${groups.length - 2}` : ""));
-  }
-  labels.textContent = parts.join(" · ");
-  wrap.append(stack, labels);
-  return wrap;
-}
-
 function renderTeams() {
   const total = state.teamPages ? state.teamTotal : state.teams.length;
   els.teamsCount.textContent = `${total} team${total === 1 ? "" : "s"}`;
   els.teamsList.replaceChildren();
   if (!state.teams.length) {
-    els.teamsList.append(emptyInline("No teams yet. Create one with New team."));
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.append(emptyInline(state.teamQuery.trim() ? "No teams match your search." : "No teams yet. Create one with New team."));
+    row.append(cell);
+    els.teamsList.append(row);
     return;
   }
   for (const team of state.teams) {
-    const item = document.createElement("div");
-    item.className = "team-item team-card";
+    const row = document.createElement("tr");
 
-    const head = document.createElement("div");
-    head.className = "team-card-head";
+    const nameCell = document.createElement("td");
+    const nameWrap = document.createElement("span");
+    nameWrap.className = "team-table-name";
     const mark = document.createElement("span");
     mark.className = "team-mark";
     mark.textContent = memberInitials(team.name);
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "workspace-name-button";
+    open.textContent = team.name;
+    open.addEventListener("click", () => editTeam(team));
+    nameWrap.append(mark, open);
+    nameCell.append(nameWrap);
 
-    const info = document.createElement("div");
-    info.className = "team-card-info";
-    const titleRow = document.createElement("div");
-    titleRow.className = "team-card-title";
-    const name = document.createElement("h3");
-    name.textContent = team.name;
-    const count = document.createElement("span");
-    count.className = "badge neutral";
-    count.textContent = teamMemberSummary(team);
-    titleRow.append(name, count);
-    info.append(titleRow, renderTeamMembers(team));
+    const membersCell = document.createElement("td");
+    const members = Number(team.memberCount) || 0;
+    membersCell.textContent = `${members} member${members === 1 ? "" : "s"}`;
 
+    const groupsCell = document.createElement("td");
+    const groups = Number(team.groupCount) || 0;
+    groupsCell.textContent = groups ? `${groups} group${groups === 1 ? "" : "s"}` : "—";
+
+    const quotaCell = document.createElement("td");
+    quotaCell.append(quotaChips(team.quota, "No limit"));
+
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "workspace-table-actions";
     const actions = document.createElement("div");
-    actions.className = "team-actions";
+    actions.className = "workspace-actions team-actions";
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "button small";
@@ -181,53 +130,56 @@ function renderTeams() {
     del.textContent = "Delete";
     del.addEventListener("click", () => deleteTeam(team));
     actions.append(edit, del);
-    head.append(mark, info, actions);
+    actionsCell.append(actions);
 
-    const quota = document.createElement("div");
-    quota.className = "team-card-quota";
-    const label = document.createElement("span");
-    label.className = "team-card-quota-label";
-    label.textContent = "Default quota";
-    quota.append(label, quotaChips(team.quota, "No limit"));
-
-    item.append(head, quota);
-    els.teamsList.append(item);
+    row.append(nameCell, membersCell, groupsCell, quotaCell, actionsCell);
+    els.teamsList.append(row);
   }
 }
 async function openTeams() {
   try {
-    await Promise.all([refreshTeams({ paginated: true, page: 1 }), loadDirectory()]);
+    state.teamQuery = "";
+    els.teamsSearch.value = "";
+    state.teamPage = 1;
+    await Promise.all([refreshTeams({ paginated: true, page: 1, summary: true }), loadDirectory()]);
     renderTeamsPagination();
     showView("teams");
-    newTeam();
   } catch (err) {
     toast(err.message || "Failed to load teams.");
   }
 }
-function editTeam(team) {
-  state.editingTeam = team.name;
-  els.teamFormTitle.textContent = `Edit ${team.name}`;
-  els.teamName.value = team.name;
-  els.teamName.readOnly = true;
-  const { users, groups } = splitTeamMembers(team.members || []);
-  entryLists.teamMembers.setValues(users);
-  entryLists.teamGroups.setValues(groups);
-  setQuotaInputs("team", team.quota || null);
-  setTeamQuotaEnabled(state.me.isAdmin);
-  els.teamSave.textContent = "Save team";
-  els.teamForm.scrollIntoView({ behavior: "smooth", block: "start" });
+async function editTeam(team) {
+  if (!state.me.isAdmin) return;
+  try {
+    const detail = await api(`/api/teams/${encodeURIComponent(team.name)}`);
+    state.editingTeam = detail.name;
+    els.teamFormTitle.textContent = `Edit ${detail.name}`;
+    els.teamName.value = detail.name;
+    els.teamName.readOnly = true;
+    const { users, groups } = splitTeamMembers(detail.members || []);
+    entryLists.teamMembers.setValues(users);
+    entryLists.teamGroups.setValues(groups);
+    setQuotaInputs("team", detail.quota || null);
+    setTeamQuotaEnabled(true);
+    els.teamSave.textContent = "Save team";
+    els.teamDialog.showModal();
+  } catch (err) {
+    toast(err.message || "Failed to load team.");
+  }
 }
 function newTeam() {
+  if (!state.me.isAdmin) return;
   state.editingTeam = null;
   els.teamForm.reset();
   els.teamFormTitle.textContent = "New team";
   entryLists.teamMembers.setValues([]);
   entryLists.teamGroups.setValues([]);
   setQuotaInputs("team", null);
-  setTeamQuotaEnabled(state.me.isAdmin);
+  setTeamQuotaEnabled(true);
   els.teamName.readOnly = false;
   els.teamSave.textContent = "Create team";
-  els.teamName.focus();
+  els.teamDialog.showModal();
+  requestAnimationFrame(() => els.teamName.focus());
 }
 async function saveTeam(event) {
   event.preventDefault();
@@ -242,8 +194,8 @@ async function saveTeam(event) {
     return;
   }
 
+  const wasEditing = Boolean(state.editingTeam);
   const original = els.teamSave.innerHTML;
-  let saved = false;
   els.teamSave.disabled = true;
   els.teamSave.innerHTML = `<span class="spinner small"></span>Saving`;
   try {
@@ -255,22 +207,15 @@ async function saveTeam(event) {
     });
     toast(`Team ${name} saved.`, "success");
     state.editingTeam = name;
-    els.teamName.readOnly = true;
-    els.teamFormTitle.textContent = `Edit ${name}`;
-    els.teamSave.textContent = "Save team";
-    saved = true;
-    await refreshTeams({ paginated: true, page: state.teamPage });
+    els.teamDialog.close();
+    const page = wasEditing ? state.teamPage : 1;
+    await refreshTeams({ paginated: true, page, summary: true });
     renderTeamsPagination();
-    const current = state.teams.find((team) => team.name === name);
-    const savedMembers = splitTeamMembers(current?.members || members);
-    entryLists.teamMembers.setValues(savedMembers.users);
-    entryLists.teamGroups.setValues(savedMembers.groups);
-    setQuotaInputs("team", current?.quota || null);
   } catch (err) {
     toast(err.message || "Failed to save team.");
   } finally {
     els.teamSave.disabled = false;
-    if (!saved) els.teamSave.innerHTML = original;
+    els.teamSave.innerHTML = original;
   }
 }
 async function deleteTeam(team) {
@@ -278,8 +223,11 @@ async function deleteTeam(team) {
   try {
     await api(`/api/teams/${encodeURIComponent(team.name)}`, { method: "DELETE" });
     toast(`Team ${team.name} deleted.`, "success");
-    if (state.editingTeam === team.name) newTeam();
-    await refreshTeams({ paginated: true, page: state.teamPage });
+    if (state.editingTeam === team.name) {
+      state.editingTeam = null;
+      els.teamDialog.close();
+    }
+    await refreshTeams({ paginated: true, page: state.teamPage, summary: true });
     renderTeamsPagination();
     await loadTemplates();
   } catch (err) {

@@ -188,7 +188,7 @@ The UI uses the same API:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/volumes` | List volumes, summary, and backup availability. Add `?region=eu` to filter. |
+| `GET` | `/api/volumes` | List volumes, summary, and backup availability. Add `?region=eu` to filter, `?assigned=true|false` to filter assigned state, and `?page=1&per_page=25&q=...` for a paginated page. |
 | `DELETE` | `/api/volumes/{name}` | Delete an unassigned volume. |
 | `GET` | `/api/volumes/{name}/backups` | List backups for a volume. |
 | `POST` | `/api/volumes/{name}/backups` | Create a backup. |

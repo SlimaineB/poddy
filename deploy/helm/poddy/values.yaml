@@ -482,6 +482,12 @@ mesh:
         name: headscale
         user: headscale
         ssl: require
+        # Connection pool for Headscale. Size maxOpenConns for the number of
+        # Headscale replicas and the PostgreSQL connection budget.
+        maxOpenConns: 20
+        maxIdleConns: 10
+        connMaxIdleTime: 5m
+        connMaxLifetime: 30m
         # Prefer an existing Secret. When set, password is ignored.
         existingSecret: ""
         passwordKey: password

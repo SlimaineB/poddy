@@ -370,6 +370,7 @@
         <tbody id="volumes-list"></tbody>
       </table>
     </div>
+    <div id="volumes-pagination" class="pagination" hidden></div>
   </section>
 
   <section id="templates-view" class="page" hidden>
@@ -453,100 +454,33 @@
       <div>
         <button id="teams-back" class="button ghost small" type="button">← Workspaces</button>
         <h1>Teams</h1>
-        <p>Poddy teams bundle users and OIDC groups for quotas and template access.</p>
+        <p>Group users and OIDC groups for quotas and template access. Member lists stay manageable at scale.</p>
       </div>
       <div class="view-actions">
         <span id="teams-count" class="count"></span>
         <button id="team-new" class="button primary small" type="button">New team</button>
       </div>
     </header>
-    <div class="teams-layout">
-      <section class="panel directory-panel">
-        <div class="panel-header"><h2>All teams</h2></div>
-        <div id="teams-list" class="team-list"></div>
-      </section>
-      <form id="team-form" class="panel team-form">
-        <div class="panel-header"><h2 id="team-form-title">New team</h2></div>
-        <section class="form-section">
-          <div class="form-section-header">
-            <h3>Team details</h3>
-            <p>A Poddy team is not an OIDC group: it groups identities for quotas and template access.</p>
-          </div>
-          <div class="field">
-            <label for="team-name">Team name</label>
-            <input id="team-name" name="name" placeholder="backend" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" autocomplete="off" spellcheck="false">
-            <p class="hint">Letters, numbers, dots, dashes, and underscores.</p>
-          </div>
-          <div class="team-member-fields">
-            <div class="field">
-              <label for="team-members">Users</label>
-              <div id="team-members" class="entry-list"></div>
-              <p class="hint">Pick a known user or type an email. Stored as <code>user:</code> or <code>email:</code>.</p>
-            </div>
-            <div class="field">
-              <label for="team-groups">OIDC groups</label>
-              <div id="team-groups" class="entry-list"></div>
-              <p class="hint">Everyone in this identity-provider group joins automatically.</p>
-            </div>
-          </div>
-        </section>
-        <section class="form-section quota-form-section">
-          <div class="form-section-header">
-            <h3>Default quota</h3>
-            <p>Applied to members unless a user override is set.</p>
-          </div>
-          <div class="quota-grid">
-            <label class="quota-field">
-              <span>Max workspaces</span>
-              <input id="team-quota-workspaces" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric">
-            </label>
-            <label class="quota-field">
-              <span>Max backups / workspace</span>
-              <input id="team-quota-backups" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric">
-            </label>
-            <label class="quota-field">
-              <span>CPU</span>
-              <span class="quota-input-row">
-                <input id="team-quota-cpu" type="number" min="0" step="any" placeholder="e.g. 8" inputmode="decimal">
-                <select id="team-quota-cpu-unit">
-                  <option value="cores">cores</option>
-                  <option value="m">millicores</option>
-                </select>
-              </span>
-            </label>
-            <label class="quota-field">
-              <span>Memory</span>
-              <span class="quota-input-row">
-                <input id="team-quota-memory" type="number" min="0" step="any" placeholder="e.g. 16" inputmode="decimal">
-                <select id="team-quota-memory-unit">
-                  <option value="Mi">Mi</option>
-                  <option value="Gi">Gi</option>
-                  <option value="Ti">Ti</option>
-                </select>
-              </span>
-            </label>
-            <label class="quota-field">
-              <span>Storage</span>
-              <span class="quota-input-row">
-                <input id="team-quota-storage" type="number" min="0" step="any" placeholder="e.g. 50" inputmode="decimal">
-                <select id="team-quota-storage-unit">
-                  <option value="Gi">Gi</option>
-                  <option value="Ti">Ti</option>
-                  <option value="Pi">Pi</option>
-                </select>
-              </span>
-            </label>
-          </div>
-          <div class="quota-preview-wrap">
-            <span class="quota-preview-label">Effective default</span>
-            <div id="team-quota-preview" class="quota-preview"></div>
-          </div>
-          <p id="team-quota-hint" class="hint">Leave a field empty for unlimited.</p>
-        </section>
-        <div class="form-actions">
-          <button id="team-save" class="button primary" type="submit">Save team</button>
-        </div>
-      </form>
+    <div class="workspace-toolbar">
+      <div class="search-box">
+        <svg class="icon"><use href="#icon-search"></use></svg>
+        <input id="teams-search" type="search" placeholder="Search teams by name, member, or OIDC group" autocomplete="off">
+      </div>
+      <p class="hint">Teams are the bridge between identity-provider groups and Poddy quotas.</p>
+    </div>
+    <div class="workspace-list-wrap">
+      <table class="workspace-table team-table">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Members</th>
+            <th>OIDC groups</th>
+            <th>Default quota</th>
+            <th class="workspace-table-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="teams-list"></tbody>
+      </table>
     </div>
     <div id="teams-pagination" class="pagination" hidden></div>
   </section>
@@ -892,6 +826,102 @@
     </header>
     <div id="connections-list" class="connections-list"></div>
   </section>
+
+  <dialog id="team-dialog" class="dialog dialog-wide team-dialog">
+    <form id="team-form" class="team-form">
+      <header class="dialog-header">
+        <div>
+          <h2 id="team-form-title">New team</h2>
+          <p>A Poddy team is not an OIDC group: it groups identities for quotas and template access.</p>
+        </div>
+        <button class="icon-button" type="button" data-close aria-label="Close">
+          <svg class="icon"><use href="#icon-x"></use></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <section class="form-section">
+          <div class="form-section-header">
+            <h3>Team details</h3>
+            <p>Use a stable name. Members can be users, emails, or identity-provider groups.</p>
+          </div>
+          <div class="field">
+            <label for="team-name">Team name</label>
+            <input id="team-name" name="name" placeholder="backend" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" autocomplete="off" spellcheck="false">
+            <p class="hint">Letters, numbers, dots, dashes, and underscores.</p>
+          </div>
+          <div class="team-member-fields">
+            <div class="field">
+              <label for="team-members">Users</label>
+              <div id="team-members" class="entry-list"></div>
+              <p class="hint">Pick a known user or type an email. Stored as <code>user:</code> or <code>email:</code>.</p>
+            </div>
+            <div class="field">
+              <label for="team-groups">OIDC groups</label>
+              <div id="team-groups" class="entry-list"></div>
+              <p class="hint">Everyone in this identity-provider group joins automatically.</p>
+            </div>
+          </div>
+        </section>
+        <section class="form-section quota-form-section">
+          <div class="form-section-header">
+            <h3>Default quota</h3>
+            <p>Applied to members unless a user override is set. Leave a field empty for unlimited.</p>
+          </div>
+          <div class="quota-grid">
+            <label class="quota-field">
+              <span>Max workspaces</span>
+              <input id="team-quota-workspaces" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric">
+            </label>
+            <label class="quota-field">
+              <span>Max backups / workspace</span>
+              <input id="team-quota-backups" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric">
+            </label>
+            <label class="quota-field">
+              <span>CPU</span>
+              <span class="quota-input-row">
+                <input id="team-quota-cpu" type="number" min="0" step="any" placeholder="e.g. 8" inputmode="decimal">
+                <select id="team-quota-cpu-unit">
+                  <option value="cores">cores</option>
+                  <option value="m">millicores</option>
+                </select>
+              </span>
+            </label>
+            <label class="quota-field">
+              <span>Memory</span>
+              <span class="quota-input-row">
+                <input id="team-quota-memory" type="number" min="0" step="any" placeholder="e.g. 16" inputmode="decimal">
+                <select id="team-quota-memory-unit">
+                  <option value="Mi">Mi</option>
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                </select>
+              </span>
+            </label>
+            <label class="quota-field">
+              <span>Storage</span>
+              <span class="quota-input-row">
+                <input id="team-quota-storage" type="number" min="0" step="any" placeholder="e.g. 50" inputmode="decimal">
+                <select id="team-quota-storage-unit">
+                  <option value="Gi">Gi</option>
+                  <option value="Ti">Ti</option>
+                  <option value="Pi">Pi</option>
+                </select>
+              </span>
+            </label>
+          </div>
+          <div class="quota-preview-wrap">
+            <span class="quota-preview-label">Effective default</span>
+            <div id="team-quota-preview" class="quota-preview"></div>
+          </div>
+          <p id="team-quota-hint" class="hint">Leave a field empty for unlimited.</p>
+        </section>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button ghost" type="button" data-close>Cancel</button>
+        <button id="team-save" class="button primary" type="submit">Create team</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="create-dialog" class="dialog">
     <form id="create-form">

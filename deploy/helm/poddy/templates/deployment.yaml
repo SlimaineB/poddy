@@ -22,6 +22,9 @@
 {{- if and (gt (int .Values.mesh.headscale.replicas) 1) $bootstrap }}
 {{- fail "mesh.headscale.replicas > 1 is incompatible with the per-pod mesh bootstrap sidecar; set mesh.bootstrap.enabled=false and provide mesh keys" }}
 {{- end }}
+{{- if and (not .Values.mesh.derp.embedded) (not .Values.mesh.derpUrls) }}
+{{- fail "mesh.derpUrls must contain at least one DERP URL when mesh.derp.embedded=false; Headscale requires a non-empty DERP map" }}
+{{- end }}
 {{- if and (eq .Values.mesh.headscale.database.type "postgres") (not .Values.mesh.headscale.database.postgres.existingSecret) (not .Values.mesh.headscale.database.postgres.password) }}
 {{- fail "mesh.headscale.database.postgres.password or existingSecret is required for PostgreSQL" }}
 {{- end }}

@@ -994,7 +994,7 @@ func TestPreviewUsage(t *testing.T) {
 	}
 }
 
-func TestPreviewUsageIncludesAgentSidecar(t *testing.T) {
+func TestPreviewUsageExcludesPlatformSidecars(t *testing.T) {
 	m := newTestManager()
 	m.AgentURL = "http://poddy-agent.poddy.svc:8091"
 	m.AgentImage = "ghcr.io/slimaineb/poddy:test"
@@ -1002,16 +1002,15 @@ func TestPreviewUsageIncludesAgentSidecar(t *testing.T) {
 		return "agent-token", nil
 	}
 	usage, err := m.PreviewUsage(CreateRequest{
-		Name:       "preview",
-		Parameters: map[string]string{"browserVSCode": "false"},
+		Name: "preview",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.CPU.Cmp(resource.MustParse("520m")) != 0 {
+	if usage.CPU.Cmp(resource.MustParse("500m")) != 0 {
 		t.Fatalf("cpu = %s", usage.CPU.String())
 	}
-	if usage.Memory.Cmp(resource.MustParse("1088Mi")) != 0 {
+	if usage.Memory.Cmp(resource.MustParse("1Gi")) != 0 {
 		t.Fatalf("memory = %s", usage.Memory.String())
 	}
 }

@@ -80,6 +80,36 @@ func TestVolumesListAndDeleteUnassigned(t *testing.T) {
 		t.Fatalf("summary = %+v", result.Summary)
 	}
 
+	rec = request(t, s, http.MethodGet, "/api/volumes?page=1&per_page=1&assigned=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("paginated volumes status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Volumes []k8s.Volume  `json:"volumes"`
+		Summary volumeSummary `json:"summary"`
+		Total   int           `json:"total"`
+		Page    int           `json:"page"`
+		PerPage int           `json:"perPage"`
+		Pages   int           `json:"pages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Volumes) != 1 || page.Volumes[0].Name != "poddy-orphan" {
+		t.Fatalf("paginated volumes = %+v", page.Volumes)
+	}
+	if page.Total != 1 || page.Page != 1 || page.PerPage != 1 || page.Pages != 1 {
+		t.Fatalf("pagination = %+v", page)
+	}
+	if page.Summary.Total != 2 || page.Summary.Unassigned != 1 {
+		t.Fatalf("paginated summary = %+v", page.Summary)
+	}
+
+	rec = request(t, s, http.MethodGet, "/api/volumes?assigned=nope", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid assigned filter status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
 	rec = request(t, s, http.MethodDelete, "/api/volumes/poddy-app", nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("delete assigned status = %d, body = %s", rec.Code, rec.Body.String())

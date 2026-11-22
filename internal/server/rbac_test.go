@@ -358,6 +358,41 @@ func TestRBACTeams(t *testing.T) {
 	if len(teams) != 1 || len(teams[0].Members) != 1 || teams[0].Members[0] != "alice@example.com" {
 		t.Fatalf("admin teams = %+v", teams)
 	}
+	if teams[0].GroupCount != 0 {
+		t.Fatalf("group count = %d", teams[0].GroupCount)
+	}
+
+	rec = requestAs(t, s, admin, http.MethodGet, "/api/teams/backend", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("team detail = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var detail teamInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Name != "backend" || len(detail.Members) != 1 || detail.MemberCount != 1 {
+		t.Fatalf("team detail = %+v", detail)
+	}
+	if rec := requestAs(t, s, dev, http.MethodGet, "/api/teams/backend", nil); rec.Code != http.StatusOK {
+		t.Fatalf("owner team detail = %d", rec.Code)
+	}
+	if rec := requestAs(t, s, alice, http.MethodGet, "/api/teams/backend", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("member team detail = %d", rec.Code)
+	}
+
+	rec = requestAs(t, s, admin, http.MethodGet, "/api/teams?page=1&per_page=1&summary=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("summary teams = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var summary struct {
+		Items []teamInfo `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Items) != 1 || summary.Items[0].Members != nil || summary.Items[0].MemberCount != 1 {
+		t.Fatalf("summary teams = %+v", summary.Items)
+	}
 
 	rec = requestAs(t, s, admin, http.MethodPut, "/api/teams/backend", map[string]any{"members": []string{"alice@example.com", "bob@example.com"}})
 	if rec.Code != http.StatusOK {

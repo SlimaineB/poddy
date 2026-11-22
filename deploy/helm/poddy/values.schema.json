@@ -502,6 +502,20 @@
                         "verify-full"
                       ]
                     },
+                    "maxOpenConns": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "maxIdleConns": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "connMaxIdleTime": {
+                      "type": "string"
+                    },
+                    "connMaxLifetime": {
+                      "type": "string"
+                    },
                     "existingSecret": {
                       "type": "string"
                     },

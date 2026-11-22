@@ -83,7 +83,14 @@ func workspaceFromState(state WorkspaceState, phase string) Workspace {
 }
 
 func resourceRequests(spec corev1.PodSpec) (cpu, memory resource.Quantity) {
+	// Quotas and workspace summaries describe the user-controlled workspace
+	// container. Platform sidecars (agent, browser IDE, JupyterLab) are fixed
+	// overhead and must not make a 1 CPU workspace fail a 1 CPU quota.
+	hasWorkspace := hasContainerSpec(spec, ContainerName)
 	for _, container := range spec.Containers {
+		if hasWorkspace && container.Name != ContainerName {
+			continue
+		}
 		if quantity, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
 			cpu.Add(quantity)
 		}

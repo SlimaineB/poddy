@@ -14,8 +14,16 @@ function formatVolumeBytes(bytes) {
   return `${rounded} ${units[index]}`;
 }
 
-function volumeRegionParam() {
-  return state.regionFilter ? `?region=${encodeURIComponent(state.regionFilter)}` : "";
+function volumeListURL(page = state.volumePage) {
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(state.volumePerPage),
+  });
+  const query = state.volumeQuery.trim();
+  if (query) params.set("q", query);
+  if (state.volumeFilter !== "all") params.set("assigned", state.volumeFilter === "assigned" ? "true" : "false");
+  if (state.regionFilter) params.set("region", state.regionFilter);
+  return `/api/volumes?${params.toString()}`;
 }
 
 function volumeActionURL(volume, suffix = "") {
@@ -32,26 +40,50 @@ function openVolumes() {
 }
 
 async function loadVolumes({ silent = false } = {}) {
+  const request = ++state.volumeRequest;
   if (!silent) els.volumesLoading.hidden = false;
   els.volumesRefresh.disabled = true;
   try {
-    const data = await api(`/api/volumes${volumeRegionParam()}`);
+    const data = await api(volumeListURL());
+    if (request !== state.volumeRequest) return;
     if (Array.isArray(data)) {
       state.volumes = data;
       state.volumeSummary = summarizeVolumes(data);
       state.volumeBackupEnabled = false;
+      state.volumeTotal = data.length;
+      state.volumePages = data.length ? 1 : 0;
+      state.volumePage = 1;
     } else {
       state.volumes = Array.isArray(data.volumes) ? data.volumes : [];
       state.volumeSummary = data.summary || summarizeVolumes(state.volumes);
       state.volumeBackupEnabled = Boolean(data.backup);
+      state.volumeTotal = Number(data.total) || 0;
+      state.volumePages = Number(data.pages) || 0;
+      state.volumePage = Number(data.page) || 1;
+      state.volumePerPage = Number(data.perPage) || state.volumePerPage;
     }
     renderVolumes();
+    renderVolumesPagination();
   } catch (err) {
-    toast(err.message || "Failed to load volumes.");
+    if (request === state.volumeRequest) toast(err.message || "Failed to load volumes.");
   } finally {
-    els.volumesLoading.hidden = true;
-    els.volumesRefresh.disabled = false;
+    if (request === state.volumeRequest) {
+      els.volumesLoading.hidden = true;
+      els.volumesRefresh.disabled = false;
+    }
   }
+}
+
+function renderVolumesPagination() {
+  renderPagination(els.volumesPagination, {
+    page: state.volumePage,
+    pages: state.volumePages,
+    total: state.volumeTotal,
+    summary: `${state.volumeTotal} volume${state.volumeTotal === 1 ? "" : "s"}`,
+  }, (page) => {
+    state.volumePage = page;
+    loadVolumes();
+  });
 }
 
 function summarizeVolumes(volumes) {
@@ -71,29 +103,21 @@ function summarizeVolumes(volumes) {
 }
 
 function renderVolumes() {
-  const query = state.volumeQuery.trim().toLowerCase();
-  const volumes = state.volumes.filter((volume) => {
-    if (state.volumeFilter === "assigned" && !volume.assigned) return false;
-    if (state.volumeFilter === "unassigned" && volume.assigned) return false;
-    if (!query) return true;
-    return [volume.name, volume.workspace, volume.owner, volume.region, volume.phase, volume.storageClass, volume.workspacePhase]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
+  const volumes = state.volumes;
+  const filtering = Boolean(state.volumeQuery.trim()) || state.volumeFilter !== "all";
 
   renderVolumeSummary();
   els.volumesBackupHint.hidden = state.volumeBackupEnabled;
   els.volumesBackupHint.textContent = state.volumeBackupEnabled
     ? ""
     : "Volume backups are not configured for this deployment. Set backup.enabled and S3 credentials on each region release to enable them.";
-  els.volumesCount.textContent = `${volumes.length} volume${volumes.length === 1 ? "" : "s"}`;
+  els.volumesCount.textContent = `${state.volumeTotal} volume${state.volumeTotal === 1 ? "" : "s"}`;
   els.volumesList.replaceChildren();
   els.volumesEmpty.hidden = volumes.length > 0;
   els.volumesListWrap.hidden = volumes.length === 0;
 
   if (!volumes.length) {
-    const summary = state.volumeSummary || {};
-    if (Number(summary.total) > 0) {
+    if (filtering) {
       els.volumesEmpty.querySelector("h2").textContent = "No volumes match this filter";
       els.volumesEmpty.querySelector("p").textContent = "Try another search or filter.";
     } else {
@@ -567,19 +591,23 @@ async function confirmVolumeDelete() {
 els.manageVolumes.addEventListener("click", openVolumes);
 els.volumesBack.addEventListener("click", () => showView("workspaces"));
 els.volumesRefresh.addEventListener("click", () => loadVolumes());
+let volumeSearchTimer = 0;
 els.volumesSearch.addEventListener("input", () => {
   state.volumeQuery = els.volumesSearch.value;
-  renderVolumes();
+  state.volumePage = 1;
+  clearTimeout(volumeSearchTimer);
+  volumeSearchTimer = setTimeout(() => loadVolumes(), 250);
 });
 document.querySelectorAll("[data-volume-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     state.volumeFilter = button.dataset.volumeFilter;
+    state.volumePage = 1;
     document.querySelectorAll("[data-volume-filter]").forEach((item) => {
       const active = item === button;
       item.classList.toggle("active", active);
       item.setAttribute("aria-pressed", String(active));
     });
-    renderVolumes();
+    loadVolumes();
   });
 });
 els.volumeBackupsRefresh.addEventListener("click", loadVolumeBackups);

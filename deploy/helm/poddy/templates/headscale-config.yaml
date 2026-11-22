@@ -51,6 +51,10 @@ data:
         name: {{ required "mesh.headscale.database.postgres.name is required for PostgreSQL" .Values.mesh.headscale.database.postgres.name | quote }}
         user: {{ required "mesh.headscale.database.postgres.user is required for PostgreSQL" .Values.mesh.headscale.database.postgres.user | quote }}
         ssl: {{ .Values.mesh.headscale.database.postgres.ssl | quote }}
+        max_open_conns: {{ .Values.mesh.headscale.database.postgres.maxOpenConns }}
+        max_idle_conns: {{ .Values.mesh.headscale.database.postgres.maxIdleConns }}
+        conn_max_idle_time: {{ .Values.mesh.headscale.database.postgres.connMaxIdleTime | quote }}
+        conn_max_lifetime: {{ .Values.mesh.headscale.database.postgres.connMaxLifetime | quote }}
     {{- else }}
     database:
       type: sqlite

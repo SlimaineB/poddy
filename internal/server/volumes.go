@@ -76,7 +76,13 @@ func (s *Server) volumes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filtered := make([]k8s.Volume, 0, len(volumes))
+	assignedFilter := strings.TrimSpace(r.URL.Query().Get("assigned"))
+	if assignedFilter != "" && assignedFilter != "true" && assignedFilter != "false" {
+		http.Error(w, "assigned must be true or false", http.StatusBadRequest)
+		return
+	}
+
+	matching := make([]k8s.Volume, 0, len(volumes))
 	summary := volumeSummary{}
 	for _, volume := range volumes {
 		if !volumeAllowed(volume, id, cfg, admin) {
@@ -85,7 +91,7 @@ func (s *Server) volumes(w http.ResponseWriter, r *http.Request) {
 		if query := searchQuery(r); query != "" && !matchesSearch(query, volume.Name, volume.Workspace, volume.Owner, volume.Region, volume.Phase, volume.StorageClass) {
 			continue
 		}
-		filtered = append(filtered, volume)
+		matching = append(matching, volume)
 		summary.Total++
 		summary.Bytes += volume.Bytes
 		if volume.Assigned {
@@ -97,10 +103,34 @@ func (s *Server) volumes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	filtered := matching
+	if assignedFilter != "" {
+		wantAssigned := assignedFilter == "true"
+		filtered = make([]k8s.Volume, 0, len(matching))
+		for _, volume := range matching {
+			if volume.Assigned == wantAssigned {
+				filtered = append(filtered, volume)
+			}
+		}
+	}
+
+	page, perPage := pageRequest(r)
+	info := pageInfo{Total: len(filtered), Page: 1, PerPage: len(filtered), Pages: 1}
+	if info.Total == 0 {
+		info.Pages = 0
+	}
+	if pagedRequest(r) {
+		filtered, info = paginate(filtered, page, perPage)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"volumes": filtered,
 		"summary": summary,
 		"backup":  backupEnabled,
+		"total":   info.Total,
+		"page":    info.Page,
+		"perPage": info.PerPage,
+		"pages":   info.Pages,
 	})
 }
 

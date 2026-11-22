@@ -28,10 +28,10 @@ it.
 
 ## Install Headscale through the chart
 
-The chart runs a single-replica Headscale server with SQLite and a PVC. It
-also runs the Headscale embedded DERP relay, so no Tailscale DERP service or
-external DERP container is required. Tailscale's public DERP map is not loaded
-by default.
+The chart defaults to a single-replica Headscale server with SQLite and a PVC.
+That is the development and small-install path. It also runs the Headscale
+embedded DERP relay, so no Tailscale DERP service or external DERP container is
+required. Tailscale's public DERP map is not loaded by default.
 
 ```yaml
 mesh:
@@ -67,6 +67,63 @@ so there is no external identity-provider dependency. Prefer `passwordHash`
 ```bash
 htpasswd -bnBC 10 "" 'change-me' | tr -d ':\n'
 ```
+
+## Production HA control plane
+
+A single Headscale replica is a single point of failure. For production, run at
+least two replicas with an external PostgreSQL database and a shared
+ReadWriteMany volume for the Headscale keys:
+
+```yaml
+mesh:
+  enabled: true
+  existingSecret: poddy-mesh
+  bootstrap:
+    enabled: false
+  derp:
+    embedded: true
+    stunPort: 30347
+    service:
+      stunNodePort: 30347
+  headscale:
+    replicas: 2
+    host: mesh.example.com
+    ingressClassName: nginx
+    tlsSecret: mesh-example-tls
+    storageClass: efs-sc
+    storageAccessMode: ReadWriteMany
+    database:
+      type: postgres
+      postgres:
+        host: headscale-db.internal
+        port: 5432
+        name: headscale
+        user: headscale
+        ssl: verify-full
+        existingSecret: poddy-headscale-db
+        passwordKey: password
+```
+
+The chart requires PostgreSQL for `replicas > 1`, rejects SQLite, rejects the
+per-pod bootstrap sidecar with multiple replicas, and refuses to render when the
+embedded DERP relay is disabled and `mesh.derpUrls` is empty. Create the mesh
+preauth keys once and store them in `mesh.existingSecret`:
+
+```bash
+kubectl -n poddy-system exec deploy/poddy-headscale -- headscale users create poddy
+kubectl -n poddy-system exec deploy/poddy-headscale -- \
+  headscale preauthkeys create --user poddy --reusable --expiration 720h
+kubectl -n poddy-system create secret generic poddy-mesh \
+  --from-literal=auth-key='tskey-auth-...' \
+  --from-literal=client-auth-key='tskey-auth-...'
+```
+
+The shared claim must contain `private.key`, `noise_private.key`, and, when the
+embedded DERP relay is enabled, `derp_server_private.key`. A `ReadWriteOnce`
+local-path volume is not multi-node HA. Back up PostgreSQL and the key claim
+together. The chart adds a PodDisruptionBudget, spreads replicas across nodes,
+and uses a zero-unavailable rolling update so a control-plane rollout keeps at
+least one ready Headscale pod.
 
 ## Create the workspace auth key
 

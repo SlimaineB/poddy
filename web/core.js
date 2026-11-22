@@ -27,6 +27,7 @@ const state = {
   groupPerPage: 20,
   groupTotal: 0,
   groupPages: 0,
+  teamQuery: "",
   teamPage: 1,
   teamPerPage: 20,
   teamTotal: 0,
@@ -82,6 +83,11 @@ const state = {
   volumeSummary: {},
   volumeQuery: "",
   volumeFilter: "all",
+  volumePage: 1,
+  volumePerPage: 25,
+  volumeTotal: 0,
+  volumePages: 0,
+  volumeRequest: 0,
   volumeBackupEnabled: false,
   volumeBackupVolume: null,
   volumeBackupRequest: 0,
@@ -298,6 +304,7 @@ const els = {
   volumesEmpty: document.getElementById("volumes-empty"),
   volumesListWrap: document.getElementById("volumes-list-wrap"),
   volumesList: document.getElementById("volumes-list"),
+  volumesPagination: document.getElementById("volumes-pagination"),
   volumeBackupsDialog: document.getElementById("volume-backups-dialog"),
   volumeBackupsTitle: document.getElementById("volume-backups-title"),
   volumeBackupsSubtitle: document.getElementById("volume-backups-subtitle"),
@@ -370,6 +377,7 @@ const els = {
   teamsView: document.getElementById("teams-view"),
   teamsBack: document.getElementById("teams-back"),
   teamsCount: document.getElementById("teams-count"),
+  teamsSearch: document.getElementById("teams-search"),
   templatesView: document.getElementById("templates-view"),
   templateDetailView: document.getElementById("template-detail-view"),
   templatesBack: document.getElementById("templates-back"),
@@ -385,6 +393,7 @@ const els = {
   accessTeams: document.getElementById("access-teams"),
   accessSave: document.getElementById("access-save"),
   teamsList: document.getElementById("teams-list"),
+  teamDialog: document.getElementById("team-dialog"),
   teamForm: document.getElementById("team-form"),
   teamFormTitle: document.getElementById("team-form-title"),
   teamName: document.getElementById("team-name"),
@@ -1160,15 +1169,40 @@ function emptyInline(message) {
   node.textContent = message;
   return node;
 }
-function createEntryList(container, { placeholder = "", addLabel = "Add", suggest = "all" } = {}) {
+function createEntryList(container, { placeholder = "", addLabel = "Add", suggest = "all", pageSize = 0, searchPlaceholder = "Filter entries" } = {}) {
   container.classList.add("entry-list");
   container.replaceChildren();
+
+  const filter = document.createElement("input");
+  filter.type = "search";
+  filter.className = "entry-filter";
+  filter.placeholder = searchPlaceholder;
+  filter.autocomplete = "off";
+  filter.spellcheck = false;
 
   const table = document.createElement("div");
   table.className = "entry-table";
   const empty = document.createElement("div");
   empty.className = "entry-empty";
   empty.textContent = "No entries yet.";
+
+  const pager = document.createElement("div");
+  pager.className = "entry-pagination";
+  pager.hidden = true;
+  const pagerInfo = document.createElement("span");
+  pagerInfo.className = "entry-pagination-info";
+  const pagerControls = document.createElement("span");
+  pagerControls.className = "entry-pagination-controls";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "button ghost small";
+  previous.textContent = "Previous";
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "button ghost small";
+  next.textContent = "Next";
+  pagerControls.append(previous, next);
+  pager.append(pagerInfo, pagerControls);
 
   const addRow = document.createElement("div");
   addRow.className = "entry-add";
@@ -1186,22 +1220,37 @@ function createEntryList(container, { placeholder = "", addLabel = "Add", sugges
   menu.className = "entry-suggestions";
   menu.hidden = true;
   addRow.append(input, addButton, menu);
-  container.append(table, addRow);
+  container.append(filter, table, pager, addRow);
 
   let values = [];
   let readOnly = false;
   let active = -1;
   let suggestions = [];
+  let page = 1;
+  let filterText = "";
 
   const clean = (value) => String(value || "").trim();
   const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const pageCount = (total) => pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+  const filteredValues = () => {
+    const query = filterText.trim().toLowerCase();
+    if (!query) return values;
+    return values.filter((value) => value.toLowerCase().includes(query));
+  };
 
   function render() {
     table.replaceChildren();
-    if (!values.length) {
+    const filtered = filteredValues();
+    const pages = pageCount(filtered.length);
+    if (page > pages) page = pages;
+    const start = pageSize > 0 ? (page - 1) * pageSize : 0;
+    const visible = pageSize > 0 ? filtered.slice(start, start + pageSize) : filtered;
+
+    if (!filtered.length) {
+      empty.textContent = values.length ? "No entries match this filter." : "No entries yet.";
       table.append(empty);
     } else {
-      values.forEach((value, index) => {
+      for (const value of visible) {
         const row = document.createElement("div");
         row.className = "entry-row";
         const text = document.createElement("span");
@@ -1213,11 +1262,20 @@ function createEntryList(container, { placeholder = "", addLabel = "Add", sugges
           remove.type = "button";
           remove.className = "button danger small";
           remove.textContent = "Remove";
-          remove.addEventListener("click", () => removeValue(index));
+          remove.addEventListener("click", () => removeValue(value));
           row.append(remove);
         }
         table.append(row);
-      });
+      }
+    }
+
+    filter.hidden = pageSize <= 0;
+    filter.disabled = readOnly;
+    pager.hidden = pageSize <= 0 || pages <= 1;
+    if (!pager.hidden) {
+      pagerInfo.textContent = `${filtered.length} ${filtered.length === 1 ? "entry" : "entries"} · page ${page} of ${pages}`;
+      previous.disabled = page <= 1;
+      next.disabled = page >= pages;
     }
     input.disabled = readOnly;
     addButton.disabled = readOnly;
@@ -1274,18 +1332,38 @@ function createEntryList(container, { placeholder = "", addLabel = "Add", sugges
     if (!value || readOnly) return;
     if (!values.some((selected) => same(selected, value))) values.push(value);
     input.value = "";
+    filterText = "";
+    filter.value = "";
+    page = 1;
     render();
     updateSuggestions();
     input.focus();
   }
 
-  function removeValue(index) {
+  function removeValue(value) {
     if (readOnly) return;
-    values.splice(index, 1);
+    values = values.filter((selected) => !same(selected, value));
     render();
     updateSuggestions();
     input.focus();
   }
+
+  filter.addEventListener("input", () => {
+    filterText = filter.value;
+    page = 1;
+    render();
+  });
+  filter.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+  previous.addEventListener("click", () => {
+    page = Math.max(1, page - 1);
+    render();
+  });
+  next.addEventListener("click", () => {
+    page = Math.min(pageCount(filteredValues().length), page + 1);
+    render();
+  });
 
   input.addEventListener("input", updateSuggestions);
   input.addEventListener("focus", updateSuggestions);
@@ -1319,6 +1397,9 @@ function createEntryList(container, { placeholder = "", addLabel = "Add", sugges
       const cleaned = clean(value);
       if (cleaned && !values.some((selected) => same(selected, cleaned))) values.push(cleaned);
     }
+    page = 1;
+    filterText = "";
+    filter.value = "";
     render();
   }
 
@@ -1339,8 +1420,8 @@ function createEntryList(container, { placeholder = "", addLabel = "Add", sugges
 const entryLists = {
   owners: createEntryList(els.accessOwners, { placeholder: "owner@example.com", addLabel: "Add owner" }),
   users: createEntryList(els.accessUsers, { placeholder: "alice@example.com", addLabel: "Add user" }),
-  teamMembers: createEntryList(els.teamMembers, { placeholder: "alice@example.com", addLabel: "Add user", suggest: "users" }),
-  teamGroups: createEntryList(els.teamGroups, { placeholder: "platform-team", addLabel: "Add group", suggest: "groups" }),
+  teamMembers: createEntryList(els.teamMembers, { placeholder: "alice@example.com", addLabel: "Add user", suggest: "users", pageSize: 25, searchPlaceholder: "Filter members" }),
+  teamGroups: createEntryList(els.teamGroups, { placeholder: "platform-team", addLabel: "Add group", suggest: "groups", pageSize: 25, searchPlaceholder: "Filter groups" }),
 };
 async function loadMe() {
   try {

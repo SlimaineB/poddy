@@ -274,6 +274,13 @@ Also log:
   leave room for at least one healthy replica during drains.
 - **Database**: use a managed or HA PostgreSQL, not a single demo pod. Size
   connections for the portal replicas.
+- **Headscale control plane**: the managed Headscale defaults to one SQLite
+  replica. For production, run at least two replicas with an external
+  PostgreSQL database and a ReadWriteMany claim for the shared Headscale keys.
+  Disable the bootstrap sidecar, create the mesh preauth keys once in
+  `mesh.existingSecret`, and keep at least one DERP entry (embedded or
+  `mesh.derpUrls`). Back up PostgreSQL and the key claim together. See
+  [Headscale mesh](mesh.md#production-ha-control-plane).
 - **Kubernetes client**: the default is 50 QPS / 100 burst. Raise
   `kubernetes.qps`/`kubernetes.burst` if many users open terminals or browser
   IDEs at once.

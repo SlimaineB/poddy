@@ -417,15 +417,21 @@ replicas.
 
 ## Headscale HA and PostgreSQL
 
-The managed Headscale control plane defaults to SQLite and one replica. For a
-production control plane, point it at an external PostgreSQL database and use a
-shared ReadWriteMany volume for the Headscale private keys:
+The managed Headscale control plane defaults to SQLite and one replica. That is
+fine for development, but it is not a production HA configuration: SQLite is
+single-writer and the default `ReadWriteOnce` claim cannot be mounted by two
+pods on different nodes.
+
+For production, use the complete example in
+[`examples/values-production-ha.yaml`](examples/values-production-ha.yaml). The
+minimum HA settings are:
 
 ```yaml
 mesh:
   headscale:
     replicas: 2
     storageAccessMode: ReadWriteMany
+    storageClass: efs-sc
     database:
       type: postgres
       postgres:
@@ -433,21 +439,61 @@ mesh:
         port: 5432
         name: headscale
         user: headscale
-        ssl: require
-        existingSecret: headscale-db
+        ssl: verify-full
+        existingSecret: poddy-headscale-db
         passwordKey: password
   bootstrap:
     enabled: false
   existingSecret: poddy-mesh
 ```
 
-Multi-replica Headscale requires a shared RWX claim (or `existingClaim`) for
-`private.key`, `noise_private.key`, and `derp_server_private.key`. It also
-requires the per-pod mesh bootstrap sidecar to be disabled; create the mesh
-preauth keys once and store them in `mesh.existingSecret`. Back up the
-PostgreSQL database and the private-key claim together. For a fully managed
-control plane, disable the in-chart Headscale and set `mesh.controlUrl` to an
-external Tailscale/Headscale endpoint.
+What the chart does for HA:
+
+- runs `replicas` Headscale pods behind one Service and Ingress;
+- rolls them with `maxUnavailable: 0` and `maxSurge: 1`;
+- spreads pods across nodes and creates a PodDisruptionBudget with
+  `minAvailable: 1`;
+- uses the external PostgreSQL database for all Headscale state;
+- keeps the Headscale private keys on the shared claim;
+- reads `/health` for readiness but uses a TCP liveness probe so a database
+  failover does not restart otherwise healthy pods;
+- sizes the PostgreSQL pool with `maxOpenConns`, `maxIdleConns`,
+  `connMaxIdleTime`, and `connMaxLifetime`.
+
+Production requirements:
+
+1. **PostgreSQL.** Use a managed or HA PostgreSQL 13+ instance with automated
+   backups and point-of-recovery tests. Set `ssl: verify-full` when the server
+   certificate can be verified. The chart refuses `replicas > 1` with SQLite.
+2. **Shared keys.** The claim must be `ReadWriteMany` on a storage class that
+   supports multi-node writers (for example EFS, CephFS, or Azure Files). If
+   your storage class cannot do that, create an `existingClaim` backed by RWX
+   storage. A `ReadWriteOnce` local-path volume only works on a single node and
+   is not production HA.
+3. **Stable mesh keys.** Disable `mesh.bootstrap.enabled` for multi-replica
+   Headscale: each replica would otherwise race to create preauth keys. Create
+   the keys once and store them in `mesh.existingSecret`:
+
+   ```bash
+   kubectl -n poddy-system exec deploy/poddy-headscale -- headscale users create poddy
+   kubectl -n poddy-system exec deploy/poddy-headscale -- \
+     headscale preauthkeys create --user poddy --reusable --expiration 720h
+   kubectl -n poddy-system create secret generic poddy-mesh \
+     --from-literal=auth-key='tskey-auth-...' \
+     --from-literal=client-auth-key='tskey-auth-...'
+   ```
+
+4. **DERP.** Headscale requires at least one DERP entry. With
+   `mesh.derp.embedded=true` the chart runs the embedded DERP relay; expose its
+   STUN UDP port through the Service or a LoadBalancer. If you disable the
+   embedded relay, set `mesh.derpUrls` to one or more reachable DERP map URLs.
+   The chart fails rendering if both are empty.
+5. **Backups.** Back up the PostgreSQL database and the RWX claim together.
+   The claim contains the Headscale Noise key, private key, and DERP key.
+
+Do not scale Headscale and the per-pod bootstrap sidecar together; the chart
+blocks that combination. For a fully managed control plane, disable the in-chart
+Headscale and set `mesh.controlUrl` to an external Tailscale/Headscale endpoint.
 
 ## Single public IP and TLS endpoint
 

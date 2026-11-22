@@ -106,8 +106,11 @@ Quotas are optional per-user budgets stored in PostgreSQL `user_quotas` and
 a mirror. The portal checks quotas when a workspace is created and when a volume
 backup is created. Usage includes every workspace owned by the user, running or
 stopped, plus the workspace being created. CPU, memory, and storage are summed
-from the rendered resource requests and PVC size. `maxBackups` caps the number
-of backups kept for the workspace volume being backed up.
+from the `workspace` container requests and the PVC size. Platform sidecars
+(the agent, browser IDE, and JupyterLab) are fixed overhead and are **not**
+charged against the user's quota, so a 1 CPU workspace fits a 1 CPU quota.
+`maxBackups` caps the number of backups kept for the workspace volume being
+backed up.
 
 Team quota (set on the team form or `PUT /api/teams/{team}`):
 
@@ -158,11 +161,18 @@ Rules:
 `email:<email>`, matched case-insensitively. The wildcard `*` is not allowed as
 a user-quota key. Sending an empty quota removes the override.
 
-Admins manage quotas in the UI: **Teams** has quota fields on the team form, and
+Admins manage quotas in the UI: **Teams** opens a searchable, paginated table;
+select **New team** or **Edit** to open the team dialog with quota fields.
 **Users** has **Set quota** / **Edit quota** actions. Both write to PostgreSQL;
 the RBAC ConfigMap is a mirror. The workspace details page shows the owner's
 effective quota, usage across all their workspaces, the current workspace
 request, and which user override or team supplied each limit.
+
+The Teams table uses the paginated API (`page`, `per_page`, `q`, and
+`summary=1`). `GET /api/teams/{name}` returns one team with its full member list
+for editing, so large teams do not need to load every member in the list view.
+The user and OIDC-group pickers inside the dialog filter and paginate their
+entries (25 per page) as well.
 
 ## Workspace ownership
 
@@ -187,7 +197,7 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 
 - **Users** (admins and owners): dedicated page listing known users and OIDC groups, with search. Admins also see which Poddy teams each identity belongs to and can set or edit per-user quotas; owners only see the directory.
 - **Audit** (admins and auditors): read-only page backed by PostgreSQL. Search by actor/action/target/workspace/details, filter by outcome and date, and inspect structured event details. The database is required outside region-manager mode, so the page is available to admins and auditors.
-- **Teams** (admins): a Poddy team is a quota/access group, distinct from an OIDC group. On the team page, add **users** directly and/or attach **OIDC groups** so their members join automatically. Set quota defaults, then delete teams as needed. Rename by creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
+- **Teams** (admins): a Poddy team is a quota/access group, distinct from an OIDC group. The team page is a searchable, paginated table with member and OIDC-group counts, default quota chips, and row actions. **New team** / **Edit** opens a dialog where you add **users** directly and/or attach **OIDC groups** so their members join automatically, then set quota defaults. The member and group pickers have their own filter and pagination. Delete teams as needed; renaming means creating a new team and moving its members. Deleting a team removes it from every template; if a template's access becomes empty (no owners/users/teams), the entry is deleted and the template becomes public.
 - **Templates** (admins and owners): opens a full-page list of the templates you can manage. Search filters by template name, description, image, or version; select a template to edit access.
 - **Template access**: owners, users, and team members are displayed as table rows with **Add** / **Remove** buttons. The add field autocompletes known users and groups from `GET /api/users`; free-form emails, `user:` and `group:` entries are still accepted.
 - Workspace cards show the owner badge to global admins.
@@ -203,13 +213,14 @@ Trusted local mode (no token, no OIDC) acts as a global admin. A shared token ha
 | `GET /api/templates/{name}/access` | admin or owner | current owners/users/teams |
 | `PUT /api/templates/{name}/access` | admin or owner | body `{"owners":[],"users":[],"teams":[]}` |
 | `GET /api/users` | admin or template owner | known users and groups for the Users page and autocomplete |
-| `GET /api/teams` | admin or template owner | team names; members only for admins |
+| `GET /api/teams` | admin or template owner | paginated teams (`page`, `per_page`, `q`); add `summary=1` to omit members; members only for admins |
+| `GET /api/teams/{name}` | admin or template owner | one team with its full member list and quota; members only for admins |
 | `PUT /api/teams/{name}` | admin | body `{"members":[],"quota":{"maxWorkspaces":5,"maxBackups":10,"cpu":"4","memory":"8Gi","storage":"50Gi"}}`; omit `quota` to preserve, send `{}` to clear |
 | `DELETE /api/teams/{name}` | admin | delete and detach from templates |
 | `GET /api/user-quotas` | admin | list explicit user quota overrides |
 | `PUT /api/user-quotas/{identity}` | admin | set an override; `{}` or all-empty fields remove it |
 | `DELETE /api/user-quotas/{identity}` | admin | remove an override |
-| `GET /api/volumes` | authenticated | volumes, summary, and backup availability; filtered by ownership for non-admins |
+| `GET /api/volumes` | authenticated | paginated volumes (`page`, `per_page`, `q`, `assigned`), summary, and backup availability; filtered by ownership for non-admins |
 | `DELETE /api/volumes/{name}` | admin | delete an unassigned volume |
 | `GET/POST /api/volumes/{name}/backups` | owner or admin | list or create backups for a volume |
 | `DELETE /api/volumes/{name}/backups` | owner or admin | delete a backup object |

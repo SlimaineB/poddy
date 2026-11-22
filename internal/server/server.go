@@ -177,6 +177,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/user-quotas/{identity}", s.updateUserQuota)
 	mux.HandleFunc("DELETE /api/user-quotas/{identity}", s.deleteUserQuota)
 	mux.HandleFunc("GET /api/teams", s.teams)
+	mux.HandleFunc("GET /api/teams/{name}", s.team)
 	mux.HandleFunc("PUT /api/teams/{name}", s.updateTeam)
 	mux.HandleFunc("DELETE /api/teams/{name}", s.deleteTeam)
 	mux.HandleFunc("GET /api/volumes", s.volumes)

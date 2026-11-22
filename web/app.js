@@ -226,6 +226,15 @@ els.envSecret.addEventListener("change", () => {
 els.envRefresh.addEventListener("click", loadEnvironment);
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
+let teamSearchTimer = 0;
+els.teamsSearch.addEventListener("input", () => {
+  state.teamQuery = els.teamsSearch.value;
+  state.teamPage = 1;
+  clearTimeout(teamSearchTimer);
+  teamSearchTimer = setTimeout(() => {
+    refreshTeams({ paginated: true, page: 1, summary: true }).then(renderTeamsPagination);
+  }, 250);
+});
 for (const input of Object.values(quotaInputs("team"))) input.addEventListener("input", renderTeamQuotaPreview);
 for (const input of Object.values(quotaInputs("user"))) input.addEventListener("input", updateUserQuotaPreview);
 els.quotaForm.addEventListener("submit", saveUserQuota);

@@ -1,0 +1,104 @@
+# Production HA baseline for the poddy Helm chart.
+#
+# This example assumes:
+# - an external, backed-up PostgreSQL 13+ instance for the portal and Headscale;
+# - a StorageClass that can serve ReadWriteMany for the shared Headscale keys;
+# - an ingress controller that supports WebSocket upgrades and TLS;
+# - Secrets already created in the release namespace (see README).
+#
+# Replace every example hostname and Secret name before installing.
+
+replicaCount: 3
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: poddy-portal
+        app.kubernetes.io/instance: poddy
+
+auth:
+  existingSecret: poddy-auth
+
+database:
+  existingSecret: poddy-database
+
+oidc:
+  enabled: true
+  issuer: https://id.example.com
+  clientId: poddy
+  existingSecret: poddy-oidc
+
+desktop:
+  existingSecret: poddy-desktop
+
+externalAuth:
+  existingSecret: poddy-external-auth
+
+ssh:
+  existingHostKeySecret: poddy-host-key
+  ca:
+    existingSecret: poddy-ssh-ca
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: poddy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: poddy-example-tls
+      hosts:
+        - poddy.example.com
+
+mesh:
+  enabled: true
+  existingSecret: poddy-mesh
+  bootstrap:
+    enabled: false
+  derp:
+    embedded: true
+    stunPort: 30347
+    service:
+      stunNodePort: 30347
+  headscale:
+    enabled: true
+    replicas: 2
+    host: mesh.example.com
+    ingressClassName: nginx
+    tlsSecret: mesh-example-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+    storageClass: efs-sc
+    storageAccessMode: ReadWriteMany
+    storage: 5Gi
+    service:
+      type: NodePort
+      httpNodePort: 30080
+    database:
+      type: postgres
+      postgres:
+        host: poddy-db.internal
+        port: 5432
+        name: headscale
+        user: headscale
+        ssl: verify-full
+        maxOpenConns: 20
+        maxIdleConns: 10
+        connMaxIdleTime: 5m
+        connMaxLifetime: 30m
+        existingSecret: poddy-headscale-db
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi

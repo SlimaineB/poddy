@@ -14,7 +14,18 @@ type teamInfo struct {
 	Name        string      `json:"name"`
 	Members     []string    `json:"members,omitempty"`
 	MemberCount int         `json:"memberCount"`
+	GroupCount  int         `json:"groupCount"`
 	Quota       *rbac.Quota `json:"quota,omitempty"`
+}
+
+func teamGroups(members []string) int {
+	count := 0
+	for _, member := range members {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(member)), "group:") {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
@@ -49,14 +60,20 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	query := searchQuery(r)
+	summaryOnly := r.URL.Query().Get("summary") == "1"
 	out := make([]teamInfo, 0, len(names))
 	for _, name := range names {
 		team := cfg.Teams[name]
 		if query != "" && !matchesSearch(query, append([]string{name}, team.Members...)...) {
 			continue
 		}
-		info := teamInfo{Name: name, MemberCount: len(team.Members), Quota: quotaPtr(teamQuotas[name])}
-		if admin {
+		info := teamInfo{
+			Name:        name,
+			MemberCount: len(team.Members),
+			GroupCount:  teamGroups(team.Members),
+			Quota:       quotaPtr(teamQuotas[name]),
+		}
+		if admin && !summaryOnly {
 			info.Members = nonNil(team.Members)
 		}
 		out = append(out, info)
@@ -67,6 +84,54 @@ func (s *Server) teams(w http.ResponseWriter, r *http.Request) {
 	}
 	page, perPage := pageRequest(r)
 	writeJSON(w, http.StatusOK, paginateResult(out, page, perPage))
+}
+
+func (s *Server) team(w http.ResponseWriter, r *http.Request) {
+	if s.RBAC == nil {
+		http.Error(w, "RBAC is not configured", http.StatusNotImplemented)
+		return
+	}
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	admin := s.isAdmin(id, cfg)
+	if !admin && len(cfg.OwnedTemplates(rbacIdentity(id.User))) == 0 {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	name := r.PathValue("name")
+	team, ok := cfg.Teams[name]
+	if !ok {
+		http.Error(w, "team not found", http.StatusNotFound)
+		return
+	}
+	teamQuotas := map[string]rbac.Quota{}
+	if s.Quota != nil {
+		teamQuotas, err = s.Quota.TeamQuotas(r.Context())
+		if err != nil {
+			http.Error(w, "quota: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	info := teamInfo{
+		Name:        name,
+		MemberCount: len(team.Members),
+		GroupCount:  teamGroups(team.Members),
+		Quota:       quotaPtr(teamQuotas[name]),
+	}
+	if admin {
+		info.Members = nonNil(team.Members)
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
