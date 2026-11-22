@@ -76,7 +76,7 @@ func runMesh(ctx context.Context, workspace, controlURL, authKey, stateDir, caCe
 		AuthKey:    authKey,
 		Hostname:   mesh.WorkspaceHostname(workspace),
 		StateDir:   stateDir,
-		Ephemeral:  true,
+		Ephemeral:  false,
 		CACert:     caCert,
 	})
 	if err != nil {

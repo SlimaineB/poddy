@@ -402,6 +402,11 @@ mesh:
   authKey: ""
   existingSecret: ""
   authKeyKey: auth-key
+  # Optional reusable ephemeral key for desktop SSH clients. Create it with:
+  # headscale preauthkeys create --user poddy --reusable --ephemeral --expiration 720h
+  # Without it, every SSH invocation creates a persistent Headscale node.
+  clientAuthKey: ""
+  clientAuthKeyKey: client-auth-key
   # Optional Secret containing the CA bundle for the mesh control/DERP TLS
   # certificate. Clients receive it so private certificates are trusted.
   caSecret: ""

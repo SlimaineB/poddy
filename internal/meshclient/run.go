@@ -59,6 +59,14 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 		}
 		stateDir = filepath.Join(cache, "poddy", "mesh", mesh.SanitizeHostname(cfg.Workspace))
 	}
+	// Never share tsnet state between concurrent ProxyCommand invocations. Each
+	// one gets a throwaway node, and a stale lock from a previous attempt must
+	// not block the next connection.
+	stateDir = filepath.Join(stateDir, hostname)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return fmt.Errorf("mesh state directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(stateDir) }()
 	port := cfg.Port
 	if port == 0 {
 		port = 22
@@ -67,7 +75,7 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	if os.Getenv("TSNET_FORCE_LOGIN") == "" {
 		os.Setenv("TSNET_FORCE_LOGIN", "1")
 	}
-	startCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	startCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	node, err := mesh.Start(startCtx, mesh.Config{
 		ControlURL: cfg.ControlURL,
 		AuthKey:    cfg.AuthKey,

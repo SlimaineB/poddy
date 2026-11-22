@@ -229,8 +229,17 @@ func TestCreateUsesMeshAgentSidecarWithoutToken(t *testing.T) {
 	if got := envValue(pod, AgentContainerName, envMeshAuthKey); got != m.MeshAuthKey {
 		t.Fatalf("mesh auth key = %q", got)
 	}
-	if got := envValue(pod, AgentContainerName, envMeshStateDir); got != agentStateMountPath+"/tsnet" {
+	if got := envValue(pod, AgentContainerName, envMeshStateDir); got != agentMeshMountPath+"/.poddy/tsnet" {
 		t.Fatalf("mesh state dir = %q", got)
+	}
+	meshMountFound := false
+	for _, mount := range agent.VolumeMounts {
+		if mount.MountPath == agentMeshMountPath && mount.Name == workspaceVolumeName {
+			meshMountFound = true
+		}
+	}
+	if !meshMountFound {
+		t.Fatalf("agent mesh state is not persisted on the workspace volume: %+v", agent.VolumeMounts)
 	}
 	if got := envValue(pod, AgentContainerName, envAgentToken); got != "" {
 		t.Fatalf("agent token should not be set: %q", got)

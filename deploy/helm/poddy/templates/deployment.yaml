@@ -511,7 +511,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "poddy.meshSecretName" . }}
-                  key: {{ .Values.mesh.authKeyKey }}
+                  key: {{ .Values.mesh.clientAuthKeyKey | default .Values.mesh.authKeyKey }}
             {{- with .Values.mesh.caSecret }}
             - name: PODDY_MESH_CA_FILE
               value: /etc/poddy-mesh-ca/ca.crt

@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -55,10 +56,14 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 			return nil, err
 		}
 	}
+	if strings.TrimSpace(cfg.ControlURL) != "" {
+		preferIPv4Control(ctx, cfg.ControlURL)
+	}
 	dir := strings.TrimSpace(cfg.StateDir)
 	if dir == "" {
 		dir = "/tmp/poddy-mesh/" + hostname
 	}
+	forceLoginForNewState(dir)
 	port := uint16(41641)
 	if cfg.RandomPort {
 		port = 0
@@ -83,6 +88,19 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 		return nil, fmt.Errorf("mesh: join tailnet: %w", err)
 	}
 	return &Node{srv: srv, peers: map[string]string{}}, nil
+}
+
+// forceLoginForNewState makes tsnet enroll with the provided auth key on a
+// fresh state directory. Without this, a first run stays in NoState, ignores
+// the key and waits for an interactive login.
+func forceLoginForNewState(dir string) {
+	state, err := os.Stat(filepath.Join(dir, "tailscaled.state"))
+	if err == nil && state.Size() > 0 {
+		return
+	}
+	if os.Getenv("TSNET_FORCE_LOGIN") == "" {
+		os.Setenv("TSNET_FORCE_LOGIN", "1")
+	}
 }
 
 func (n *Node) Close() error {
@@ -165,21 +183,63 @@ func (n *Node) peerState(ctx context.Context, prefix string) (ip string, online 
 	if err != nil {
 		return "", false, false, err
 	}
-	if status == nil {
-		return "", false, false, fmt.Errorf("mesh: status is empty")
+	peer := selectPeer(status, prefix)
+	if peer == nil {
+		return "", false, false, nil
 	}
+	return peerIP(peer), peer.Online, true, nil
+}
+
+// selectPeer returns the best peer matching prefix. An exact hostname match is
+// preferred over a suffixed one, an online node over a stale offline duplicate,
+// a node with a direct path over a relay-only one, and finally the most recently
+// seen node. Headscale can keep several nodes with the same hostname after a
+// workspace restarts, so picking the first map entry is not reliable.
+func selectPeer(status *ipnstate.Status, prefix string) *ipnstate.PeerStatus {
+	if status == nil {
+		return nil
+	}
+	var exact, prefixed *ipnstate.PeerStatus
 	for _, peer := range status.Peer {
 		if peer == nil {
 			continue
 		}
 		for _, name := range []string{peer.HostName, strings.TrimSuffix(peer.DNSName, ".")} {
 			name = strings.ToLower(name)
-			if name == prefix || strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+".") {
-				return peerIP(peer), peer.Online, true, nil
+			switch {
+			case name == prefix:
+				exact = betterPeer(exact, peer)
+			case strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+"."):
+				prefixed = betterPeer(prefixed, peer)
 			}
 		}
 	}
-	return "", false, false, nil
+	if exact != nil {
+		return exact
+	}
+	return prefixed
+}
+
+func betterPeer(current, candidate *ipnstate.PeerStatus) *ipnstate.PeerStatus {
+	if current == nil {
+		return candidate
+	}
+	if candidate.Online != current.Online {
+		if candidate.Online {
+			return candidate
+		}
+		return current
+	}
+	if (candidate.CurAddr != "") != (current.CurAddr != "") {
+		if candidate.CurAddr != "" {
+			return candidate
+		}
+		return current
+	}
+	if candidate.LastSeen.After(current.LastSeen) {
+		return candidate
+	}
+	return current
 }
 
 func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {
@@ -191,23 +251,14 @@ func (n *Node) findPeerIP(ctx context.Context, prefix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if status == nil {
-		return "", fmt.Errorf("mesh: status is empty")
+	peer := selectPeer(status, prefix)
+	if peer == nil || !peer.Online {
+		return "", fmt.Errorf("mesh: workspace peer %q not found", prefix)
 	}
-	for _, peer := range status.Peer {
-		if peer == nil || !peer.Online {
-			continue
-		}
-		for _, name := range []string{peer.HostName, strings.TrimSuffix(peer.DNSName, ".")} {
-			name = strings.ToLower(name)
-			if name == prefix || strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+".") {
-				if ip := peerIP(peer); ip != "" {
-					return ip, nil
-				}
-			}
-		}
+	if ip := peerIP(peer); ip != "" {
+		return ip, nil
 	}
-	return "", fmt.Errorf("mesh: workspace peer %q not found", prefix)
+	return "", fmt.Errorf("mesh: workspace peer %q has no IP", prefix)
 }
 
 func (n *Node) DialRegion(ctx context.Context, regionName string, port int) (net.Conn, error) {
