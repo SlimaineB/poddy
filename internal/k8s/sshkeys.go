@@ -44,11 +44,11 @@ func (m *Manager) SyncSSHKeysForOwner(ctx context.Context, owner string) error {
 // workspace. Desktop connections call this so a newly enrolled key reaches the
 // exact workspace being opened, even if an owner-wide sync raced creation.
 func (m *Manager) SyncSSHKeysForWorkspace(ctx context.Context, name string) error {
-	pod, err := m.Get(ctx, name)
+	workspace, err := m.GetWorkspace(ctx, name)
 	if err != nil {
 		return err
 	}
-	return m.ensureSSHKeysSecret(ctx, name, Owner(pod))
+	return m.ensureSSHKeysSecret(ctx, workspace.Name, workspace.Owner)
 }
 
 func (m *Manager) applySSHKeys(ctx context.Context, pod *corev1.Pod, workspace, owner string) error {

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"poddy/internal/k8s"
 	"poddy/internal/mesh"
 	"poddy/internal/userkeys"
@@ -104,6 +106,7 @@ func (s *Server) desktop(w http.ResponseWriter, r *http.Request) {
 	}
 	s.syncOwnerSSHKeys(r.Context(), owner)
 	s.syncWorkspaceSSHKeys(r.Context(), name)
+	log.Printf("desktop issue workspace=%s owner=%s user=%s admin=%v mesh=%v", name, owner, ownerID(id.User), admin, s.MeshEnabled)
 	if s.MeshEnabled {
 		sshHost = mesh.WorkspaceHostname(name)
 		sshPort = "22"
@@ -212,11 +215,28 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	s.syncOwnerSSHKeys(r.Context(), claims.Owner)
 	s.syncWorkspaceSSHKeys(r.Context(), claims.Workspace)
-	if duplicate {
-		w.WriteHeader(http.StatusNoContent)
-		return
+	resp := map[string]any{"id": key.ID, "fingerprint": key.Fingerprint}
+	if !duplicate {
+		resp["added"] = true
 	}
-	writeJSON(w, http.StatusCreated, sshKeyInfoFor(key))
+	log.Printf("desktop enroll debug workspace=%s sshCA=%v publicKeyPrefix=%q", claims.Workspace, s.SSHCA != nil, strings.TrimSpace(req.PublicKey)[:min(40, len(strings.TrimSpace(req.PublicKey)))])
+	if s.SSHCA != nil {
+		pub, _, _, _, parseErr := ssh.ParseAuthorizedKey([]byte(strings.TrimSpace(req.PublicKey)))
+		log.Printf("desktop enroll debug parse workspace=%s err=%v pub=%v", claims.Workspace, parseErr, pub != nil)
+		if parseErr == nil {
+			ttl := s.SSHCertTTL
+			if ttl <= 0 {
+				ttl = 15 * time.Minute
+			}
+			cert, signErr := s.SSHCA.Sign(pub, "dev", claims.Owner, claims.Workspace, false, ttl)
+			log.Printf("desktop enroll debug sign workspace=%s err=%v cert=%v", claims.Workspace, signErr, cert != nil)
+			if signErr == nil {
+				resp["certificate"] = string(ssh.MarshalAuthorizedKey(cert))
+			}
+		}
+	}
+	log.Printf("desktop enroll workspace=%s owner=%s duplicate=%v hasCert=%v", claims.Workspace, claims.Owner, duplicate, resp["certificate"] != nil)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) syncOwnerSSHKeys(ctx context.Context, owner string) {

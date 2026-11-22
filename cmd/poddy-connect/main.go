@@ -25,6 +25,9 @@ import (
 )
 
 func main() {
+	// Some antivirus web shields set SSLKEYLOGFILE to a named pipe to MITM TLS.
+	// That breaks tsnet/DERP and makes the helper write keylog warnings; clear it.
+	os.Unsetenv("SSLKEYLOGFILE")
 	log.SetFlags(0)
 	log.SetPrefix("poddy-connect: ")
 	if err := run(); err != nil {

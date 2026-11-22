@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +48,9 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	if hostname == "" {
 		hostname = "poddy-client-" + mesh.SanitizeHostname(cfg.Workspace)
 	}
+	// Each ProxyCommand invocation gets its own ephemeral node so repeated
+	// attempts do not reuse the same Headscale node and flap map sessions.
+	hostname = mesh.SanitizeHostname(hostname + "-" + strconv.Itoa(os.Getpid()))
 	stateDir := strings.TrimSpace(cfg.StateDir)
 	if stateDir == "" {
 		cache, err := os.UserCacheDir()
@@ -60,13 +64,16 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 		port = 22
 	}
 	netns.SetEnabled(false)
-	startCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	if os.Getenv("TSNET_FORCE_LOGIN") == "" {
+		os.Setenv("TSNET_FORCE_LOGIN", "1")
+	}
+	startCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	node, err := mesh.Start(startCtx, mesh.Config{
 		ControlURL: cfg.ControlURL,
 		AuthKey:    cfg.AuthKey,
 		Hostname:   hostname,
 		StateDir:   stateDir,
-		Ephemeral:  false,
+		Ephemeral:  true,
 		Silent:     os.Getenv("PODDY_MESH_DEBUG") == "",
 		RandomPort: true,
 		CACert:     caCert,
@@ -86,11 +93,15 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	}
 	defer conn.Close()
 
-	done := make(chan error, 2)
-	go func() { _, err := io.Copy(stdout, conn); done <- err }()
-	go func() { _, err := io.Copy(conn, stdin); done <- err }()
+	// Remote-SSH pipes a startup script on stdin and then keeps the session open
+	// for dynamic forwarding (-D). A stdin EOF is therefore normal half-close,
+	// not a reason to close the whole proxy tunnel: only stdout ending or the
+	// context closing should terminate the bridge.
+	stdoutDone := make(chan error, 1)
+	go func() { _, err := io.Copy(stdout, conn); stdoutDone <- err }()
+	go func() { _, _ = io.Copy(conn, stdin) }()
 	select {
-	case err := <-done:
+	case err := <-stdoutDone:
 		if err == nil || errors.Is(err, io.EOF) {
 			return nil
 		}

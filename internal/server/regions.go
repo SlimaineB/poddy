@@ -160,17 +160,19 @@ func (s *Server) syncWorkspaceSSHKeys(ctx context.Context, name string) {
 	if strings.TrimSpace(name) == "" {
 		return
 	}
+	// In region mode the hub still has a local Workspaces manager for the legacy
+	// namespace, so do not let it shadow region workspaces: sync through regions
+	// first when regions are configured.
+	if s.Regions != nil {
+		for _, problem := range s.Regions.SyncWorkspaceSSHKeys(ctx, name, s.hubAdminIdentity()) {
+			log.Printf("desktop: sync workspace %s: %v", name, problem)
+		}
+		return
+	}
 	if s.Workspaces != nil {
 		if err := s.Workspaces.SyncSSHKeysForWorkspace(ctx, name); err != nil {
 			log.Printf("desktop: sync workspace %s: %v", name, err)
 		}
-		return
-	}
-	if s.Regions == nil {
-		return
-	}
-	for _, problem := range s.Regions.SyncWorkspaceSSHKeys(ctx, name, s.hubAdminIdentity()) {
-		log.Printf("desktop: sync workspace %s: %v", name, problem)
 	}
 }
 

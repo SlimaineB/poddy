@@ -45,10 +45,21 @@ async function handleUri(context, uri) {
   const useMesh = payload.mesh || payload.transport === "mesh";
   const mesh = useMesh && payload.transport !== "portal" ? await fetchMesh(payload) : null;
   const alias = await writeSSHConfig(payload, keyPath, context, mesh);
-  await postJSON(`${payload.api.replace(/\/$/, "")}/api/desktop/enroll`, {
+  const enrollText = await postJSON(`${payload.api.replace(/\/$/, "")}/api/desktop/enroll`, {
     ticket: payload.ticket,
     publicKey,
   });
+  try {
+    const enroll = JSON.parse(enrollText);
+    console.log(`[poddy] enroll keys=${Object.keys(enroll || {}).join(",")} hasCert=${Boolean(enroll && enroll.certificate)} certLen=${enroll && enroll.certificate ? enroll.certificate.length : 0}`);
+    if (enroll && enroll.certificate) {
+      const certPath = `${keyPath}-cert.pub`;
+      fs.writeFileSync(certPath, enroll.certificate.endsWith("\n") ? enroll.certificate : `${enroll.certificate}\n`, { mode: 0o644 });
+      console.log(`[poddy] wrote ${certPath}`);
+    }
+  } catch (err) {
+    console.log(`[poddy] enroll parse error: ${err && err.message}`);
+  }
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Poddy: connecting to ${payload.workspace}` },
