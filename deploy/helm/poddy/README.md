@@ -449,6 +449,31 @@ PostgreSQL database and the private-key claim together. For a fully managed
 control plane, disable the in-chart Headscale and set `mesh.controlUrl` to an
 external Tailscale/Headscale endpoint.
 
+## Single public IP and TLS endpoint
+
+Portal and Headscale can share the same load balancer, IP, and TCP port while
+keeping separate hostnames:
+
+```yaml
+ingress:
+  enabled: true
+  hosts:
+    - host: poddy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+mesh:
+  enabled: true
+  headscale:
+    host: mesh.example.com
+```
+
+Point both DNS names at the same ingress address. Keep two hostnames instead of
+serving Headscale under a path such as `/hs`: the Tailscale client hardcodes
+`/ts2021` at the root of the control server, and Headscale does not support an
+HTTP path prefix. Sharing the load balancer still gives users one public IP and
+one TLS port. STUN continues to use its own UDP port.
+
 ## Multi-region
 
 Use one central hub and one `regionManager.enabled=true` release per region. The
