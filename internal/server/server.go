@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /api/me", s.me)
 	mux.HandleFunc("GET /api/me/quota", s.myQuota)
+	mux.HandleFunc("GET /api/access/requests", s.accessRequests)
 	mux.HandleFunc("GET /api/me/ssh-keys", s.listSSHKeys)
 	mux.HandleFunc("POST /api/me/ssh-keys", s.addSSHKey)
 	mux.HandleFunc("DELETE /api/me/ssh-keys/{id}", s.removeSSHKey)

@@ -219,7 +219,12 @@ async function saveTeam(event) {
   }
 }
 async function deleteTeam(team) {
-  if (!window.confirm(`Delete team "${team.name}"? It will be removed from every template.`)) return;
+  const confirmed = await confirmAction({
+    title: "Delete team",
+    message: `Delete team "${team.name}"? It will be removed from every template and quota assignment.`,
+    confirmLabel: "Delete team",
+  });
+  if (!confirmed) return;
   try {
     await api(`/api/teams/${encodeURIComponent(team.name)}`, { method: "DELETE" });
     toast(`Team ${team.name} deleted.`, "success");

@@ -438,3 +438,76 @@ async function saveUserQuota(event) {
     els.quotaSave.innerHTML = original;
   }
 }
+
+function myQuotaPercent(used, limit, kind) {
+  const usedValue = parseQuotaQuantity(used, kind);
+  const limitValue = limit === undefined || limit === null || String(limit).trim() === "" ? null : parseQuotaQuantity(limit, kind);
+  if (limitValue === null || usedValue === null) return null;
+  if (limitValue <= 0) return usedValue > 0 ? 100 : 0;
+  return Math.max(0, Math.round((usedValue / limitValue) * 100));
+}
+
+function renderMyQuotaButton() {
+  if (!els.myQuota) return;
+  const data = state.myQuota;
+  if (!data) {
+    els.myQuota.hidden = true;
+    return;
+  }
+  const usage = data.usage || {};
+  const effective = data.effective || {};
+  const used = Number(usage.workspaces ?? 0);
+  const hasWorkspaceLimit = effective.maxWorkspaces !== undefined && effective.maxWorkspaces !== null;
+  els.myQuota.hidden = false;
+  els.myQuotaLabel.textContent = hasWorkspaceLimit ? `Quota ${used}/${effective.maxWorkspaces}` : `Quota ${used}`;
+  const percent = hasWorkspaceLimit ? myQuotaPercent(used, effective.maxWorkspaces, "workspaces") : null;
+  els.myQuota.classList.toggle("warning", percent !== null && percent >= 80 && percent < 100);
+  els.myQuota.classList.toggle("danger", percent !== null && percent >= 100);
+  const limit = quotaSummary(effective);
+  els.myQuota.title = limit ? `Your quota: ${limit}. Usage: ${usageSummary(usage)}.` : `No quota limit. Usage: ${usageSummary(usage)}.`;
+}
+
+function renderMyQuotaDialog() {
+  if (!els.myQuotaMeters) return;
+  const data = state.myQuota;
+  if (!data) {
+    els.myQuotaSummary.textContent = "Quota information is not available.";
+    els.myQuotaMeters.replaceChildren();
+    return;
+  }
+  const effective = data.effective || {};
+  const usage = data.usage || {};
+  const limit = quotaSummary(effective);
+  els.myQuotaSummary.textContent = limit
+    ? `You are using ${usageSummary(usage)}. Your limits: ${limit}.`
+    : `You are using ${usageSummary(usage)}. No quota limits are set.`;
+  const metrics = [
+    ["Workspaces", usage.workspaces ?? 0, effective.maxWorkspaces, "workspaces"],
+    ["CPU", usage.cpu || "0", effective.cpu, "cpu"],
+    ["Memory", usage.memory || "0", effective.memory, "memory"],
+    ["Storage", usage.storage || "0", effective.storage, "storage"],
+  ];
+  els.myQuotaMeters.replaceChildren(...metrics.map(([label, used, max, kind]) => quotaMeterCard(label, used, max, kind)));
+}
+
+async function loadMyQuota() {
+  if (!els.myQuota) return;
+  try {
+    state.myQuota = await api("/api/me/quota");
+    renderMyQuotaButton();
+    renderMyQuotaDialog();
+  } catch {
+    state.myQuota = null;
+    renderMyQuotaButton();
+    renderMyQuotaDialog();
+  }
+}
+
+async function openMyQuota() {
+  if (!els.myQuotaDialog) return;
+  renderMyQuotaDialog();
+  els.myQuotaDialog.showModal();
+  await loadMyQuota();
+}
+
+if (els.myQuota) els.myQuota.addEventListener("click", openMyQuota);

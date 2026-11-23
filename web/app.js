@@ -22,6 +22,8 @@ async function init() {
   }
 
   await load();
+  loadMyQuota();
+  loadAccessRequests();
   await externalAuthPromise;
   const initialView = new URLSearchParams(location.search).get("view");
   if (initialView === "topology") {
@@ -67,6 +69,8 @@ els.refresh.addEventListener("click", async () => {
       await loadVolumes({ silent: true });
     } else {
       await load();
+      await loadMyQuota();
+      await loadAccessRequests({ silent: true });
     }
   } finally {
     els.refresh.classList.remove("spinning");
@@ -147,6 +151,8 @@ els.createForm.addEventListener("submit", async (event) => {
       setRegionFilter(region, { reload: false });
     }
     await load();
+    await loadMyQuota();
+    await loadAccessRequests({ silent: true });
   } catch (err) {
     setFormError(els.createError, err.message || "Failed to create workspace.");
     if (String(err.message || "").includes("external auth")) {
@@ -296,32 +302,6 @@ els.portsForm.addEventListener("submit", (event) => {
 els.portsDialog.addEventListener("close", () => {
   state.portsWorkspace = null;
   state.portsRequest += 1;
-});
-
-els.confirmDelete.addEventListener("click", async () => {
-  const workspace = state.pendingDelete;
-  if (!workspace) return;
-
-  const original = els.confirmDelete.innerHTML;
-  els.confirmDelete.disabled = true;
-  els.confirmDelete.innerHTML = `<span class="spinner small"></span>Deleting`;
-
-  try {
-    await api(`/api/workspaces/${encodeURIComponent(workspace.name)}`, { method: "DELETE" });
-    els.confirmDialog.close();
-    state.pendingDelete = null;
-    toast(`Workspace ${workspace.name} deleted.`, "success");
-    if (state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
-      closeWorkspaceDetail();
-    } else {
-      await load();
-    }
-  } catch (err) {
-    toast(err.message || "Failed to delete workspace.");
-  } finally {
-    els.confirmDelete.disabled = false;
-    els.confirmDelete.innerHTML = original;
-  }
 });
 
 init();

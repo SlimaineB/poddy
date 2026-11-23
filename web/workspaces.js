@@ -62,8 +62,83 @@ async function updateWorkspaceAccess(workspace, action, actor) {
       renderAccessPanel(state.detailWorkspace);
     }
     await load({ silent: true });
+    await loadAccessRequests({ silent: true });
   } catch (err) {
     toast(err.message || "Could not update access.");
+  }
+}
+
+async function loadAccessRequests({ silent = false } = {}) {
+  if (!els.accessBanner || state.accessRequestsLoading) return;
+  state.accessRequestsLoading = true;
+  try {
+    const data = await api("/api/access/requests");
+    state.accessRequests = Array.isArray(data) ? data : [];
+    state.accessRequestsAt = Date.now();
+    renderAccessRequests();
+  } catch (err) {
+    state.accessRequests = [];
+    state.accessRequestsAt = Date.now();
+    renderAccessRequests();
+    if (!silent) toast(err.message || "Failed to load access requests.");
+  } finally {
+    state.accessRequestsLoading = false;
+  }
+}
+
+function renderAccessRequests() {
+  if (!els.accessBanner) return;
+  const requests = state.accessRequests || [];
+  const total = requests.reduce((sum, request) => sum + (Array.isArray(request.actors) ? request.actors.length : 0), 0);
+  els.accessBanner.hidden = total === 0;
+  if (!total) {
+    els.accessBannerList.replaceChildren();
+    return;
+  }
+  const workspaceCount = requests.length;
+  els.accessBannerTitle.textContent = total === 1 ? "Admin access needs your approval" : `${total} admin access requests need your approval`;
+  els.accessBannerText.textContent = total === 1
+    ? `An administrator is asking to connect to "${requests[0].workspace}". Approve only if you trust this request.`
+    : `Administrators are asking to connect to ${workspaceCount === 1 ? `"${requests[0].workspace}"` : `${workspaceCount} of your workspaces`}. Approve only if you trust these requests.`;
+  els.accessBannerList.replaceChildren();
+
+  for (const request of requests) {
+    for (const actor of request.actors || []) {
+      const row = document.createElement("div");
+      row.className = "access-banner-row";
+      const text = document.createElement("span");
+      text.className = "access-banner-request";
+      const actorNode = document.createElement("strong");
+      actorNode.textContent = actor;
+      const workspaceNode = document.createElement("span");
+      workspaceNode.textContent = request.workspace;
+      text.append(actorNode, document.createTextNode(" wants to connect to "), workspaceNode);
+      if (request.region) {
+        const region = document.createElement("span");
+        region.className = "badge neutral";
+        region.textContent = request.region;
+        text.append(" ", region);
+      }
+      const approve = document.createElement("button");
+      approve.type = "button";
+      approve.className = "button small start";
+      approve.textContent = "Approve";
+      const deny = document.createElement("button");
+      deny.type = "button";
+      deny.className = "button small danger";
+      deny.textContent = "Deny";
+      const run = async (action) => {
+        approve.disabled = true;
+        deny.disabled = true;
+        await updateWorkspaceAccess({ name: request.workspace }, action, actor);
+        approve.disabled = false;
+        deny.disabled = false;
+      };
+      approve.addEventListener("click", () => run("approve"));
+      deny.addEventListener("click", () => run("deny"));
+      row.append(text, approve, deny);
+      els.accessBannerList.append(row);
+    }
   }
 }
 
@@ -805,6 +880,7 @@ async function load({ silent = false } = {}) {
       load({ silent: true });
     });
     if (typeof refreshTopologyIfVisible === "function") refreshTopologyIfVisible();
+    if (Date.now() - state.accessRequestsAt > 30000) loadAccessRequests({ silent: true });
     schedulePoll(5000);
   } catch (err) {
     if (!silent || !state.pollError) {
@@ -1686,18 +1762,20 @@ function showSSH(workspace) {
   renderSSHIDEActions(workspace);
   els.sshDialog.showModal();
 }
-function confirmWorkspaceAction(workspace, action) {
-  let message;
-  if (action === "stop") {
-    message = workspace.persistent
+async function confirmWorkspaceAction(workspace, action) {
+  const stop = action === "stop";
+  const message = stop
+    ? workspace.persistent
       ? `Stop "${workspace.name}"? The pod is deleted and its volume is kept.`
-      : `Stop "${workspace.name}"? This workspace has no persistent volume; its data will be lost.`;
-  } else {
-    message = `Restart "${workspace.name}"? The pod is recreated and its volume is kept.`;
-  }
-  if (window.confirm(message)) {
-    runWorkspaceAction(workspace, action);
-  }
+      : `Stop "${workspace.name}"? This workspace has no persistent volume; its data will be lost.`
+    : `Restart "${workspace.name}"? The pod is recreated and its volume is kept.`;
+  const confirmed = await confirmAction({
+    title: stop ? "Stop workspace" : "Restart workspace",
+    message,
+    confirmLabel: stop ? "Stop workspace" : "Restart workspace",
+    danger: stop,
+  });
+  if (confirmed) runWorkspaceAction(workspace, action);
 }
 async function runWorkspaceAction(workspace, action, element) {
   const original = element ? element.innerHTML : "";
@@ -1724,10 +1802,26 @@ async function runWorkspaceAction(workspace, action, element) {
     }
   }
 }
-function confirmDelete(workspace) {
-  state.pendingDelete = workspace;
-  els.confirmText.textContent = `Delete "${workspace.name}"? This removes the pod and its persistent volume.`;
-  els.confirmDialog.showModal();
+async function confirmDelete(workspace) {
+  const confirmed = await confirmAction({
+    title: "Delete workspace",
+    message: `Delete "${workspace.name}"? This removes the pod and its persistent volume. This cannot be undone.`,
+    confirmLabel: "Delete workspace",
+  });
+  if (!confirmed) return;
+  try {
+    await api(`/api/workspaces/${encodeURIComponent(workspace.name)}`, { method: "DELETE" });
+    toast(`Workspace ${workspace.name} deleted.`, "success");
+    if (state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
+      closeWorkspaceDetail();
+    } else {
+      await load();
+    }
+    await loadMyQuota();
+    await loadAccessRequests({ silent: true });
+  } catch (err) {
+    toast(err.message || "Failed to delete workspace.");
+  }
 }
 async function copySSHConfig() {
   const text = els.sshConfig.textContent;

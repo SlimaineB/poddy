@@ -50,6 +50,29 @@ func TestWorkspaceAccessApprovalFlow(t *testing.T) {
 		t.Fatalf("owner access with request = %+v", info)
 	}
 
+	rec = requestAs(t, s, alice, http.MethodGet, "/api/access/requests", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("access requests = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var requests []accessRequestSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &requests); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 1 || requests[0].Workspace != "alice-ws" || len(requests[0].Actors) != 1 || requests[0].Actors[0] != "admin@example.com" {
+		t.Fatalf("owner access requests = %+v", requests)
+	}
+	rec = requestAs(t, s, bob, http.MethodGet, "/api/access/requests", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob access requests = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	requests = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &requests); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 0 {
+		t.Fatalf("bob should not see alice requests: %+v", requests)
+	}
+
 	rec = requestAs(t, s, bob, http.MethodPost, "/api/workspaces/alice-ws/access/approve", map[string]any{"actor": "admin@example.com"})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("non-owner approve = %d, body = %s", rec.Code, rec.Body.String())

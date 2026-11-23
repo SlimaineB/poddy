@@ -55,7 +55,12 @@ async function addSSHKey(event) {
   }
 }
 async function removeSSHKey(key) {
-  if (!window.confirm(`Remove ${key.fingerprint || "this key"}?`)) return;
+  const confirmed = await confirmAction({
+    title: "Remove SSH key",
+    message: `Remove ${key.fingerprint || "this key"}? You will no longer be able to use it for workspace access.`,
+    confirmLabel: "Remove key",
+  });
+  if (!confirmed) return;
   try {
     await api(`/api/me/ssh-keys/${encodeURIComponent(key.id)}`, { method: "DELETE" });
     await loadSSHKeys();

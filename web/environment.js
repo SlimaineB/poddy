@@ -205,7 +205,12 @@ async function saveEnvironment(event) {
 }
 
 async function deleteEnvironment(item) {
-  if (!window.confirm(`Delete environment variable ${item.name} from this ${envState.scope}?`)) return;
+  const confirmed = await confirmAction({
+    title: "Delete environment variable",
+    message: `Delete ${item.name} from this ${envState.scope}?`,
+    confirmLabel: "Delete variable",
+  });
+  if (!confirmed) return;
   const params = new URLSearchParams({ scope: envState.scope, target: envState.target, name: item.name });
   try {
     await api(`/api/environment?${params.toString()}`, { method: "DELETE" });

@@ -549,7 +549,12 @@ async function confirmRestoreBackup() {
 async function deleteVolumeBackup(backup) {
   const volume = state.volumeBackupVolume;
   if (!volume) return;
-  if (!window.confirm(`Delete backup ${backup.name || backup.key}? This cannot be undone.`)) return;
+  const confirmed = await confirmAction({
+    title: "Delete backup",
+    message: `Delete backup ${backup.name || backup.key}? This cannot be undone.`,
+    confirmLabel: "Delete backup",
+  });
+  if (!confirmed) return;
   try {
     const query = new URLSearchParams({ key: backup.key });
     const region = volume.region || state.regionFilter;

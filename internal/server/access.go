@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +27,13 @@ type accessDecision struct {
 
 type accessActorRequest struct {
 	Actor string `json:"actor"`
+}
+
+type accessRequestSummary struct {
+	Workspace string   `json:"workspace"`
+	Region    string   `json:"region,omitempty"`
+	Owner     string   `json:"owner,omitempty"`
+	Actors    []string `json:"actors"`
 }
 
 func (s *Server) accessStore() k8s.AccessStore {
@@ -217,6 +225,52 @@ func (s *Server) workspaceAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) accessRequests(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var list []k8s.Workspace
+	if s.Regions != nil {
+		var problems []error
+		list, problems = s.Regions.List(r.Context(), s.hubIdentity(id, s.isAdmin(id, cfg)))
+		for _, problem := range problems {
+			log.Printf("access requests: %v", problem)
+		}
+	} else if s.Workspaces != nil {
+		list, err = s.Workspaces.ListByOwner(r.Context(), ownerID(id.User))
+		if err != nil {
+			writeK8sError(w, err, http.StatusInternalServerError)
+			return
+		}
+		s.enrichWorkspaceAccess(r.Context(), list, id, cfg)
+	}
+
+	out := make([]accessRequestSummary, 0)
+	for _, workspace := range list {
+		if workspace.Access == nil || !workspace.Access.IsOwner || len(workspace.Access.PendingRequests) == 0 {
+			continue
+		}
+		out = append(out, accessRequestSummary{
+			Workspace: workspace.Name,
+			Region:    workspace.Region,
+			Owner:     workspace.Owner,
+			Actors:    workspace.Access.PendingRequests,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Workspace) < strings.ToLower(out[j].Workspace)
+	})
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) requestWorkspaceAccess(w http.ResponseWriter, r *http.Request) {

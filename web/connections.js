@@ -28,7 +28,12 @@ function connectExternalAuth(id) {
 async function disconnectExternalAuth(id) {
   const status = externalAuthStatus(id);
   if (!status) return;
-  if (!window.confirm(`Disconnect ${status.displayName || id}? Workspaces will need to reconnect before they can use it.`)) return;
+  const confirmed = await confirmAction({
+    title: "Disconnect provider",
+    message: `Disconnect ${status.displayName || id}? Workspaces will need to reconnect before they can use it.`,
+    confirmLabel: "Disconnect",
+  });
+  if (!confirmed) return;
   try {
     await api(`/api/external-auth/${encodeURIComponent(id)}/disconnect`, { method: "POST" });
     await loadExternalAuth();

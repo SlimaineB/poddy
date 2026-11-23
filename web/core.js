@@ -57,7 +57,11 @@ const state = {
   reloadPending: false,
   workspacesEtag: "",
   sshWorkspace: null,
-  pendingDelete: null,
+  confirmResolve: null,
+  myQuota: null,
+  accessRequests: [],
+  accessRequestsAt: 0,
+  accessRequestsLoading: false,
   detailWorkspace: null,
   detailRequest: 0,
   manifests: null,
@@ -204,8 +208,19 @@ const els = {
   portsForm: document.getElementById("ports-form"),
   portsInput: document.getElementById("ports-input"),
   confirmDialog: document.getElementById("confirm-dialog"),
+  confirmTitle: document.getElementById("confirm-title"),
   confirmText: document.getElementById("confirm-text"),
-  confirmDelete: document.getElementById("confirm-delete"),
+  confirmIcon: document.getElementById("confirm-icon"),
+  confirmOk: document.getElementById("confirm-ok"),
+  myQuota: document.getElementById("my-quota"),
+  myQuotaLabel: document.getElementById("my-quota-label"),
+  myQuotaDialog: document.getElementById("my-quota-dialog"),
+  myQuotaSummary: document.getElementById("my-quota-summary"),
+  myQuotaMeters: document.getElementById("my-quota-meters"),
+  accessBanner: document.getElementById("access-banner"),
+  accessBannerTitle: document.getElementById("access-banner-title"),
+  accessBannerText: document.getElementById("access-banner-text"),
+  accessBannerList: document.getElementById("access-banner-list"),
   accessDialog: document.getElementById("access-dialog"),
   accessText: document.getElementById("access-text"),
   accessRequest: document.getElementById("access-request"),
@@ -480,6 +495,8 @@ async function api(path, options = {}) {
 function toast(message, type = "error") {
   const node = document.createElement("div");
   node.className = `toast${type === "success" ? " success" : ""}`;
+  node.setAttribute("role", type === "success" ? "status" : "alert");
+  node.setAttribute("aria-live", type === "success" ? "polite" : "assertive");
   node.innerHTML = `${icon(type === "success" ? "check" : "alert")}<div class="toast-message"></div><button class="toast-close" type="button" aria-label="Dismiss">${icon("x")}</button>`;
   node.querySelector(".toast-message").textContent = message;
 
@@ -489,6 +506,38 @@ function toast(message, type = "error") {
   els.toasts.append(node);
   setTimeout(close, 6500);
 }
+function confirmAction({ title = "Confirm action", message = "", confirmLabel = "Confirm", danger = true } = {}) {
+  if (!els.confirmDialog) return Promise.resolve(window.confirm(message));
+  if (state.confirmResolve) {
+    const previous = state.confirmResolve;
+    state.confirmResolve = null;
+    previous(false);
+  }
+  if (els.confirmDialog.open) els.confirmDialog.close();
+  els.confirmTitle.textContent = title;
+  els.confirmText.textContent = message;
+  els.confirmOk.textContent = confirmLabel;
+  els.confirmOk.className = danger ? "button danger" : "button primary";
+  if (els.confirmIcon) {
+    els.confirmIcon.className = `confirm-icon ${danger ? "danger" : "info"}`;
+    els.confirmIcon.innerHTML = icon(danger ? "alert" : "info");
+  }
+  els.confirmDialog.showModal();
+  return new Promise((resolve) => {
+    state.confirmResolve = resolve;
+  });
+}
+
+function settleConfirm(value) {
+  const resolve = state.confirmResolve;
+  state.confirmResolve = null;
+  if (els.confirmDialog && els.confirmDialog.open) els.confirmDialog.close();
+  if (resolve) resolve(Boolean(value));
+}
+
+if (els.confirmOk) els.confirmOk.addEventListener("click", () => settleConfirm(true));
+if (els.confirmDialog) els.confirmDialog.addEventListener("close", () => settleConfirm(false));
+
 function humanize(name) {
   const known = {
     cpu: "CPU",

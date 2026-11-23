@@ -103,6 +103,10 @@
             </div>
           </div>
         </details>
+        <button id="my-quota" class="button ghost small quota-button" type="button" title="View your quota" hidden>
+          <svg class="icon"><use href="#icon-activity"></use></svg>
+          <span id="my-quota-label">Quota</span>
+        </button>
         <button id="theme-toggle" class="icon-button theme-toggle" type="button" title="Switch to dark mode" aria-label="Switch to dark mode">
           <svg class="icon theme-icon theme-icon-sun"><use href="#icon-sun"></use></svg>
           <svg class="icon theme-icon theme-icon-moon"><use href="#icon-moon"></use></svg>
@@ -139,6 +143,15 @@
       </div>
     </div>
   </header>
+
+  <section id="access-banner" class="access-banner" role="status" aria-live="polite" hidden>
+    <span class="access-banner-icon"><svg class="icon"><use href="#icon-shield"></use></svg></span>
+    <div class="access-banner-main">
+      <strong id="access-banner-title">Admin access needs your approval</strong>
+      <p id="access-banner-text"></p>
+      <div id="access-banner-list" class="access-banner-list"></div>
+    </div>
+  </section>
 
   <main id="workspaces-view" class="page">
     <section class="page-header">
@@ -1268,11 +1281,34 @@
     </footer>
   </dialog>
 
-  <dialog id="confirm-dialog" class="dialog dialog-small">
+  <dialog id="my-quota-dialog" class="dialog dialog-small quota-dialog">
     <header class="dialog-header">
       <div>
-        <h2>Delete workspace</h2>
-        <p id="confirm-text"></p>
+        <h2>My quota</h2>
+        <p>Usage across all workspaces you own.</p>
+      </div>
+      <button class="icon-button" type="button" data-close aria-label="Close">
+        <svg class="icon"><use href="#icon-x"></use></svg>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <p id="my-quota-summary" class="quota-summary"></p>
+      <div id="my-quota-meters" class="quota-meter-grid"></div>
+      <p class="hint">Quota usage counts the workspace container only. Platform sidecars are not charged.</p>
+    </div>
+    <footer class="dialog-footer">
+      <button class="button ghost" type="button" data-close>Close</button>
+    </footer>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="dialog dialog-small">
+    <header class="dialog-header">
+      <div class="confirm-heading">
+        <span id="confirm-icon" class="confirm-icon danger"><svg class="icon"><use href="#icon-alert"></use></svg></span>
+        <div>
+          <h2 id="confirm-title">Confirm action</h2>
+          <p id="confirm-text"></p>
+        </div>
       </div>
       <button class="icon-button" type="button" data-close aria-label="Close">
         <svg class="icon"><use href="#icon-x"></use></svg>
@@ -1280,7 +1316,7 @@
     </header>
     <footer class="dialog-footer">
       <button class="button ghost" type="button" data-close>Cancel</button>
-      <button id="confirm-delete" class="button danger" type="button">Delete workspace</button>
+      <button id="confirm-ok" class="button danger" type="button">Confirm</button>
     </footer>
   </dialog>
 
