@@ -208,17 +208,22 @@ func (n *Node) DialHost(ctx context.Context, host string, port int) (net.Conn, e
 
 func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (net.Conn, error) {
 	host := WorkspaceHostname(workspace)
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(45 * time.Second)
 	var lastErr error
+	var lastIP string
+	var lastState string
 	for {
 		ip, online, found, err := n.peerState(ctx, host)
 		switch {
 		case err != nil:
 			lastErr = err
+			lastState = "status unavailable"
 		case found && !online:
 			return nil, fmt.Errorf("mesh: workspace peer %q is offline", host)
 		case found:
-			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			lastIP = ip
+			lastState = "peer online"
+			dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			conn, dialErr := n.srv.Dial(dialCtx, "tcp", net.JoinHostPort(ip, fmt.Sprint(port)))
 			cancel()
 			if dialErr == nil {
@@ -227,6 +232,7 @@ func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (n
 			lastErr = dialErr
 		default:
 			lastErr = fmt.Errorf("mesh: workspace peer %q not found", host)
+			lastState = "peer not found"
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -240,7 +246,14 @@ func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (n
 		case <-time.After(time.Second):
 		}
 	}
-	return nil, fmt.Errorf("mesh: dial workspace %q: %w", workspace, lastErr)
+	detail := lastState
+	if detail == "" {
+		detail = "no peer state"
+	}
+	if lastIP != "" {
+		detail = fmt.Sprintf("%s at %s", detail, net.JoinHostPort(lastIP, fmt.Sprint(port)))
+	}
+	return nil, fmt.Errorf("mesh: dial workspace %q (%s): %w", workspace, detail, lastErr)
 }
 
 func (n *Node) peerState(ctx context.Context, prefix string) (ip string, online bool, found bool, err error) {

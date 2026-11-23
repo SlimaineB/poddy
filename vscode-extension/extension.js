@@ -13,8 +13,8 @@ const SSH_KEY_PREFIX = "poddy";
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
 // SSH must outlive the mesh join; otherwise ProxyCommand is killed mid-banner.
 const MESH_JOIN_TIMEOUT_SECONDS = 30;
-const SSH_CONNECT_TIMEOUT = MESH_JOIN_TIMEOUT_SECONDS * 2;
-const SSH_WAIT_TIMEOUT_MS = 180000;
+const SSH_CONNECT_TIMEOUT = MESH_JOIN_TIMEOUT_SECONDS + 60;
+const SSH_WAIT_TIMEOUT_MS = 240000;
 
 function activate(context) {
   context.subscriptions.push(
@@ -218,7 +218,7 @@ async function waitForSSH(alias) {
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error(`workspace SSH is not ready after 120s: ${lastError ? lastError.message : "timed out"}`);
+  throw new Error(`workspace SSH is not ready after ${SSH_WAIT_TIMEOUT_MS / 1000}s: ${lastError ? lastError.message : "timed out"}`);
 }
 
 async function pinRemotePlatform(alias) {
