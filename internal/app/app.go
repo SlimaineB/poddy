@@ -228,6 +228,7 @@ func Run(ctx context.Context, args []string) error {
 		MeshAuthKey:         cfg.MeshAuthKey,
 		MeshCACert:          cfg.MeshCACert,
 	}
+	go watchMeshPods(ctx, manager)
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
 			return externalAuth.Prepare(ctx, strings.ToLower(strings.TrimSpace(owner)), requirements)
@@ -844,6 +845,7 @@ func RunBastion(ctx context.Context, args []string) error {
 		MeshAuthKey:     cfg.MeshAuthKey,
 		MeshCACert:      cfg.MeshCACert,
 	}
+	go watchMeshPods(ctx, manager)
 
 	agentKey := agentSecret(cfg)
 	if agentKey == "" {
@@ -1216,6 +1218,21 @@ func serve(ctx context.Context, srv *http.Server, drain func()) error {
 			return nil
 		}
 		return err
+	}
+}
+
+func watchMeshPods(ctx context.Context, manager *k8s.Manager) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := manager.RecreateUnhealthyMeshPods(ctx, k8s.MeshUnhealthyGrace); err != nil && ctx.Err() == nil {
+				log.Printf("mesh watchdog: %v", err)
+			}
+		}
 	}
 }
 
