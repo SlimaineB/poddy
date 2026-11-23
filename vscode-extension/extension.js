@@ -210,7 +210,8 @@ async function waitForSSH(alias) {
         lastError = err;
         const message = String(err && err.message || err);
         const retryableKeySync = /permission denied|maxstartups|exceeded maxstartups/i.test(message);
-        if (!retryableKeySync && Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
+        const retryableMesh = /mesh: workspace peer .* is offline|mesh: workspace peer .* not found|mesh: dial workspace .*context deadline exceeded/i.test(message);
+        if (!retryableKeySync && !retryableMesh && Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
       }
     }
     if (fastFailures >= 3) {

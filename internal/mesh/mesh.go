@@ -219,7 +219,9 @@ func (n *Node) DialWorkspace(ctx context.Context, workspace string, port int) (n
 			lastErr = err
 			lastState = "status unavailable"
 		case found && !online:
-			return nil, fmt.Errorf("mesh: workspace peer %q is offline", host)
+			lastIP = ip
+			lastErr = fmt.Errorf("mesh: workspace peer %q is offline", host)
+			lastState = "peer offline"
 		case found:
 			lastIP = ip
 			lastState = "peer online"
