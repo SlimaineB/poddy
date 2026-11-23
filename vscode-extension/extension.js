@@ -11,6 +11,10 @@ const crypto = require("crypto");
 
 const SSH_KEY_PREFIX = "poddy";
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
+// SSH must outlive the mesh join; otherwise ProxyCommand is killed mid-banner.
+const MESH_JOIN_TIMEOUT_SECONDS = 30;
+const SSH_CONNECT_TIMEOUT = MESH_JOIN_TIMEOUT_SECONDS * 2;
+const SSH_WAIT_TIMEOUT_MS = 180000;
 
 function activate(context) {
   context.subscriptions.push(
@@ -186,7 +190,7 @@ async function waitForSSH(alias) {
   if (process.platform === "win32") {
     candidates.push("C:\\Windows\\System32\\OpenSSH\\ssh.exe");
   }
-  const deadline = Date.now() + 120000;
+  const deadline = Date.now() + SSH_WAIT_TIMEOUT_MS;
   let lastError;
   let fastFailures = 0;
   while (Date.now() < deadline) {
@@ -195,7 +199,7 @@ async function waitForSSH(alias) {
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
-          "-o", "ConnectTimeout=15",
+          "-o", `ConnectTimeout=${SSH_CONNECT_TIMEOUT}`,
           "-o", "StrictHostKeyChecking=no",
           "-o", `UserKnownHostsFile=${NULL_DEVICE}`,
           alias,
@@ -346,7 +350,7 @@ async function writeSSHConfig(payload, priv, context, mesh) {
       `  User ${payload.user}`,
       `  IdentityFile "${key}"`,
       "  IdentitiesOnly yes",
-      "  ConnectTimeout 20"
+      `  ConnectTimeout ${SSH_CONNECT_TIMEOUT}`
     );
     if (payload.transport === "portal") {
       const portalDir = path.join(context.globalStorageUri.fsPath, "portal");
@@ -374,7 +378,7 @@ async function writeSSHConfig(payload, priv, context, mesh) {
         caArg = ` --ca-file "${caFile.replace(/\\/g, "/")}"`;
       }
       lines.push(
-        `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile.replace(/\\/g, "/")}" --workspace "%n" --state-dir "${stateDir.replace(/\\/g, "/")}" --hostname "%n" --join-timeout 30s${caArg}`,
+        `  ProxyCommand "${helper}" --mode mesh --control-url "${mesh.controlUrl}" --auth-key-file "${authKeyFile.replace(/\\/g, "/")}" --workspace "%n" --state-dir "${stateDir.replace(/\\/g, "/")}" --hostname "%n" --join-timeout ${MESH_JOIN_TIMEOUT_SECONDS}s${caArg}`,
         "  StrictHostKeyChecking accept-new",
         "  LogLevel ERROR"
       );
@@ -390,7 +394,7 @@ async function writeSSHConfig(payload, priv, context, mesh) {
       `  User ${payload.user}`,
       `  IdentityFile "${key}"`,
       "  IdentitiesOnly yes",
-      "  ConnectTimeout 20",
+      `  ConnectTimeout ${SSH_CONNECT_TIMEOUT}`,
       `  ProxyCommand ssh -W %h:%p ${jump}`,
       "  StrictHostKeyChecking no",
       `  UserKnownHostsFile ${NULL_DEVICE}`,
