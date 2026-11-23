@@ -228,7 +228,6 @@ func Run(ctx context.Context, args []string) error {
 		MeshAuthKey:         cfg.MeshAuthKey,
 		MeshCACert:          cfg.MeshCACert,
 	}
-	go watchMeshPods(ctx, manager)
 	if externalAuth != nil {
 		manager.ExternalAuth = func(ctx context.Context, owner, _ string, _ string, requirements []templates.ExternalAuth) (map[string]string, error) {
 			return externalAuth.Prepare(ctx, strings.ToLower(strings.TrimSpace(owner)), requirements)
@@ -512,6 +511,14 @@ func Run(ctx context.Context, args []string) error {
 			defer meshNode.Close()
 			log.Printf("mesh: portal joined tailnet as %s", hostname)
 		}
+	}
+
+	if meshNode != nil {
+		go watchMeshPods(ctx, manager, func(ctx context.Context, workspace string) (bool, error) {
+			return meshNode.WorkspaceOnline(ctx, workspace)
+		})
+	} else {
+		go watchMeshPods(ctx, manager, nil)
 	}
 
 	sshBastion, err := startBastion(ctx, cfg, manager, keyring, metadataAuditor, agentSigner, sshCA, accessStore, regionTunnel, regionNames, presence, peerAddress, agentKey)
@@ -845,7 +852,7 @@ func RunBastion(ctx context.Context, args []string) error {
 		MeshAuthKey:     cfg.MeshAuthKey,
 		MeshCACert:      cfg.MeshCACert,
 	}
-	go watchMeshPods(ctx, manager)
+	go watchMeshPods(ctx, manager, nil)
 
 	agentKey := agentSecret(cfg)
 	if agentKey == "" {
@@ -1221,15 +1228,19 @@ func serve(ctx context.Context, srv *http.Server, drain func()) error {
 	}
 }
 
-func watchMeshPods(ctx context.Context, manager *k8s.Manager) {
+func watchMeshPods(ctx context.Context, manager *k8s.Manager, peerOnline k8s.MeshPeerOnlineFunc) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+	offlineSince := map[string]time.Time{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if err := manager.RecreateUnhealthyMeshPods(ctx, k8s.MeshUnhealthyGrace); err != nil && ctx.Err() == nil {
+				log.Printf("mesh watchdog: %v", err)
+			}
+			if err := manager.RecreateOfflineMeshPods(ctx, k8s.MeshUnhealthyGrace, peerOnline, offlineSince); err != nil && ctx.Err() == nil {
 				log.Printf("mesh watchdog: %v", err)
 			}
 		}

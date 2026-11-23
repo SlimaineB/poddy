@@ -162,6 +162,17 @@ func (n *Node) Ready(ctx context.Context) error {
 	return readyStatusError(status)
 }
 
+func (n *Node) WorkspaceOnline(ctx context.Context, workspace string) (bool, error) {
+	if n == nil || n.srv == nil {
+		return false, fmt.Errorf("mesh: node is not running")
+	}
+	_, online, found, err := n.peerState(ctx, WorkspaceHostname(workspace))
+	if err != nil {
+		return false, err
+	}
+	return found && online, nil
+}
+
 func readyStatusError(status *ipnstate.Status) error {
 	if status == nil {
 		return fmt.Errorf("mesh: status is unavailable")

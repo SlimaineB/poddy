@@ -55,6 +55,65 @@ func (m *Manager) RecreateUnhealthyMeshPods(ctx context.Context, grace time.Dura
 	return nil
 }
 
+// MeshPeerOnlineFunc reports whether the workspace's mesh peer is present and
+// online in the tailnet. The portal passes its own mesh node for this check.
+type MeshPeerOnlineFunc func(ctx context.Context, workspace string) (bool, error)
+
+// RecreateOfflineMeshPods deletes workspace pods whose mesh peer has been
+// offline for grace. A pod can stay Ready while its tailnet node is gone from
+// the control plane; recreating the pod gives the agent a fresh identity.
+func (m *Manager) RecreateOfflineMeshPods(ctx context.Context, grace time.Duration, peerOnline MeshPeerOnlineFunc, offlineSince map[string]time.Time) error {
+	if peerOnline == nil {
+		return nil
+	}
+	if grace <= 0 {
+		grace = MeshUnhealthyGrace
+	}
+	if offlineSince == nil {
+		offlineSince = map[string]time.Time{}
+	}
+	pods, err := m.Client.CoreV1().Pods(m.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelName + "=" + AppName,
+	})
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		workspace := pod.Labels[labelWorkspace]
+		if pod.DeletionTimestamp != nil || workspace == "" {
+			continue
+		}
+		online, err := peerOnline(ctx, workspace)
+		if err != nil {
+			log.Printf("mesh watchdog: workspace %q peer status: %v", workspace, err)
+			continue
+		}
+		if online {
+			delete(offlineSince, workspace)
+			continue
+		}
+		since, ok := offlineSince[workspace]
+		if !ok || since.IsZero() {
+			offlineSince[workspace] = now
+			continue
+		}
+		if now.Sub(since) < grace {
+			continue
+		}
+		log.Printf("mesh watchdog: recreating workspace %q pod %s: mesh peer offline for %s",
+			workspace, pod.Name, now.Sub(since).Round(time.Second))
+		if err := m.Client.CoreV1().Pods(m.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: ptr.To[int64](0),
+		}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		delete(offlineSince, workspace)
+	}
+	return nil
+}
+
 func podUnreadyFor(pod *corev1.Pod, now time.Time) time.Duration {
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type != corev1.PodReady || condition.Status != corev1.ConditionFalse {

@@ -77,3 +77,27 @@ func meshTestPod(name string, ready bool, restarts int32, unreadySince time.Time
 		},
 	}
 }
+
+func TestRecreateOfflineMeshPods(t *testing.T) {
+	now := time.Now()
+	pod := meshTestPod("offline-ws", true, 0, now)
+	client := fake.NewSimpleClientset(pod)
+	manager := &Manager{Client: client, Namespace: "poddy"}
+	peerOnline := func(context.Context, string) (bool, error) { return false, nil }
+	offlineSince := map[string]time.Time{}
+
+	if err := manager.RecreateOfflineMeshPods(context.Background(), 2*time.Minute, peerOnline, offlineSince); err != nil {
+		t.Fatalf("first pass: %v", err)
+	}
+	if _, err := client.CoreV1().Pods("poddy").Get(context.Background(), "offline-ws", metav1.GetOptions{}); err != nil {
+		t.Fatalf("deleted before grace, err=%v", err)
+	}
+
+	offlineSince["offline-ws"] = now.Add(-3 * time.Minute)
+	if err := manager.RecreateOfflineMeshPods(context.Background(), 2*time.Minute, peerOnline, offlineSince); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+	if _, err := client.CoreV1().Pods("poddy").Get(context.Background(), "offline-ws", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("pod still exists after offline grace, err=%v", err)
+	}
+}
