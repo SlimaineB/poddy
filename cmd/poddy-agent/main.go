@@ -89,6 +89,7 @@ func runMesh(ctx context.Context, health *agentHealth, workspace, controlURL, au
 		Hostname:   mesh.WorkspaceHostname(workspace),
 		StateDir:   stateDir,
 		Ephemeral:  false,
+		RandomPort: true,
 		CACert:     caCert,
 	})
 	if err != nil {
