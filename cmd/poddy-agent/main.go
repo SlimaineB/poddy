@@ -168,12 +168,12 @@ func monitorMesh(ctx context.Context, node *mesh.Node, health *agentHealth, unhe
 func meshUnhealthyTimeout() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("PODDY_MESH_UNHEALTHY_TIMEOUT"))
 	if raw == "" {
-		return 5 * time.Minute
+		return time.Minute
 	}
 	value, err := time.ParseDuration(raw)
 	if err != nil || value < 0 {
-		log.Printf("invalid PODDY_MESH_UNHEALTHY_TIMEOUT %q; using 5m", safe(raw))
-		return 5 * time.Minute
+		log.Printf("invalid PODDY_MESH_UNHEALTHY_TIMEOUT %q; using 1m", safe(raw))
+		return time.Minute
 	}
 	return value
 }

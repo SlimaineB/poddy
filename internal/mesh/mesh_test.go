@@ -50,6 +50,41 @@ func TestStartRequiresAuthKey(t *testing.T) {
 	}
 }
 
+func TestReadyStatusRequiresControlPlane(t *testing.T) {
+	cases := []struct {
+		name    string
+		status  *ipnstate.Status
+		wantErr string
+	}{
+		{name: "nil", status: nil, wantErr: "unavailable"},
+		{name: "stopped", status: &ipnstate.Status{BackendState: "Stopped"}, wantErr: "backend state is Stopped"},
+		{name: "no self", status: &ipnstate.Status{BackendState: "Running"}, wantErr: "control plane"},
+		{
+			name:    "offline",
+			status:  &ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{Online: false}},
+			wantErr: "control plane",
+		},
+		{
+			name:   "online",
+			status: &ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{Online: true}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := readyStatusError(tc.status)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("readyStatusError() = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("readyStatusError() = %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestSelectPeerPrefersHealthyDuplicate(t *testing.T) {
 	now := time.Now()
 	peer := func(host string, online bool, addr string, seen time.Time) *ipnstate.PeerStatus {

@@ -143,10 +143,10 @@ func (n *Node) Close() error {
 	return n.srv.Close()
 }
 
-// Ready reports whether the local WireGuard backend is actually running. A
-// process can be alive and still be unable to reach the tailnet after a control
-// plane or DERP outage, so readiness must check the backend state rather than
-// just the listener.
+// Ready reports whether the local WireGuard backend is actually running and
+// still connected to the control plane. A process can be alive, report a
+// Running backend, and still be unable to reach the tailnet after a control
+// plane restart, so readiness must check the map poll state as well.
 func (n *Node) Ready(ctx context.Context) error {
 	if n == nil || n.srv == nil {
 		return fmt.Errorf("mesh: node is not running")
@@ -159,12 +159,22 @@ func (n *Node) Ready(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("mesh: status: %w", err)
 	}
+	return readyStatusError(status)
+}
+
+func readyStatusError(status *ipnstate.Status) error {
+	if status == nil {
+		return fmt.Errorf("mesh: status is unavailable")
+	}
 	if status.BackendState != "Running" {
 		state := strings.TrimSpace(status.BackendState)
 		if state == "" {
 			state = "unknown"
 		}
 		return fmt.Errorf("mesh: backend state is %s", state)
+	}
+	if status.Self == nil || !status.Self.Online {
+		return fmt.Errorf("mesh: control plane connection is not active")
 	}
 	return nil
 }
