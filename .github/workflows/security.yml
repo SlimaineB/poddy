@@ -51,7 +51,7 @@ jobs:
             -no-fail -fmt sarif -out sarif/gosec.sarif ./...
       - name: Upload gosec SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/gosec.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/gosec.sarif
           category: gosec
@@ -79,7 +79,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@v5.0.1
         with:
           fail-on-severity: high
 
@@ -129,31 +129,31 @@ jobs:
           EOF
       - name: Upload portal image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-portal.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/container-portal.sarif
           category: container-portal
       - name: Upload workspace base image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-base.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/container-base.sarif
           category: container-workspace-base
       - name: Upload Go workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-go.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/container-go.sarif
           category: container-workspace-go
       - name: Upload Node workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-node.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/container-node.sarif
           category: container-workspace-node
       - name: Upload Python workspace image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/container-python.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/container-python.sarif
           category: container-workspace-python
@@ -218,19 +218,19 @@ jobs:
           failure-threshold: error
       - name: Upload Trivy IaC SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/trivy-iac.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/trivy-iac.sarif
           category: iac-trivy
       - name: Upload kube-linter SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/kube-linter.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/kube-linter.sarif
           category: iac-kube-linter
       - name: Upload Hadolint SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles('sarif/hadolint.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@v4.39.4
         with:
           sarif_file: sarif/hadolint.sarif
           category: dockerfile-hadolint
