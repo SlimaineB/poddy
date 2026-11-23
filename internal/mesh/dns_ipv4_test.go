@@ -46,6 +46,22 @@ func TestHandleDNSQueryFiltersNAT64ForControlHost(t *testing.T) {
 			t.Fatalf("got type %v, want AAAA", answers[0].Header.Type)
 		}
 	})
+
+	t.Run("AAAA control host without IPv4", func(t *testing.T) {
+		ipv6Only := func(_ context.Context, network, _ string) ([]netip.Addr, error) {
+			if network == "ip4" {
+				return nil, nil
+			}
+			return []netip.Addr{netip.MustParseAddr("2001:db8::1")}, nil
+		}
+		answers := parseAnswers(t, query(t, "172-29-74-141.sslip.io", dns.TypeAAAA), "172-29-74-141.sslip.io", ipv6Only)
+		if len(answers) != 1 {
+			t.Fatalf("got %d answers, want 1", len(answers))
+		}
+		if answers[0].Header.Type != dns.TypeAAAA {
+			t.Fatalf("got type %v, want AAAA", answers[0].Header.Type)
+		}
+	})
 }
 
 func query(t *testing.T, host string, typ dns.Type) []byte {

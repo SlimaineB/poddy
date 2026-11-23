@@ -13,26 +13,20 @@ import (
 	"tailscale.com/net/dnscache"
 )
 
-// nat64Prefixes are the well-known and local-use NAT64 prefixes (RFC 6052 and
-// RFC 8215). A DNS64 resolver synthesizes an AAAA in one of these ranges for
-// an IPv4-only name. On some Windows/WSL setups the TCP connect to that
-// synthesized address succeeds but the TLS handshake blackholes, which makes
-// the control client hang until its deadline even though the IPv4 address
-// works.
-var nat64Prefixes = []netip.Prefix{
-	netip.MustParsePrefix("64:ff9b::/96"),
-	netip.MustParsePrefix("64:ff9b:1::/48"),
-}
-
 var (
 	dnsForwardMu   sync.Mutex
 	dnsForwardHost string
 )
 
-// preferIPv4Control installs an A-only DNS forwarder for the control host when
-// the system resolver synthesizes a NAT64 AAAA for it. The hostname is kept in
-// the control URL so TLS SNI and certificate verification still use the name.
-func preferIPv4Control(ctx context.Context, controlURL string) {
+// preferIPv4Control installs an A-only DNS forwarder for the control host. The
+// hostname is kept in the control URL so TLS SNI and certificate verification
+// still use the name.
+//
+// The forwarder is installed unconditionally for hostname control URLs because
+// the resolver may be temporarily unable to return an IPv4 address during
+// startup. Deciding whether to drop AAAA is done per query instead, so an
+// IPv6-only control host still works.
+func preferIPv4Control(controlURL string) {
 	u, err := url.Parse(strings.TrimSpace(controlURL))
 	if err != nil || u.Hostname() == "" {
 		return
@@ -41,35 +35,7 @@ func preferIPv4Control(ctx context.Context, controlURL string) {
 	if _, err := netip.ParseAddr(host); err == nil {
 		return
 	}
-	lookupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	ips, err := net.DefaultResolver.LookupNetIP(lookupCtx, "ip", host)
-	if err != nil {
-		return
-	}
-	have4 := false
-	haveNAT64 := false
-	for _, ip := range ips {
-		if ip.Unmap().Is4() {
-			have4 = true
-		}
-		if ip.Is6() && !ip.Is4In6() && isNAT64(ip) {
-			haveNAT64 = true
-		}
-	}
-	if !have4 || !haveNAT64 {
-		return
-	}
 	installIPv4DNSForwarder(host)
-}
-
-func isNAT64(ip netip.Addr) bool {
-	for _, prefix := range nat64Prefixes {
-		if prefix.Contains(ip) {
-			return true
-		}
-	}
-	return false
 }
 
 func installIPv4DNSForwarder(controlHost string) {
@@ -172,19 +138,22 @@ func handleDNSQuery(query []byte, controlHost string, lookup lookupIPFunc) ([]by
 			}
 		}
 	case dns.TypeAAAA:
-		// Drop the synthesized NAT64 address for the control host so the
-		// control client only races the real IPv4 address. Other names keep
-		// their normal IPv6 answers.
-		if name != controlHost {
-			ips, _ := lookup(lookupCtx, "ip6", name)
-			for _, ip := range ips {
-				if !ip.Is6() || ip.Is4In6() {
-					continue
-				}
-				resource := dns.ResourceHeader{Name: question.Name, Type: dns.TypeAAAA, Class: dns.ClassINET, TTL: 300}
-				if err := builder.AAAAResource(resource, dns.AAAAResource{AAAA: ip.As16()}); err != nil {
-					return nil, err
-				}
+		// Drop a synthesized NAT64 address for the control host when the name
+		// also has a real IPv4 address. The control client then only races the
+		// IPv4 address. An IPv6-only control host keeps its normal AAAA answer.
+		if name == controlHost {
+			if ips, _ := lookup(lookupCtx, "ip4", name); len(ips) > 0 {
+				break
+			}
+		}
+		ips, _ := lookup(lookupCtx, "ip6", name)
+		for _, ip := range ips {
+			if !ip.Is6() || ip.Is4In6() {
+				continue
+			}
+			resource := dns.ResourceHeader{Name: question.Name, Type: dns.TypeAAAA, Class: dns.ClassINET, TTL: 300}
+			if err := builder.AAAAResource(resource, dns.AAAAResource{AAAA: ip.As16()}); err != nil {
+				return nil, err
 			}
 		}
 	}

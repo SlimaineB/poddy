@@ -61,7 +61,7 @@ func Start(ctx context.Context, cfg Config) (*Node, error) {
 		}
 	}
 	if strings.TrimSpace(cfg.ControlURL) != "" {
-		preferIPv4Control(ctx, cfg.ControlURL)
+		preferIPv4Control(cfg.ControlURL)
 	}
 	dir := strings.TrimSpace(cfg.StateDir)
 	if dir == "" {
