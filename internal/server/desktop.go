@@ -226,7 +226,7 @@ func (s *Server) desktopEnroll(w http.ResponseWriter, r *http.Request) {
 		if parseErr == nil {
 			ttl := s.SSHCertTTL
 			if ttl <= 0 {
-				ttl = 15 * time.Minute
+				ttl = desktopTicketTTL
 			}
 			cert, signErr := s.SSHCA.Sign(pub, "dev", claims.Owner, claims.Workspace, false, ttl)
 			log.Printf("desktop enroll debug sign workspace=%s err=%v cert=%v", claims.Workspace, signErr, cert != nil)

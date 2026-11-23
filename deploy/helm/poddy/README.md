@@ -110,7 +110,7 @@ name (without the leading `v`) is used.
 | `ssh.agent.url` | `""` | Agent URL injected into workspaces. Empty derives the in-cluster Service URL. |
 | `ssh.agent.tokenTtl` | `1h` | Workspace agent token lifetime. Tokens renew over the tunnel, are refreshed in the workspace Secret for reconnects, and are scoped to one workspace. |
 | `ssh.agent.existingSecret` | `""` | Existing Secret with the shared agent HMAC key. |
-| `ssh.certTtl` | `15m` | Lifetime of issued SSH certificates. |
+| `ssh.certTtl` | `12h` | Lifetime of issued SSH certificates. |
 | `ssh.ca.existingSecret` | `""` | Existing Secret with the SSH CA private key. Share it across hub and regions. |
 | `ssh.ca.keyKey` | `ssh-ca-key` | Key in the CA Secret. |
 | `ssh.ca.key` | `""` | Inline CA private key (PEM). Empty generates and preserves a random key. |

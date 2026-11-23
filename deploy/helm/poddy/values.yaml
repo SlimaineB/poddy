@@ -334,7 +334,7 @@ ssh:
   drainDelay: 3s
   drainTimeout: 20s
   # Lifetime of short-lived user SSH certificates issued by the portal.
-  certTtl: 15m
+  certTtl: 12h
   # SSH certificate authority. The same CA signs and verifies certificates
   # inside the portal. Leave key empty to let the
   # chart generate and preserve a random key. Region clusters must use the same

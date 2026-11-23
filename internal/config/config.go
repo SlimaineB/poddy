@@ -200,7 +200,7 @@ func Load(args []string) (Config, error) {
 		SSHAllowUnmappedKeys:  envBool("PODDY_SSH_ALLOW_UNMAPPED_KEYS", false),
 		SSHUserKeysConfigMap:  env("PODDY_SSH_USER_KEYS_CONFIGMAP", "poddy-user-ssh-keys"),
 		SSHRequireAgent:       envBool("PODDY_SSH_REQUIRE_AGENT", false),
-		SSHCertTTL:            envDuration("PODDY_SSH_CERT_TTL", 15*time.Minute),
+		SSHCertTTL:            envDuration("PODDY_SSH_CERT_TTL", 12*time.Hour),
 		SSHDrainDelay:         envDuration("PODDY_SSH_DRAIN_DELAY", 3*time.Second),
 		SSHDrainTimeout:       envDuration("PODDY_SSH_DRAIN_TIMEOUT", 20*time.Second),
 		SSHCAKeyFile:          os.Getenv("PODDY_SSH_CA_KEY_FILE"),
