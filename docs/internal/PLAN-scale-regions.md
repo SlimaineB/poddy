@@ -258,3 +258,11 @@ région, aucun composant à opérer en plus, et pas de peering/VPN.
 > et le portail ne démarre plus de listener SSH lorsque le mesh est actif. Le
 > tunnel WSS reste utilisé pour l'API des régions et l'ancien mode SSH reste
 > disponible uniquement quand `mesh.enabled=false`.
+
+> **Validation multi-région sans peering (2026-11-24)** : testé avec deux
+> clusters kind isolés (`poddy-hub` + `poddy-eu`), sans VPC peering ni transit
+> gateway. Le region manager ouvre un WSS sortant vers le hub, le hub crée un
+> workspace `region=eu`, et le SSH fonctionne via le mesh Headscale/DERP et via
+> le tunnel région du portail. Le control plane reste sans mesh ; le mesh sert
+> au data plane Desktop/terminal. Procédure reproductible et limites :
+> `RUNBOOK-multi-region-kind.md`.

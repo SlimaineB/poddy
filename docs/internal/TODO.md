@@ -21,6 +21,7 @@ Idées notées pour plus tard.
 - [x] Gérer RBAC, état des workspaces, audit et suppressions à travers les clusters.
 - [x] Prévoir le routage terminal/VS Code/SSH vers le bon bastion.
 - [x] Documenter le comportement en cas de cluster indisponible (dégradation partielle, pas de failover automatique).
+- [x] Valider 2 clusters kind isolés sans peering (hub + eu) : tunnel WSS région → hub, workspace `region=eu`, SSH mesh et SSH via le tunnel région. Voir `RUNBOOK-multi-region-kind.md`.
 
 ## Authentification
 
