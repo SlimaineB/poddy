@@ -3,6 +3,7 @@ package config
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParseImageRegistryMap(t *testing.T) {
@@ -68,5 +69,16 @@ func TestParseImageRegistryMap(t *testing.T) {
 				t.Fatalf("got %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSSHCertTTLDefaultCoversDesktopSessions(t *testing.T) {
+	t.Setenv("PODDY_SSH_CERT_TTL", "")
+	cfg, err := Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SSHCertTTL < 12*time.Hour {
+		t.Fatalf("SSH certificate TTL = %s, want at least 12h", cfg.SSHCertTTL)
 	}
 }

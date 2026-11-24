@@ -100,23 +100,7 @@ func applyMeshEnv(container *corev1.Container, controlURL, authKey string) {
 	}
 	setEnv(container, envMeshControlURL, strings.TrimSpace(controlURL))
 	setEnv(container, envMeshAuthKey, strings.TrimSpace(authKey))
-	stateDir := agentStateMountPath + "/tsnet"
-	if mount := workspaceMountPath(container); mount != "" {
-		stateDir = mount + "/.poddy/tsnet"
-	}
-	setEnv(container, envMeshStateDir, stateDir)
-}
-
-func workspaceMountPath(container *corev1.Container) string {
-	if container == nil {
-		return ""
-	}
-	for _, mount := range container.VolumeMounts {
-		if mount.Name == workspaceVolumeName {
-			return mount.MountPath
-		}
-	}
-	return ""
+	setEnv(container, envMeshStateDir, agentStateMountPath+"/tsnet")
 }
 
 func (m *Manager) agentSidecarImage() string {
@@ -124,19 +108,14 @@ func (m *Manager) agentSidecarImage() string {
 }
 
 const (
-	workspaceVolumeName  = "workspace"
 	agentStateVolumeName = "poddy-agent-state"
 	agentStateMountPath  = "/var/lib/poddy"
-	agentMeshMountPath   = agentStateMountPath + "/mesh"
 	agentTokenFile       = agentStateMountPath + "/agent-token"
 )
 
 func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName, meshControlURL, meshAuthKey, meshCACert string) {
 	container := agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAuthKey, meshCACert)
 	mountAgentTokenState(pod, &container)
-	if mountAgentMeshState(pod, &container) {
-		setEnv(&container, envMeshStateDir, agentMeshMountPath+"/.poddy/tsnet")
-	}
 	if secretName != "" {
 		mountAgentTokenSecret(pod, &container, workspace)
 	}
@@ -147,39 +126,6 @@ func upsertAgentSidecar(pod *corev1.Pod, image, agentURL, workspace, secretName,
 		}
 	}
 	pod.Spec.Containers = append(pod.Spec.Containers, container)
-}
-
-// mountAgentMeshState stores the agent's tsnet identity on the workspace PVC.
-// The node therefore keeps the same key and tailnet IP across container and pod
-// restarts, instead of registering a new node every time and leaving stale
-// duplicates behind in Headscale.
-func mountAgentMeshState(pod *corev1.Pod, container *corev1.Container) bool {
-	if container == nil {
-		return false
-	}
-	volumeName := findWorkspaceVolume(pod)
-	if volumeName == "" {
-		return false
-	}
-	for _, mount := range container.VolumeMounts {
-		if mount.Name == volumeName {
-			return true
-		}
-	}
-	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: agentMeshMountPath,
-	})
-	return true
-}
-
-func findWorkspaceVolume(pod *corev1.Pod) string {
-	for _, volume := range pod.Spec.Volumes {
-		if volume.Name == workspaceVolumeName {
-			return volume.Name
-		}
-	}
-	return ""
 }
 
 // mountAgentTokenState gives the agent a writable emptyDir so a token renewed
