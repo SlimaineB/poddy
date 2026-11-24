@@ -10,7 +10,9 @@ HOST="${DEMO_HOST:-$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 REGIONS="${DEMO_REGIONS:-eu us}"
 HEADSCALE_PORT="${HEADSCALE_PORT:-30090}"
-HEADSCALE_HOST="${HEADSCALE_HOST:-headscale.local}"
+# sslip.io resolves to the node IP, so workspaces and laptops can reach
+# Headscale without a shared /etc/hosts entry. Override for a stable DNS name.
+HEADSCALE_HOST="${HEADSCALE_HOST:-headscale.${HOST}.sslip.io}"
 STUN_PORT="${STUN_PORT:-30347}"
 STATE_DIR="${STATE_DIR:-/tmp/opencode}"
 TLS_DIR="${STATE_DIR}/headscale-tls"
@@ -22,6 +24,12 @@ echo "==> Regions: $REGIONS"
 
 # Local CA for the demo ingress. Install ca.crt on client machines; the
 # certificate covers both the DNS name and the node IP for LAN access.
+if [[ -s "${TLS_DIR}/server.crt" ]] &&
+   ! openssl x509 -in "${TLS_DIR}/server.crt" -noout -checkhost "$HEADSCALE_HOST" >/dev/null 2>&1; then
+  rm -f "${TLS_DIR}/ca.crt" "${TLS_DIR}/ca.key" \
+    "${TLS_DIR}/server.crt" "${TLS_DIR}/server.key" \
+    "${TLS_DIR}/server.csr" "${TLS_DIR}/server.ext"
+fi
 if [[ ! -s "${TLS_DIR}/ca.crt" || ! -s "${TLS_DIR}/server.crt" || ! -s "${TLS_DIR}/server.key" ]]; then
   openssl req -x509 -newkey rsa:4096 -nodes -days 3650 \
     -keyout "${TLS_DIR}/ca.key" -out "${TLS_DIR}/ca.crt" \
@@ -65,14 +73,53 @@ kubectl apply -f /tmp/poddy-dex-mesh.yaml >/dev/null
 kubectl -n "$NS" rollout restart deploy/dex >/dev/null
 kubectl -n "$NS" rollout status deploy/dex --timeout=180s >/dev/null
 
+# Generate the region identities before configuring the hub. The hub must
+# accept the region tunnels before the region managers can become ready.
+REGION_ENTRIES=""
+for REGION in $REGIONS; do
+  RNS="poddy-${REGION}"
+  WNS="poddy-${REGION}-workspaces"
+  kubectl create namespace "$RNS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl create namespace "$WNS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  if kubectl -n "$RNS" get secret "poddy-${REGION}-region-key" >/dev/null 2>&1; then
+    REGION_KEY="$(kubectl -n "$RNS" get secret "poddy-${REGION}-region-key" -o jsonpath='{.data.region-key}' | base64 -d)"
+  else
+    REGION_KEY="$(openssl rand -hex 32)"
+    kubectl -n "$RNS" create secret generic "poddy-${REGION}-region-key" \
+      --from-literal=region-key="$REGION_KEY" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
+
+  REGION_ENTRIES="${REGION_ENTRIES}  - name: ${REGION}
+    displayName: ${REGION}
+    key: ${REGION_KEY}
+    sshHost: ${HOST}
+    sshPort: 30223
+"
+done
+
+{
+  echo "regions:"
+  printf '%s' "$REGION_ENTRIES"
+} > "${STATE_DIR}/poddy-regions.yaml"
+kubectl -n "$NS" create secret generic poddy-regions \
+  --from-file=regions.yaml="${STATE_DIR}/poddy-regions.yaml" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
 # Preserve the existing demo values while letting new chart defaults apply.
-helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml" 2>/dev/null || true
+# Helm 3.13 prefixes JSON/YAML output with a "USER-SUPPLIED VALUES" key; strip it.
+if ! helm -n "$NS" get values poddy -o json 2>/dev/null |
+  python3 -c 'import json, sys; d = json.load(sys.stdin); d.pop("USER-SUPPLIED VALUES", None); json.dump(d, sys.stdout)' \
+  > "${STATE_DIR}/poddy-hub-existing.json"; then
+  echo '{}' > "${STATE_DIR}/poddy-hub-existing.json"
+fi
 
 # Install Headscale and enable the SSH mesh in one pass. The chart sidecar
 # creates the reusable workspace key and the portal waits for it.
 helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
-  -f "${STATE_DIR}/poddy-hub-existing.yaml" \
+  -f "${STATE_DIR}/poddy-hub-existing.json" \
   --set replicaCount=1 \
+  --set regionsExistingSecret=poddy-regions \
   --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent \
   --set mesh.enabled=true \
   --set mesh.headscale.enabled=true \
@@ -99,16 +146,22 @@ if [[ -z "$AUTH_KEY" ]]; then
   exit 1
 fi
 
-REGION_ENTRIES=""
+# Copy the hub SSH CA so region managers issue compatible certificates.
+copy_ssh_ca() {
+  local rns="$1"
+  if ! kubectl -n "$NS" get secret poddy-ssh-ca >/dev/null 2>&1; then
+    return
+  fi
+  local key
+  key="$(kubectl -n "$NS" get secret poddy-ssh-ca -o jsonpath='{.data.ssh-ca-key}' | base64 -d)"
+  kubectl -n "$rns" create secret generic poddy-ssh-ca \
+    --from-literal=ssh-ca-key="$key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
 for REGION in $REGIONS; do
   RNS="poddy-${REGION}"
   WNS="poddy-${REGION}-workspaces"
-  kubectl create namespace "$RNS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  kubectl create namespace "$WNS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-
-  REGION_KEY="$(openssl rand -hex 32)"
-  kubectl -n "$RNS" create secret generic "poddy-${REGION}-region-key" \
-    --from-literal=region-key="$REGION_KEY" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  copy_ssh_ca "$RNS"
 
   cat > "${STATE_DIR}/poddy-${REGION}-mesh.yaml" <<YAML
 fullnameOverride: poddy-${REGION}
@@ -154,33 +207,8 @@ YAML
 
   helm upgrade --install "poddy-${REGION}" "$ROOT/deploy/helm/poddy" -n "$RNS" \
     -f "${STATE_DIR}/poddy-${REGION}-mesh.yaml" --wait --timeout 10m >/dev/null
-  kubectl -n "$RNS" rollout restart "deploy/poddy-${REGION}" >/dev/null
   kubectl -n "$RNS" rollout status "deploy/poddy-${REGION}" --timeout=300s >/dev/null
-
-  REGION_ENTRIES="${REGION_ENTRIES}  - name: ${REGION}
-    displayName: ${REGION}
-    key: ${REGION_KEY}
-    sshHost: ${HOST}
-    sshPort: 30223
-"
 done
-
-{
-  echo "regions:"
-  printf '%s' "$REGION_ENTRIES"
-} > "${STATE_DIR}/poddy-regions.yaml"
-kubectl -n "$NS" create secret generic poddy-regions \
-  --from-file=regions.yaml="${STATE_DIR}/poddy-regions.yaml" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-
-helm -n "$NS" get values poddy > "${STATE_DIR}/poddy-hub-existing.yaml"
-helm upgrade poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
-  -f "${STATE_DIR}/poddy-hub-existing.yaml" \
-  --set replicaCount=1 \
-  --set regionsExistingSecret=poddy-regions \
-  --wait --timeout 10m >/dev/null
-kubectl -n "$NS" rollout restart deploy/poddy >/dev/null
-kubectl -n "$NS" rollout status deploy/poddy --timeout=300s >/dev/null
 
 cat <<MSG
 
@@ -195,13 +223,15 @@ Mesh multi-region demo is ready.
 
 The workspace SSH dialog shows ws-<workspace> on port 22 for mesh peers.
 
-For a laptop on the same LAN, add the demo hostname, trust the CA, then join
-the tailnet:
+For a laptop on the same LAN, trust the CA, then join the tailnet:
 
-  echo "${HOST} ${HEADSCALE_HOST}" | sudo tee -a /etc/hosts
   sudo cp "${TLS_DIR}/ca.crt" /usr/local/share/ca-certificates/poddy-demo.crt
   sudo update-ca-certificates
   tailscale up --login-server=https://${HEADSCALE_HOST}
+
+If ${HEADSCALE_HOST} does not resolve to ${HOST}, add it first:
+
+  echo "${HOST} ${HEADSCALE_HOST}" | sudo tee -a /etc/hosts
 
 The certificate also covers IP ${HOST}, but the ingress routes by hostname.
 MSG
