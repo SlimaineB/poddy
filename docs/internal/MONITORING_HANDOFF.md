@@ -105,6 +105,7 @@ pods workspace `poddy-*-0` pour ne pas compter le portail ou le bastion.
 |---------|-------|-------|
 | GET | `/api/workspaces/{name}/metrics` | owner ou admin |
 | GET | `/api/workspaces/{name}/metrics/history?range=1h` | owner ou admin |
+| GET | `/api/workspaces/{name}/monitoring/egress?range=1h` | owner ou admin |
 | GET | `/api/monitoring/overview` | admin + `monitoring.global` |
 | GET | `/api/monitoring/history?range=1h` | admin + `monitoring.global` |
 
@@ -118,17 +119,19 @@ l'historique global agrègent les régions.
 | monitoring master | `PODDY_MONITORING_ENABLED` | `monitoring.enabled` | true |
 | live | `PODDY_MONITORING_LIVE` | `monitoring.live` | true |
 | history | `PODDY_MONITORING_HISTORY` | `monitoring.history` | true |
+| egress | `PODDY_MONITORING_EGRESS` | `monitoring.egress.enabled` | false |
 | global | `PODDY_MONITORING_GLOBAL` | `monitoring.global` | true |
 | costs | `PODDY_MONITORING_COSTS` | `monitoring.costs.enabled` | false |
 | costs users | `PODDY_MONITORING_COSTS_FOR_USERS` | `monitoring.costs.visibleToUsers` | false |
 | Prometheus URL | `PODDY_PROMETHEUS_URL` | `monitoring.prometheus.url` | vide |
 | Prometheus token | `PODDY_PROMETHEUS_TOKEN` | secret existant | vide |
 
-Quand `PODDY_PROMETHEUS_URL` est vide, `monitoring.history` est rapporté `false`
-dans `/api/config` même si le flag est `true`.
+Quand `PODDY_PROMETHEUS_URL` est vide, `monitoring.history` et
+`monitoring.egress` sont rapportés `false` dans `/api/config` même si leurs
+flags sont `true`.
 
 - `/api/config` renvoie :
-  `monitoring: {enabled, live, history, global, costs, costsForUsers}`.
+  `monitoring: {enabled, live, history, egress, global, costs, costsForUsers}`.
 
 ---
 
@@ -335,10 +338,10 @@ après coup.
 
 ```text
 poddy_workspace_network_bytes_total{
-  workspace, region, direction, protocol, service, endpoint, port
+  workspace, region, direction, protocol, remote_service, remote_endpoint, port
 }
 poddy_workspace_network_connections_total{
-  workspace, region, protocol, service, endpoint, port
+  workspace, region, protocol, remote_service, remote_endpoint, port
 }
 poddy_workspace_network_dropped_packets_total{workspace, region, direction}
 poddy_workspace_fs_bytes_total{
@@ -449,6 +452,34 @@ Chaque phase doit être indépendamment désactivable.
 
 ---
 
+## 3bis. Implémentation v1 — collecteur paquet
+
+- `cmd/poddy-netmon` : DaemonSet privilégié, `hostNetwork`, opt-in via
+  `monitoring.egress.enabled`.
+- Capture `AF_PACKET` sur toutes les interfaces hôte, filtre les IP de pods
+  workspace via l'API Kubernetes, déduplique les paquets vus sur plusieurs
+  interfaces.
+- DNS (réponses) + SNI TLS + port NFS `2049` ; mapping PVC/PV → workspace pour
+  NFS, EFS et S3 CSI. Aucun payload, secret ou nom d'objet n'est conservé.
+- Métriques : `poddy_workspace_network_bytes_total`,
+  `poddy_workspace_network_connections_total`,
+  `poddy_workspace_storage_mount_info`, `poddy_netmon_packets_total`.
+- Limites : S3 path-style sans bucket, trafic S3 Mountpoint/EFS CSI qui reste
+  dans le netns du driver visible via le mount mais pas toujours en octets par
+  workspace, attribution NFS partagée volontairement limitée à `unknown` si
+  plusieurs workspaces utilisent le même serveur.
+- API `GET /api/workspaces/{name}/monitoring/egress?range=1h` : agrège les
+  octets/connexions par endpoint et les mounts via Prometheus ; proxyfiée vers
+  la région en mode hub.
+- UI workspace : section **External access** avec endpoints réseau (service,
+  endpoint, bucket, direction, trafic, connexions, confiance) et mounts
+  NFS/EFS/S3. Elle suit l'autorisation workspace existante ; il n'y a pas encore
+  de flag `monitoring.egress.visibleToUsers`.
+- `monitoring.egress.enabled` active à la fois le DaemonSet et
+  `PODDY_MONITORING_EGRESS` côté portail. `PODDY_PROMETHEUS_URL` reste requis.
+- Le plan eBPF FS/CSI (FUSE/NFS tracepoints, IOPS/latence) reste la phase
+  suivante ; le collecteur paquet est indépendant et désactivable.
+
 ## 4. Pièges à éviter
 
 - Ne pas ajouter une TSDB maison dans PostgreSQL pour les métriques brutes.
@@ -469,10 +500,9 @@ Chaque phase doit être indépendamment désactivable.
 
 ## 5. Décisions encore ouvertes
 
-- Agent eBPF maison vs Hubble/Pixie en première intention.
+- Agent eBPF maison vs Hubble/Pixie pour la phase FS/IOPS.
 - Exposition des services externes aux owners ou admin seulement (défaut
   recommandé : admin, flag pour owners).
-- Faut-il parser SNI ou se limiter à DNS + plages cloud ?
 - Rétention des agrégats egress (7 j ? 30 j ? snapshots quotidiens ?).
 - Modèle de coût : OpenCost seul ou price book interne pour les services non
   couverts.

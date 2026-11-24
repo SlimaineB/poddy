@@ -151,3 +151,81 @@ func TestAdminKeepsNonInteractiveAccess(t *testing.T) {
 		t.Fatalf("admin manifests = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestWorkspaceShareFlow(t *testing.T) {
+	s := newRBACServer(t, rbacTestConfig())
+	alice := sessionFor(t, s, auth.User{Username: "alice", Email: "alice@example.com"})
+	bob := sessionFor(t, s, auth.User{Username: "bob", Email: "bob@example.com"})
+
+	rec := requestAs(t, s, alice, http.MethodPost, "/api/workspaces", map[string]any{"name": "alice-ws", "template": "base"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = requestAs(t, s, bob, http.MethodPost, "/api/workspaces/alice-ws/access/share", map[string]any{"actor": "bob@example.com"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-owner share = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/access/share", map[string]any{"actor": "Bob@Example.com"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner share = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var info k8s.WorkspaceAccess
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsOwner || len(info.Shares) != 1 || info.Shares[0].Actor != "bob@example.com" {
+		t.Fatalf("owner access after share = %+v", info)
+	}
+
+	rec = requestAs(t, s, bob, http.MethodGet, "/api/workspaces", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob list = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var list []k8s.Workspace
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "alice-ws" {
+		t.Fatalf("bob list = %+v", list)
+	}
+
+	rec = requestAs(t, s, bob, http.MethodGet, "/api/workspaces/alice-ws/access", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob access = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	info = k8s.WorkspaceAccess{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if !info.Allowed || !info.IsShared || info.SharedBy != "alice@example.com" {
+		t.Fatalf("bob access = %+v", info)
+	}
+
+	if rec := requestAs(t, s, bob, http.MethodGet, "/api/workspaces/alice-ws", nil); rec.Code != http.StatusOK {
+		t.Fatalf("bob details = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if rec := requestAs(t, s, bob, http.MethodDelete, "/api/workspaces/alice-ws", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("shared user delete = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = requestAs(t, s, alice, http.MethodPost, "/api/workspaces/alice-ws/access/unshare", map[string]any{"actor": "bob@example.com"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner unshare = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = requestAs(t, s, bob, http.MethodGet, "/api/workspaces", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob list after unshare = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	list = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("bob list after unshare = %+v", list)
+	}
+	if rec := requestAs(t, s, bob, http.MethodGet, "/api/workspaces/alice-ws/access", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("bob access after unshare = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}

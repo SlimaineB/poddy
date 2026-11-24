@@ -19,6 +19,7 @@ type Config struct {
 	MonitoringEnabled         bool
 	MonitoringLive            bool
 	MonitoringHistory         bool
+	MonitoringEgress          bool
 	MonitoringGlobal          bool
 	MonitoringCosts           bool
 	MonitoringCostsForUsers   bool
@@ -136,6 +137,7 @@ func Load(args []string) (Config, error) {
 		MonitoringEnabled:         envBool("PODDY_MONITORING_ENABLED", true),
 		MonitoringLive:            envBool("PODDY_MONITORING_LIVE", true),
 		MonitoringHistory:         envBool("PODDY_MONITORING_HISTORY", true),
+		MonitoringEgress:          envBool("PODDY_MONITORING_EGRESS", false),
 		MonitoringGlobal:          envBool("PODDY_MONITORING_GLOBAL", true),
 		MonitoringCosts:           envBool("PODDY_MONITORING_COSTS", false),
 		MonitoringCostsForUsers:   envBool("PODDY_MONITORING_COSTS_FOR_USERS", false),
@@ -248,6 +250,7 @@ func Load(args []string) (Config, error) {
 	fs.BoolVar(&cfg.MonitoringEnabled, "monitoring-enabled", cfg.MonitoringEnabled, "enable workspace monitoring APIs and UI")
 	fs.BoolVar(&cfg.MonitoringLive, "monitoring-live", cfg.MonitoringLive, "enable live CPU and memory metrics from metrics-server")
 	fs.BoolVar(&cfg.MonitoringHistory, "monitoring-history", cfg.MonitoringHistory, "enable Prometheus history queries")
+	fs.BoolVar(&cfg.MonitoringEgress, "monitoring-egress", cfg.MonitoringEgress, "enable workspace external access and storage attribution")
 	fs.BoolVar(&cfg.MonitoringGlobal, "monitoring-global", cfg.MonitoringGlobal, "enable the portal-wide admin monitoring view")
 	fs.BoolVar(&cfg.MonitoringCosts, "monitoring-costs", cfg.MonitoringCosts, "enable FinOps cost data")
 	fs.BoolVar(&cfg.MonitoringCostsForUsers, "monitoring-costs-for-users", cfg.MonitoringCostsForUsers, "show cost data to workspace owners instead of admins only")

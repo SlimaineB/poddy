@@ -17,12 +17,13 @@ import (
 )
 
 type accessDecision struct {
-	Owner   string
-	IsOwner bool
-	IsAdmin bool
-	Allowed bool
-	Pending bool
-	Grant   *k8s.AccessGrant
+	Owner    string
+	IsOwner  bool
+	IsAdmin  bool
+	IsShared bool
+	Allowed  bool
+	Pending  bool
+	Grant    *k8s.AccessGrant
 }
 
 type accessActorRequest struct {
@@ -87,6 +88,27 @@ func (s *Server) interactiveAccess(r *http.Request, name string, id *identity, c
 		decision.Allowed = true
 		return decision, nil
 	}
+	store := s.accessStore()
+	if store == nil {
+		if decision.IsAdmin && owner == "" {
+			// Legacy workspace without an owner annotation: keep admins working.
+			decision.Allowed = true
+			return decision, nil
+		}
+		if !decision.IsAdmin {
+			return decision, nil
+		}
+		return decision, apierrors.NewServiceUnavailable("access store is unavailable")
+	}
+	state, err := store.Load(r.Context())
+	if err != nil {
+		return decision, err
+	}
+	if state.IsShared(name, actor) {
+		decision.IsShared = true
+		decision.Allowed = true
+		return decision, nil
+	}
 	if !decision.IsAdmin {
 		return decision, nil
 	}
@@ -94,14 +116,6 @@ func (s *Server) interactiveAccess(r *http.Request, name string, id *identity, c
 		// Legacy workspace without an owner annotation: keep admins working.
 		decision.Allowed = true
 		return decision, nil
-	}
-	store := s.accessStore()
-	if store == nil {
-		return decision, apierrors.NewServiceUnavailable("access store is unavailable")
-	}
-	state, err := store.Load(r.Context())
-	if err != nil {
-		return decision, err
 	}
 	now := time.Now()
 	if grant, ok := state.Grant(name, actor, now); ok {
@@ -161,6 +175,10 @@ func buildWorkspaceAccess(state *k8s.AccessState, name, owner, actor string, adm
 	if owner != "" && strings.EqualFold(owner, actor) {
 		info.IsOwner = true
 		info.Allowed = true
+	} else if share, ok := state.Share(name, actor); ok {
+		info.IsShared = true
+		info.SharedBy = share.SharedBy
+		info.Allowed = true
 	} else if admin {
 		if owner == "" {
 			// Legacy workspace without an owner annotation: do not lock out
@@ -176,8 +194,31 @@ func buildWorkspaceAccess(state *k8s.AccessState, name, owner, actor string, adm
 	if info.IsOwner || admin {
 		info.PendingRequests = state.PendingActors(name)
 		info.Grants = state.ActiveGrants(name, now)
+		info.Shares = state.WorkspaceShares(name)
 	}
 	return info
+}
+
+func (s *Server) filterAccessibleWorkspaces(ctx context.Context, list []k8s.Workspace, actor string) []k8s.Workspace {
+	if actor == "" {
+		return []k8s.Workspace{}
+	}
+	state := k8s.AccessState{}
+	if store := s.accessStore(); store != nil {
+		loaded, err := store.Load(ctx)
+		if err != nil {
+			log.Printf("workspace access: filter: %v", err)
+		} else {
+			state = loaded
+		}
+	}
+	out := make([]k8s.Workspace, 0, len(list))
+	for _, workspace := range list {
+		if strings.EqualFold(workspace.Owner, actor) || state.IsShared(workspace.Name, actor) {
+			out = append(out, workspace)
+		}
+	}
+	return out
 }
 
 func (s *Server) enrichWorkspaceAccess(ctx context.Context, list []k8s.Workspace, id *identity, cfg rbac.Config) {
@@ -334,6 +375,14 @@ func (s *Server) revokeWorkspaceAccess(w http.ResponseWriter, r *http.Request) {
 	s.mutateWorkspaceAccess(w, r, "revoke")
 }
 
+func (s *Server) shareWorkspaceAccess(w http.ResponseWriter, r *http.Request) {
+	s.mutateWorkspaceAccess(w, r, "share")
+}
+
+func (s *Server) unshareWorkspaceAccess(w http.ResponseWriter, r *http.Request) {
+	s.mutateWorkspaceAccess(w, r, "unshare")
+}
+
 func (s *Server) mutateWorkspaceAccess(w http.ResponseWriter, r *http.Request, action string) {
 	if s.Regions != nil {
 		s.proxyWorkspace(w, r)
@@ -382,6 +431,10 @@ func (s *Server) mutateWorkspaceAccess(w http.ResponseWriter, r *http.Request, a
 		err = store.Deny(r.Context(), name, actor)
 	case "revoke":
 		err = store.Revoke(r.Context(), name, actor)
+	case "share":
+		err = store.Share(r.Context(), name, actor, ownerID(id.User))
+	case "unshare":
+		err = store.Unshare(r.Context(), name, actor)
 	}
 	if err != nil {
 		http.Error(w, "access update failed", http.StatusInternalServerError)

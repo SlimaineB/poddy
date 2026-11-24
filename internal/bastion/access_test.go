@@ -27,6 +27,19 @@ func TestInteractiveAuthorized(t *testing.T) {
 		t.Fatal("admin was allowed without a grant")
 	}
 
+	if err := b.Access.Share(context.Background(), "demo", "admin@example.com", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if !b.interactiveAuthorized(admin, "admin@example.com", "demo", "alice@example.com") {
+		t.Fatal("admin was denied despite an active share")
+	}
+	if err := b.Access.Unshare(context.Background(), "demo", "admin@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if b.interactiveAuthorized(admin, "admin@example.com", "demo", "alice@example.com") {
+		t.Fatal("admin was allowed after the share was removed")
+	}
+
 	if err := b.Access.Approve(context.Background(), "demo", "admin@example.com", "alice@example.com", time.Minute); err != nil {
 		t.Fatal(err)
 	}

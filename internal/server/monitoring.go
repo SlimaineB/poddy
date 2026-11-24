@@ -23,6 +23,7 @@ type MonitoringConfig struct {
 	Enabled       bool
 	Live          bool
 	History       bool
+	Egress        bool
 	Global        bool
 	Costs         bool
 	CostsForUsers bool
@@ -113,6 +114,64 @@ func (s *Server) workspaceMetricsHistory(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	writeJSON(w, http.StatusOK, history)
+}
+
+func (s *Server) workspaceEgress(w http.ResponseWriter, r *http.Request) {
+	if !s.Monitoring.Enabled || !s.Monitoring.Egress {
+		http.NotFound(w, r)
+		return
+	}
+	if s.Regions != nil {
+		s.proxyWorkspace(w, r)
+		return
+	}
+	id, ok := s.currentIdentity(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cfg, err := s.loadRBAC(r)
+	if err != nil {
+		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	name := r.PathValue("name")
+	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	if err != nil || !allowed {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if !validHistoryParams(r) {
+		http.Error(w, "invalid range or step", http.StatusBadRequest)
+		return
+	}
+	if s.Prometheus == nil {
+		writeJSON(w, http.StatusOK, monitoring.Egress{
+			Available: false,
+			Reason:    "Prometheus is not configured",
+			Network:   []monitoring.EgressNetwork{},
+			Mounts:    []monitoring.EgressMount{},
+		})
+		return
+	}
+	egress, err := s.Prometheus.WorkspaceEgress(
+		r.Context(),
+		name,
+		r.URL.Query().Get("range"),
+	)
+	if err != nil {
+		log.Printf("monitoring egress %s: %v", strings.ReplaceAll(strings.ReplaceAll(name, "\n", " "), "\r", " "), strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", " "), "\r", " "))
+		if egress.Reason == "" {
+			egress.Reason = "Prometheus is unavailable"
+		}
+	}
+	if egress.Network == nil {
+		egress.Network = []monitoring.EgressNetwork{}
+	}
+	if egress.Mounts == nil {
+		egress.Mounts = []monitoring.EgressMount{}
+	}
+	writeJSON(w, http.StatusOK, egress)
 }
 
 func (s *Server) monitoringOverview(w http.ResponseWriter, r *http.Request) {

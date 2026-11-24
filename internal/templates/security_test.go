@@ -100,6 +100,14 @@ func TestApplyDefaultsRejectsUnsafePods(t *testing.T) {
           add:
             - SYS_ADMIN
 `,
+		"workspaceCapability": `
+  containers:
+    - name: workspace
+      securityContext:
+        capabilities:
+          add:
+            - SYS_RESOURCE
+`,
 		"procMount": `
   containers:
     - name: workspace
@@ -127,17 +135,13 @@ func TestApplyDefaultsRejectsUnsafePods(t *testing.T) {
 	}
 }
 
-func TestApplyDefaultsAllowsWorkspaceCapabilityAndOwnPVC(t *testing.T) {
+func TestApplyDefaultsAllowsOwnPVC(t *testing.T) {
 	raw := []byte(`
 apiVersion: v1
 kind: Pod
 spec:
   containers:
     - name: workspace
-      securityContext:
-        capabilities:
-          add:
-            - SYS_RESOURCE
       volumeMounts:
         - name: data
           mountPath: /data

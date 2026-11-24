@@ -88,7 +88,7 @@ func (s *Server) workspaceShare(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rbac: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	allowed, err := s.workspaceManageAllowed(r, name, id, cfg)
 	if err != nil || !allowed {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return

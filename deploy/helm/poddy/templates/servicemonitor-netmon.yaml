@@ -1,0 +1,30 @@
+{{- $egress := .Values.monitoring.egress }}
+{{- if and $egress.enabled $egress.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+    {{- with $egress.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "poddy.netmonSelectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $egress.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ $egress.serviceMonitor.scrapeTimeout | default "10s" }}
+      {{- with $egress.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $egress.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

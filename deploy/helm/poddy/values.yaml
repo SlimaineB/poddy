@@ -149,8 +149,8 @@ networkPolicy:
       # (169.254.20.10/32). Metadata endpoints must never be added here.
       dnsCIDRs: []
     # Pod Security Admission labels applied when the chart creates the
-    # workspace namespace. Baseline is only advisory here because workspace
-    # containers need SYS_RESOURCE for sshd OOM protection.
+    # workspace namespace. Baseline is advisory by default; set enforce when
+    # your workspace templates comply.
     psa:
       warn: baseline
       audit: baseline
@@ -592,6 +592,39 @@ monitoring:
     # Existing Secret in the release namespace containing a bearer token.
     existingSecret: ""
     tokenKey: token
+  # Privileged per-node collector for S3, NFS and EFS attribution. It inspects
+  # DNS, TLS SNI and NFS connection metadata; payloads are not stored or
+  # decrypted.
+  egress:
+    enabled: false
+    # Empty uses the portal image, which contains /poddy-netmon.
+    image: ""
+    metricsPort: 9102
+    endpointCap: 8192
+    refresh: 15s
+    mountRefresh: 30s
+    statsInterval: 1m
+    # Empty captures every host interface.
+    interface: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    nodeSelector: {}
+    tolerations:
+      - operator: Exists
+    affinity: {}
+    priorityClassName: ""
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+      relabelings: []
+      metricRelabelings: []
 
 portal:
   addr: ":8080"

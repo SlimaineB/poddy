@@ -153,7 +153,7 @@ func (s *Server) authorizeEnvironment(w http.ResponseWriter, r *http.Request, sc
 				allowed = strings.EqualFold(info.Owner, owner)
 			} else if s.Workspaces != nil {
 				var err error
-				allowed, err = s.workspaceAllowedAny(r, target, id, cfg)
+				allowed, err = s.workspaceManageAllowed(r, target, id, cfg)
 				if err != nil {
 					if apierrors.IsNotFound(err) {
 						http.Error(w, "workspace not found", http.StatusNotFound)

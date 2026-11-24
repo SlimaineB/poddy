@@ -567,13 +567,13 @@ func Run(ctx context.Context, args []string) error {
 		}
 	}
 	var prometheusClient *monitoring.PrometheusClient
-	if cfg.MonitoringEnabled && cfg.MonitoringHistory && strings.TrimSpace(cfg.PrometheusURL) != "" {
+	if cfg.MonitoringEnabled && (cfg.MonitoringHistory || cfg.MonitoringEgress) && strings.TrimSpace(cfg.PrometheusURL) != "" {
 		prometheusClient, err = monitoring.NewPrometheusClient(cfg.PrometheusURL, cfg.PrometheusToken)
 		if err != nil {
 			return fmt.Errorf("Prometheus monitoring: %w", err)
 		}
-	} else if cfg.MonitoringEnabled && cfg.MonitoringHistory {
-		log.Printf("Prometheus monitoring history disabled: PODDY_PROMETHEUS_URL is empty")
+	} else if cfg.MonitoringEnabled && (cfg.MonitoringHistory || cfg.MonitoringEgress) {
+		log.Printf("Prometheus monitoring queries disabled: PODDY_PROMETHEUS_URL is empty")
 	}
 
 	desktopDial := func(ctx context.Context, workspace string, port int) (net.Conn, error) {
@@ -620,6 +620,7 @@ func Run(ctx context.Context, args []string) error {
 			Enabled:       cfg.MonitoringEnabled,
 			Live:          cfg.MonitoringLive,
 			History:       cfg.MonitoringHistory,
+			Egress:        cfg.MonitoringEgress,
 			Global:        cfg.MonitoringGlobal,
 			Costs:         cfg.MonitoringCosts,
 			CostsForUsers: cfg.MonitoringCostsForUsers,

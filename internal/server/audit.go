@@ -115,6 +115,10 @@ func auditRoute(r *http.Request) (string, string) {
 		return "workspace.access.deny", "workspace"
 	case "POST /api/workspaces/{name}/access/revoke":
 		return "workspace.access.revoke", "workspace"
+	case "POST /api/workspaces/{name}/access/share":
+		return "workspace.access.share", "workspace"
+	case "POST /api/workspaces/{name}/access/unshare":
+		return "workspace.access.unshare", "workspace"
 	case "GET /api/workspaces/{name}/manifests":
 		return "workspace.manifests.view", "workspace"
 	case "POST /api/workspaces/{name}/vscode":

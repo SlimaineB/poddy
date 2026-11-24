@@ -44,14 +44,15 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		} else {
 			list, err = s.hubList(r.Context(), s.hubIdentity(id, admin))
 		}
-	} else if admin {
-		list, err = s.Workspaces.List(r.Context())
 	} else {
-		list, err = s.Workspaces.ListByOwner(r.Context(), ownerID(id.User))
+		list, err = s.Workspaces.List(r.Context())
 	}
 	if err != nil {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
+	}
+	if !admin {
+		list = s.filterAccessibleWorkspaces(r.Context(), list, ownerID(id.User))
 	}
 	if regionFilter != "" && s.Regions == nil {
 		filtered := make([]k8s.Workspace, 0, len(list))
@@ -132,9 +133,12 @@ func (s *Server) workspaceDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check access using the workspace already fetched above.
-	if !s.isAdmin(id, cfg) && !strings.EqualFold(ws.Owner, ownerID(id.User)) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+	if !s.isAdmin(id, cfg) {
+		allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+		if err != nil || !allowed {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 	}
 
 	// Get template access info from RBAC
@@ -435,7 +439,7 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 		s.proxyWorkspace(w, r)
 		return
 	}
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	allowed, err := s.workspaceManageAllowed(r, name, id, cfg)
 	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
@@ -518,7 +522,7 @@ func (s *Server) updateWorkspaceSchedule(w http.ResponseWriter, r *http.Request)
 		s.proxyWorkspace(w, r)
 		return
 	}
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	allowed, err := s.workspaceManageAllowed(r, name, id, cfg)
 	if err != nil || !allowed {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
@@ -566,7 +570,7 @@ func (s *Server) workspaceLifecycle(w http.ResponseWriter, r *http.Request, acti
 		s.proxyWorkspace(w, r)
 		return
 	}
-	allowed, err := s.workspaceAllowedAny(r, name, id, cfg)
+	allowed, err := s.workspaceManageAllowed(r, name, id, cfg)
 	if err != nil || !allowed {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return

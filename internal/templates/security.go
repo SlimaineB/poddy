@@ -2,14 +2,9 @@ package templates
 
 import (
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 )
-
-var allowedWorkspaceCapabilities = map[corev1.Capability]bool{
-	"SYS_RESOURCE": true,
-}
 
 func validateWorkspacePod(pod *corev1.Pod, expectedPVC string) error {
 	if pod.Spec.HostNetwork {
@@ -114,12 +109,8 @@ func validateWorkspaceContainer(container corev1.Container, volumes map[string]b
 	if security.WindowsOptions != nil && security.WindowsOptions.HostProcess != nil && *security.WindowsOptions.HostProcess {
 		return fmt.Errorf("container %q must not use Windows hostProcess", container.Name)
 	}
-	if security.Capabilities != nil {
-		for _, capability := range security.Capabilities.Add {
-			if !allowedWorkspaceCapabilities[corev1.Capability(strings.ToUpper(string(capability)))] {
-				return fmt.Errorf("container %q must not add capability %q", container.Name, capability)
-			}
-		}
+	if security.Capabilities != nil && len(security.Capabilities.Add) > 0 {
+		return fmt.Errorf("container %q must not add capabilities", container.Name)
 	}
 	return nil
 }

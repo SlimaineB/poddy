@@ -200,6 +200,22 @@ name (without the leading `v`) is used.
 | `monitoring.prometheus.url` | `""` | Prometheus base URL. Empty disables history. |
 | `monitoring.prometheus.existingSecret` | `""` | Existing Secret containing a Prometheus bearer token. |
 | `monitoring.prometheus.tokenKey` | `token` | Key in the Prometheus token Secret. |
+| `monitoring.egress.enabled` | `false` | Deploy the privileged per-node collector and enable the workspace **External access** panel. Requires `monitoring.prometheus.url`. |
+| `monitoring.egress.image` | `""` | Collector image. Empty uses the portal image, which contains `/poddy-netmon`. |
+| `monitoring.egress.metricsPort` | `9102` | Collector metrics port and Service port. |
+| `monitoring.egress.endpointCap` | `8192` | Maximum flow label sets retained in memory. |
+| `monitoring.egress.refresh` | `15s` | Pod index refresh interval. |
+| `monitoring.egress.mountRefresh` | `30s` | PVC/PV mount index refresh interval. |
+| `monitoring.egress.statsInterval` | `1m` | Packet statistics log interval. |
+| `monitoring.egress.interface` | `""` | Capture interface. Empty captures all host interfaces. |
+| `monitoring.egress.resources` | requests/limits | Collector resource requests and limits. |
+| `monitoring.egress.nodeSelector` | `{}` | Collector node selector. |
+| `monitoring.egress.tolerations` | all nodes | Collector tolerations. |
+| `monitoring.egress.priorityClassName` | `""` | Optional collector priority class. |
+| `monitoring.egress.serviceMonitor.enabled` | `false` | Render a ServiceMonitor for the collector. |
+| `monitoring.egress.serviceMonitor.interval` | `30s` | Collector scrape interval. |
+| `monitoring.egress.serviceMonitor.scrapeTimeout` | `10s` | Collector scrape timeout. |
+| `monitoring.egress.serviceMonitor.labels` | `{}` | Extra labels for the collector ServiceMonitor. |
 | `metrics.enabled` | `true` | Expose Prometheus metrics on a dedicated listener and ClusterIP Service. |
 | `metrics.service.port` | `9090` | Metrics listener and Service port. |
 | `metrics.service.annotations` | `{}` | Annotations for the metrics Service. |

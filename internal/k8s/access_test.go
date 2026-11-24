@@ -132,3 +132,55 @@ func TestAccessStoreDeleteWorkspace(t *testing.T) {
 		t.Fatalf("state after delete = %+v", state)
 	}
 }
+
+func TestAccessStoreShares(t *testing.T) {
+	store := NewMemoryAccessStore()
+	ctx := context.Background()
+
+	if err := store.Share(ctx, "demo", "Bob@Example.com", "Alice@Example.com"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	share, ok := state.Share("demo", "bob@example.com")
+	if !ok {
+		t.Fatal("share was not stored case-insensitively")
+	}
+	if share.SharedBy != "alice@example.com" {
+		t.Fatalf("sharedBy = %q", share.SharedBy)
+	}
+	if !state.IsShared("demo", "bob@example.com") {
+		t.Fatal("IsShared = false")
+	}
+	shares := state.WorkspaceShares("demo")
+	if len(shares) != 1 || shares[0].Actor != "bob@example.com" {
+		t.Fatalf("shares = %+v", shares)
+	}
+
+	if err := store.Unshare(ctx, "demo", "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.IsShared("demo", "bob@example.com") {
+		t.Fatal("unshare left the share in place")
+	}
+
+	if err := store.Share(ctx, "demo", "bob@example.com", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteWorkspace(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Shares["demo"]) != 0 {
+		t.Fatalf("delete workspace left shares: %+v", state.Shares)
+	}
+}

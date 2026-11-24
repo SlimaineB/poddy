@@ -158,6 +158,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/internal/region/access/{workspace}/approve", s.regionAccessApprove)
 	mux.HandleFunc("POST /api/internal/region/access/{workspace}/deny", s.regionAccessDeny)
 	mux.HandleFunc("POST /api/internal/region/access/{workspace}/revoke", s.regionAccessRevoke)
+	mux.HandleFunc("POST /api/internal/region/access/{workspace}/share", s.regionAccessShare)
+	mux.HandleFunc("POST /api/internal/region/access/{workspace}/unshare", s.regionAccessUnshare)
 	mux.HandleFunc("PUT /api/internal/region/access/{workspace}/presence/{session}", s.regionAccessPresence)
 	mux.HandleFunc("DELETE /api/internal/region/access/{workspace}/presence/{session}", s.regionAccessClearPresence)
 	mux.HandleFunc("DELETE /api/internal/region/access/{workspace}", s.regionAccessDeleteWorkspace)
@@ -193,6 +195,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{name}", s.workspaceDetails)
 	mux.HandleFunc("GET /api/workspaces/{name}/metrics", s.workspaceMetrics)
 	mux.HandleFunc("GET /api/workspaces/{name}/metrics/history", s.workspaceMetricsHistory)
+	mux.HandleFunc("GET /api/workspaces/{name}/monitoring/egress", s.workspaceEgress)
 	mux.HandleFunc("GET /api/workspaces/{name}/ports", s.workspacePorts)
 	mux.HandleFunc("PUT /api/workspaces/{name}/ports/{port}/share", s.workspaceShare)
 	mux.HandleFunc("/api/workspaces/{name}/ports/{port}", s.workspacePortRedirect)
@@ -203,6 +206,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/workspaces/{name}/access/approve", s.approveWorkspaceAccess)
 	mux.HandleFunc("POST /api/workspaces/{name}/access/deny", s.denyWorkspaceAccess)
 	mux.HandleFunc("POST /api/workspaces/{name}/access/revoke", s.revokeWorkspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/share", s.shareWorkspaceAccess)
+	mux.HandleFunc("POST /api/workspaces/{name}/access/unshare", s.unshareWorkspaceAccess)
 	mux.HandleFunc("GET /api/workspaces/{name}/manifests", s.workspaceManifests)
 	mux.HandleFunc("POST /api/workspaces", s.create)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.remove)
@@ -300,6 +305,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			"enabled":       s.Monitoring.Enabled,
 			"live":          s.Monitoring.Live,
 			"history":       s.Monitoring.History && s.Prometheus != nil,
+			"egress":        s.Monitoring.Egress && s.Prometheus != nil,
 			"global":        s.Monitoring.Global,
 			"costs":         s.Monitoring.Costs,
 			"costsForUsers": s.Monitoring.CostsForUsers,

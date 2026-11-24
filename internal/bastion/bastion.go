@@ -564,13 +564,13 @@ func (b *Bastion) authorize(permissions *ssh.Permissions, fingerprint, owner, wo
 			if permissions.Extensions["admin"] == "true" {
 				return true
 			}
-			if !strings.EqualFold(certOwner, owner) {
-				return false
-			}
 			if scope := strings.TrimSpace(permissions.Extensions["workspace"]); scope != "" && !strings.EqualFold(scope, workspace) {
 				return false
 			}
-			return true
+			if strings.EqualFold(certOwner, owner) {
+				return true
+			}
+			return b.workspaceShared(workspace, certOwner)
 		}
 	}
 	return b.keys.Authorize(fingerprint, owner)
@@ -582,6 +582,9 @@ func (b *Bastion) interactiveAuthorized(permissions *ssh.Permissions, actor, wor
 	}
 	actor = strings.TrimSpace(actor)
 	if actor == "" || owner == "" || strings.EqualFold(actor, owner) {
+		return true
+	}
+	if b.workspaceShared(workspace, actor) {
 		return true
 	}
 	if b.Access == nil {
@@ -596,6 +599,20 @@ func (b *Bastion) interactiveAuthorized(permissions *ssh.Permissions, actor, wor
 	}
 	_, ok := state.Grant(workspace, actor, time.Now())
 	return ok
+}
+
+func (b *Bastion) workspaceShared(workspace, actor string) bool {
+	if b.Access == nil || strings.TrimSpace(actor) == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	state, err := b.Access.Load(ctx)
+	if err != nil {
+		log.Printf("ssh bastion: share check %s: %v", workspace, err)
+		return false
+	}
+	return state.IsShared(workspace, actor)
 }
 
 func (b *Bastion) trackPresence(workspace, actor string) func() {

@@ -87,6 +87,33 @@ func (p *Postgres) Load(ctx context.Context) (AccessState, error) {
 		return AccessState{}, fmt.Errorf("load access grants: %w", err)
 	}
 
+	shares, err := p.pool.Query(ctx,
+		`SELECT workspace, actor, shared_by, shared_at
+		 FROM poddy.access_shares WHERE namespace = $1`,
+		p.namespace)
+	if err != nil {
+		return AccessState{}, fmt.Errorf("load access shares: %w", err)
+	}
+	for shares.Next() {
+		var workspace string
+		var share AccessShare
+		if err := shares.Scan(&workspace, &share.Actor, &share.SharedBy, &share.SharedAt); err != nil {
+			shares.Close()
+			return AccessState{}, fmt.Errorf("scan access share: %w", err)
+		}
+		if state.Shares == nil {
+			state.Shares = map[string]map[string]AccessShare{}
+		}
+		if state.Shares[workspace] == nil {
+			state.Shares[workspace] = map[string]AccessShare{}
+		}
+		state.Shares[workspace][share.Actor] = share
+	}
+	shares.Close()
+	if err := shares.Err(); err != nil {
+		return AccessState{}, fmt.Errorf("load access shares: %w", err)
+	}
+
 	presence, err := p.pool.Query(ctx,
 		`SELECT workspace, session, actor, kind, since, last_seen
 		 FROM poddy.access_presence WHERE namespace = $1 AND last_seen > $2`,
@@ -214,6 +241,46 @@ func (p *Postgres) Revoke(ctx context.Context, workspace, actor string) error {
 	return nil
 }
 
+func (p *Postgres) Share(ctx context.Context, workspace, actor, sharedBy string) error {
+	actor = normalizeActor(actor)
+	now := time.Now()
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("share workspace: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO poddy.access_shares (namespace, workspace, actor, shared_by, shared_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (namespace, workspace, actor)
+		 DO UPDATE SET shared_by = EXCLUDED.shared_by,
+		               shared_at = EXCLUDED.shared_at`,
+		p.namespace, workspace, actor, normalizeActor(sharedBy), now); err != nil {
+		return fmt.Errorf("store access share: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM poddy.access_requests WHERE namespace = $1 AND workspace = $2 AND actor = $3`,
+		p.namespace, workspace, actor); err != nil {
+		return fmt.Errorf("clear access request: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("share workspace: %w", err)
+	}
+	return nil
+}
+
+func (p *Postgres) Unshare(ctx context.Context, workspace, actor string) error {
+	actor = normalizeActor(actor)
+	if _, err := p.pool.Exec(ctx,
+		`DELETE FROM poddy.access_shares WHERE namespace = $1 AND workspace = $2 AND actor = $3`,
+		p.namespace, workspace, actor); err != nil {
+		return fmt.Errorf("remove access share: %w", err)
+	}
+	return nil
+}
+
 func (p *Postgres) SetPresence(ctx context.Context, workspace, session string, presence Presence) error {
 	if session == "" {
 		return fmt.Errorf("presence session is required")
@@ -259,7 +326,7 @@ func (p *Postgres) DeleteWorkspace(ctx context.Context, workspace string) error 
 		return fmt.Errorf("delete workspace access: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	for _, table := range []string{"access_requests", "access_grants", "access_presence"} {
+	for _, table := range []string{"access_requests", "access_grants", "access_shares", "access_presence"} {
 		if _, err := tx.Exec(ctx,
 			"DELETE FROM poddy."+table+" WHERE namespace = $1 AND workspace = $2",
 			p.namespace, workspace); err != nil {

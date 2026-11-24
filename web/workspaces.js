@@ -6,6 +6,11 @@ function accessAllowed(workspace) {
   return !workspace || !workspace.access || workspace.access.allowed;
 }
 
+function canManageWorkspace(workspace) {
+  const access = workspace && workspace.access;
+  return !access || access.isOwner || access.isAdmin;
+}
+
 function ensureWorkspaceAccess(workspace) {
   if (accessAllowed(workspace)) return true;
   if (workspace.access && workspace.access.pending) {
@@ -55,8 +60,9 @@ async function updateWorkspaceAccess(workspace, action, actor) {
       method: "POST",
       body: JSON.stringify({ actor }),
     });
-    const verb = action === "approve" ? "approved" : action === "deny" ? "denied" : "revoked";
-    toast(`Access ${verb} for ${actor}.`, "success");
+    const verbs = { approve: "approved", deny: "denied", revoke: "revoked", share: "shared", unshare: "unshared" };
+    const verb = verbs[action] || "updated";
+    toast(action === "share" ? `Workspace shared with ${actor}.` : action === "unshare" ? `Workspace no longer shared with ${actor}.` : `Access ${verb} for ${actor}.`, "success");
     if (state.detailWorkspace && state.detailWorkspace.name === workspace.name) {
       state.detailWorkspace.access = info;
       renderAccessPanel(state.detailWorkspace);
@@ -238,6 +244,70 @@ function renderAccessPanel(workspace) {
       }
     }
     els.detailAccess.append(grantsBox);
+
+    const shares = Array.isArray(access.shares) ? access.shares : [];
+    const sharesBox = document.createElement("div");
+    sharesBox.className = "access-requests";
+    const sharesTitle = document.createElement("h4");
+    sharesTitle.textContent = "Shared with";
+    sharesBox.append(sharesTitle);
+    if (!shares.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "This workspace is not shared with anyone yet.";
+      sharesBox.append(empty);
+    } else {
+      for (const share of shares) {
+        const row = document.createElement("div");
+        row.className = "access-person";
+        const name = document.createElement("span");
+        name.textContent = share.actor;
+        const since = document.createElement("span");
+        since.className = "hint";
+        since.textContent = share.sharedAt ? `since ${new Date(share.sharedAt).toLocaleString()}` : "";
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "button small danger";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", () => updateWorkspaceAccess(workspace, "unshare", share.actor));
+        row.append(name, since, remove);
+        sharesBox.append(row);
+      }
+    }
+    const shareForm = document.createElement("form");
+    shareForm.className = "access-share-form";
+    const shareInput = document.createElement("input");
+    shareInput.type = "email";
+    shareInput.placeholder = "user@example.com";
+    shareInput.autocomplete = "off";
+    shareInput.required = true;
+    shareInput.setAttribute("aria-label", "User to share this workspace with");
+    const shareButton = document.createElement("button");
+    shareButton.type = "submit";
+    shareButton.className = "button small primary";
+    shareButton.textContent = "Share";
+    shareForm.append(shareInput, shareButton);
+    shareForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const actor = shareInput.value.trim();
+      if (!actor) return;
+      updateWorkspaceAccess(workspace, "share", actor);
+    });
+    sharesBox.append(shareForm);
+    els.detailAccess.append(sharesBox);
+  } else if (access.isShared) {
+    const box = document.createElement("div");
+    box.className = "access-requests";
+    const title = document.createElement("h4");
+    title.textContent = "Shared with you";
+    box.append(title);
+    const line = document.createElement("p");
+    line.className = "hint";
+    line.textContent = access.sharedBy
+      ? `${access.sharedBy} shared this workspace with you. You can open its terminal, IDE, ports and SSH sessions.`
+      : "This workspace is shared with you. You can open its terminal, IDE, ports and SSH sessions.";
+    box.append(line);
+    els.detailAccess.append(box);
   } else if (access.isAdmin) {
     const box = document.createElement("div");
     box.className = "access-requests";
@@ -429,16 +499,25 @@ function renderCard(workspace) {
     metaRow.append(badge);
   }
 
-  if (state.me.isAdmin && workspace.owner) {
+  if (workspace.owner && (!workspace.access || !workspace.access.isOwner)) {
     const owner = document.createElement("span");
     owner.className = "badge owner";
     owner.innerHTML = `${icon("user")}<span></span>`;
     owner.querySelector("span").textContent = workspace.owner;
-    owner.title = `Owner: ${workspace.owner}`;
+    owner.title = workspace.access && workspace.access.isShared
+      ? `Shared by ${workspace.access.sharedBy || workspace.owner}`
+      : `Owner: ${workspace.owner}`;
     metaRow.append(owner);
   }
 
   const access = workspace.access;
+  if (access && access.isShared) {
+    const shared = document.createElement("span");
+    shared.className = "badge neutral";
+    shared.innerHTML = `${icon("users")}<span>Shared</span>`;
+    shared.title = access.sharedBy ? `Shared by ${access.sharedBy}` : "Shared with you";
+    metaRow.append(shared);
+  }
   if (access && Array.isArray(access.presence) && access.presence.length) {
     const presence = document.createElement("span");
     presence.className = "badge presence";
@@ -612,14 +691,17 @@ function renderWorkspaceActions(workspace) {
   actions.className = "workspace-action-bar";
   const stopped = workspace.phase === "Stopped";
   const running = workspace.phase === "Running";
+  const canManage = canManageWorkspace(workspace);
 
   if (stopped) {
-    const start = document.createElement("button");
-    start.type = "button";
-    start.className = "button small start";
-    start.innerHTML = `${icon("play")}Start`;
-    start.addEventListener("click", () => runWorkspaceAction(workspace, "start", start));
-    actions.append(start);
+    if (canManage) {
+      const start = document.createElement("button");
+      start.type = "button";
+      start.className = "button small start";
+      start.innerHTML = `${icon("play")}Start`;
+      start.addEventListener("click", () => runWorkspaceAction(workspace, "start", start));
+      actions.append(start);
+    }
   } else {
     const open = workspaceOpenControl(workspace, running);
     if (open) actions.append(open);
@@ -628,16 +710,18 @@ function renderWorkspaceActions(workspace) {
   const overflow = [
     { label: "Details", icon: "info", onSelect: () => showDetails(workspace) },
   ];
-  if (!stopped) {
+  if (!stopped && canManage) {
     overflow.push(
       { label: "Restart", icon: "refresh", onSelect: () => confirmWorkspaceAction(workspace, "restart") },
       { label: "Stop", icon: "stop", onSelect: () => confirmWorkspaceAction(workspace, "stop") },
     );
   }
-  overflow.push(
-    { separator: true },
-    { label: "Delete workspace", icon: "trash", danger: true, onSelect: () => confirmDelete(workspace) },
-  );
+  if (canManage) {
+    overflow.push(
+      { separator: true },
+      { label: "Delete workspace", icon: "trash", danger: true, onSelect: () => confirmDelete(workspace) },
+    );
+  }
   actions.append(actionMenuOverflow(overflow));
 
   return actions;
@@ -1193,20 +1277,22 @@ function renderPorts(workspace, data, body) {
     const actions = document.createElement("div");
     actions.className = "port-actions";
 
-    const share = document.createElement("select");
-    share.className = "port-share-select";
-    share.title = "Share access for this port";
-    share.setAttribute("aria-label", `Share access for port ${port}`);
-    for (const [value, label] of [["off", "Private"], ["internal", "Internal"], ["public", "Public"]]) {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = label;
-      share.append(option);
+    if (canManageWorkspace(workspace)) {
+      const share = document.createElement("select");
+      share.className = "port-share-select";
+      share.title = "Share access for this port";
+      share.setAttribute("aria-label", `Share access for port ${port}`);
+      for (const [value, label] of [["off", "Private"], ["internal", "Internal"], ["public", "Public"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        share.append(option);
+      }
+      share.value = item.share?.access || "off";
+      share.dataset.current = share.value;
+      share.addEventListener("change", () => updatePortShare(workspace, port, share, actions));
+      actions.append(share);
     }
-    share.value = item.share?.access || "off";
-    share.dataset.current = share.value;
-    share.addEventListener("change", () => updatePortShare(workspace, port, share, actions));
-    actions.append(share);
 
     if (item.share?.url) {
       actions.append(shareCopyButton(item.share.url));
@@ -1524,7 +1610,7 @@ function renderDetails(ws) {
   renderDetailEnvironment(ws.environment);
   renderDetailQuota(ws.quota);
   renderAccessPanel(ws);
-  renderScheduleForm(ws.schedule);
+  renderScheduleForm(ws.schedule, canManageWorkspace(ws));
 }
 
 function setDetailEnvironmentMessage(message) {
@@ -1687,14 +1773,27 @@ function renderDetailQuota(quota) {
   els.detailQuotaBody.replaceChildren(body);
 }
 
-function renderScheduleForm(schedule) {
+function renderScheduleForm(schedule, canManage = true) {
   const enabled = Boolean(schedule && schedule.enabled);
   els.detailScheduleEnabled.checked = enabled;
+  els.detailScheduleEnabled.disabled = !canManage;
+  els.detailScheduleTimezone.disabled = !canManage;
+  els.detailScheduleStart.disabled = !canManage;
+  els.detailScheduleStop.disabled = !canManage;
+  els.detailScheduleSave.hidden = !canManage;
+  for (const input of els.detailScheduleForm.querySelectorAll("[data-schedule-field]")) {
+    input.disabled = !canManage;
+  }
   populateTimezones(els.detailScheduleTimezone, schedule && schedule.timezone);
   els.detailScheduleStart.value = schedule && schedule.start ? schedule.start : "09:00";
   els.detailScheduleStop.value = schedule && schedule.stop ? schedule.stop : "18:00";
   setScheduleDays(els.detailScheduleForm, schedule && schedule.days);
   syncScheduleFields(els.detailScheduleForm, enabled);
+  if (!canManage) {
+    for (const input of els.detailScheduleForm.querySelectorAll("[data-schedule-field]")) {
+      input.disabled = true;
+    }
+  }
 }
 
 async function saveSchedule(event) {

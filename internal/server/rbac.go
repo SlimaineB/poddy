@@ -3,11 +3,9 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"strings"
 
 	"poddy/internal/auth"
-	"poddy/internal/k8s"
 	"poddy/internal/rbac"
 	"poddy/internal/templates"
 )
@@ -96,33 +94,45 @@ func (s *Server) canViewAudit(id *identity, cfg rbac.Config) bool {
 }
 
 func (s *Server) workspaceAllowed(r *http.Request, name string, id *identity, cfg rbac.Config) (bool, error) {
-	if s.isAdmin(id, cfg) {
-		return true, nil
-	}
-	pod, err := s.Workspaces.Get(r.Context(), name)
-	if err != nil {
-		return false, err
-	}
-	return k8s.Owner(pod) == ownerID(id.User), nil
+	return s.workspaceAllowedAny(r, name, id, cfg)
 }
 
-// workspaceAllowedAny checks ownership for running pods and stopped workspaces.
+// workspaceAllowedAny checks whether the caller may read or enter a workspace.
+// Owners and admins always may; other users need a durable workspace share.
 func (s *Server) workspaceAllowedAny(r *http.Request, name string, id *identity, cfg rbac.Config) (bool, error) {
 	if s.isAdmin(id, cfg) {
 		return true, nil
 	}
-	pod, err := s.Workspaces.Get(r.Context(), name)
-	if err == nil {
-		return k8s.Owner(pod) == ownerID(id.User), nil
-	}
-	if !apierrors.IsNotFound(err) {
-		return false, err
-	}
-	state, err := s.Workspaces.State(r.Context(), name)
+	owner, err := s.workspaceOwner(r.Context(), name)
 	if err != nil {
 		return false, err
 	}
-	return state.Owner == ownerID(id.User), nil
+	actor := ownerID(id.User)
+	if owner != "" && strings.EqualFold(owner, actor) {
+		return true, nil
+	}
+	store := s.accessStore()
+	if store == nil {
+		return false, nil
+	}
+	state, err := store.Load(r.Context())
+	if err != nil {
+		return false, err
+	}
+	return state.IsShared(name, actor), nil
+}
+
+// workspaceManageAllowed checks owner/admin permissions for lifecycle, schedule,
+// deletion, and share-link management.
+func (s *Server) workspaceManageAllowed(r *http.Request, name string, id *identity, cfg rbac.Config) (bool, error) {
+	if s.isAdmin(id, cfg) {
+		return true, nil
+	}
+	owner, err := s.workspaceOwner(r.Context(), name)
+	if err != nil {
+		return false, err
+	}
+	return owner != "" && strings.EqualFold(owner, ownerID(id.User)), nil
 }
 
 func (s *Server) templateAccess(w http.ResponseWriter, r *http.Request) {

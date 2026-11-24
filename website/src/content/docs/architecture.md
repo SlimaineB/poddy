@@ -38,10 +38,12 @@ The hub portal is one Deployment built from one container image. It serves the
 web UI, the API, a private agent listener on `:8091`, and SSH on `:2222`.
 Workspace pods run `poddy-agent` in a dedicated sidecar, which connects
 outbound to the portal and forwards only to the workspace's loopback SSH port.
-The sidecar has its own memory limit, and `sshd` runs with a lowered OOM score
-so workspace memory spikes do not drop active SSH sessions. The portal falls
-back to Kubernetes port-forward only when `ssh.requireAgent=false`. Region
-workspaces use the region manager's outbound tunnel instead.
+The sidecar has its own memory limit, so a workspace memory spike does not kill
+the tunnel. `sshd` remains in the workspace cgroup and may be OOM-killed; SSH
+sessions are not resumable and reconnect after the workspace recovers. The
+portal falls back to Kubernetes port-forward only when
+`ssh.requireAgent=false`. Region workspaces use the region manager's outbound
+tunnel instead.
 
 ## Multi-region
 
@@ -300,9 +302,7 @@ render a ServiceMonitor. See [deployment metrics](deploy.md#prometheus-metrics).
 - The portal ServiceAccount is scoped to the workspace namespace plus Leases in
   the release namespace for tunnel presence.
 - Workspace containers run `sshd` as root only to bind port 22 and switch to the
-  `dev` user. The workspace container is granted `SYS_RESOURCE` so
-  `poddy-ssh-start` can lower `sshd`'s OOM score; user shells reset their own
-  score to `0`.
+  `dev` user. Workspace containers are not granted extra capabilities.
 - SSH keys are scoped to workspace owners. Template access controls who can
   create a workspace, not who can SSH into an existing one.
 - For hard tenant isolation, use separate namespaces or separate releases.

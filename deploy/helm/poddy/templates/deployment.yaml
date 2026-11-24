@@ -260,6 +260,8 @@ spec:
               value: {{ .Values.monitoring.live | quote }}
             - name: PODDY_MONITORING_HISTORY
               value: {{ .Values.monitoring.history | quote }}
+            - name: PODDY_MONITORING_EGRESS
+              value: {{ .Values.monitoring.egress.enabled | quote }}
             - name: PODDY_MONITORING_GLOBAL
               value: {{ .Values.monitoring.global | quote }}
             - name: PODDY_MONITORING_COSTS

@@ -27,12 +27,16 @@ function monitoringHistoryEnabled() {
   return monitoringEnabled() && Boolean(monitoringConfig().history);
 }
 
+function monitoringEgressEnabled() {
+  return monitoringEnabled() && Boolean(monitoringConfig().egress);
+}
+
 function monitoringGlobalEnabled() {
   return monitoringEnabled() && Boolean(monitoringConfig().global);
 }
 
 function canSeeWorkspaceMonitoring() {
-  return monitoringEnabled() && (monitoringLiveEnabled() || monitoringHistoryEnabled());
+  return monitoringEnabled() && (monitoringLiveEnabled() || monitoringHistoryEnabled() || monitoringEgressEnabled());
 }
 
 function canSeeGlobalMonitoring() {
@@ -51,15 +55,13 @@ function renderMonitoringConfig() {
     els.detailMonitoring.hidden = !canSeeWorkspaceMonitoring();
   }
   if (els.detailMonitoringNote) {
-    const live = monitoringLiveEnabled();
-    const history = monitoringHistoryEnabled();
-    els.detailMonitoringNote.textContent = live && history
-      ? "Live usage from metrics-server and historical trends from Prometheus."
-      : live
-        ? "Live CPU and memory usage from metrics-server."
-        : history
-          ? "Historical resource trends from Prometheus."
-          : "Monitoring is disabled.";
+    const surfaces = [];
+    if (monitoringLiveEnabled()) surfaces.push("live usage from metrics-server");
+    if (monitoringHistoryEnabled()) surfaces.push("historical trends from Prometheus");
+    if (monitoringEgressEnabled()) surfaces.push("external access attribution");
+    els.detailMonitoringNote.textContent = surfaces.length
+      ? `Monitoring: ${surfaces.join(", ")}.`
+      : "Monitoring is disabled.";
   }
 }
 
@@ -278,7 +280,7 @@ function resetWorkspaceMonitoring() {
   }
   els.detailMonitoringBody.replaceChildren();
   appendMonitoringNote(els.detailMonitoringBody, "Loading workspace metrics...");
-  if (els.detailMonitoringNote) els.detailMonitoringNote.textContent = "Loading live usage and historical trends.";
+  if (els.detailMonitoringNote) els.detailMonitoringNote.textContent = "Loading live usage, historical trends, and external access attribution.";
 }
 
 async function loadWorkspaceMonitoring(workspace, { silent = false } = {}) {
@@ -291,8 +293,11 @@ async function loadWorkspaceMonitoring(workspace, { silent = false } = {}) {
   const historyPromise = monitoringHistoryEnabled()
     ? api(`/api/workspaces/${name}/metrics/history?range=${encodeURIComponent(monitoringState.detailRange)}`)
     : Promise.resolve({ available: false, reason: "History is disabled", series: [] });
+  const egressPromise = monitoringEgressEnabled()
+    ? api(`/api/workspaces/${name}/monitoring/egress?range=${encodeURIComponent(monitoringState.detailRange)}`)
+    : Promise.resolve({ available: false, reason: "Egress attribution is disabled", network: [], mounts: [] });
 
-  const [liveResult, historyResult] = await Promise.allSettled([livePromise, historyPromise]);
+  const [liveResult, historyResult, egressResult] = await Promise.allSettled([livePromise, historyPromise, egressPromise]);
   if (request !== monitoringState.detailRequest || state.detailWorkspace?.name !== workspace.name) return;
 
   const live = liveResult.status === "fulfilled"
@@ -301,15 +306,21 @@ async function loadWorkspaceMonitoring(workspace, { silent = false } = {}) {
   const history = historyResult.status === "fulfilled"
     ? historyResult.value
     : { available: false, reason: historyResult.reason.message || "Prometheus is unavailable", series: [] };
+  const egress = egressResult.status === "fulfilled"
+    ? egressResult.value
+    : { available: false, reason: egressResult.reason.message || "Egress attribution is unavailable", network: [], mounts: [] };
 
   if (!silent && liveResult.status === "rejected" && monitoringLiveEnabled()) {
     toast(liveResult.reason.message || "Failed to load live workspace metrics.");
   }
-  renderWorkspaceMonitoring(workspace, live, history);
+  if (!silent && egressResult.status === "rejected" && monitoringEgressEnabled()) {
+    toast(egressResult.reason.message || "Failed to load workspace egress attribution.");
+  }
+  renderWorkspaceMonitoring(workspace, live, history, egress);
   startDetailMonitoringTimer();
 }
 
-function renderWorkspaceMonitoring(workspace, live, history) {
+function renderWorkspaceMonitoring(workspace, live, history, egress) {
   const body = els.detailMonitoringBody;
   if (!body) return;
   body.replaceChildren();
@@ -328,6 +339,7 @@ function renderWorkspaceMonitoring(workspace, live, history) {
   const oom = Array.isArray(live.containers) && live.containers.some((container) => container.oomKilled);
   const ready = Array.isArray(live.containers) && live.containers.length > 0 && live.containers.every((container) => container.ready);
 
+  const resourceMonitoring = monitoringLiveEnabled() || monitoringHistoryEnabled();
   const kpis = document.createElement("section");
   kpis.className = "monitoring-pro-kpis";
   kpis.append(
@@ -384,15 +396,17 @@ function renderWorkspaceMonitoring(workspace, live, history) {
       stats: null,
     }),
   );
-  body.append(kpis);
+  if (resourceMonitoring) body.append(kpis);
 
-  if (!live.available || !history.available) {
+  if (resourceMonitoring && (!live.available || !history.available)) {
     const notes = document.createElement("div");
     notes.className = "monitoring-notes";
     if (!live.available && monitoringLiveEnabled()) appendMonitoringNote(notes, live.reason || "Live metrics are unavailable.");
     if (!history.available && monitoringHistoryEnabled()) appendMonitoringNote(notes, history.reason || "Prometheus history is unavailable.");
     if (notes.children.length) body.append(notes);
   }
+
+  if (monitoringEgressEnabled()) body.append(renderWorkspaceEgress(egress));
 
   if (monitoringHistoryEnabled() && history.available && Array.isArray(history.series) && history.series.length) {
     const heading = document.createElement("div");
@@ -406,15 +420,110 @@ function renderWorkspaceMonitoring(workspace, live, history) {
     body.append(heading, charts);
   }
 
-  if (Array.isArray(live.containers) && live.containers.length) {
+  if (resourceMonitoring && Array.isArray(live.containers) && live.containers.length) {
     body.append(renderContainerTable(live.containers));
-  } else if (!live.available && !history.available) {
+  } else if (resourceMonitoring && !live.available && !history.available) {
     appendMonitoringNote(body, "No monitoring data is available for this workspace.");
   }
 
   if (els.detailMonitoringNote) {
     els.detailMonitoringNote.textContent = `${workspace.name} · ${monitoringState.detailRange} window`;
   }
+}
+
+function renderWorkspaceEgress(egress) {
+  const section = document.createElement("section");
+  section.className = "monitoring-containers monitoring-egress";
+  const header = document.createElement("div");
+  header.className = "monitoring-section-heading";
+  header.innerHTML = "<div><h4>External access</h4><p>S3, NFS, EFS and other endpoints attributed to this workspace.</p></div>";
+  section.append(header);
+
+  if (!egress || !egress.available) {
+    appendMonitoringNote(section, (egress && egress.reason) || "Egress attribution is unavailable.");
+    return section;
+  }
+  const network = Array.isArray(egress.network) ? egress.network.slice() : [];
+  const mounts = Array.isArray(egress.mounts) ? egress.mounts.slice() : [];
+  if (!network.length && !mounts.length) {
+    appendMonitoringNote(section, "No external access or storage attribution was observed in this window.");
+    return section;
+  }
+
+  if (network.length) {
+    const heading = document.createElement("div");
+    heading.className = "monitoring-section-heading";
+    heading.innerHTML = "<div><h4>Network endpoints</h4><p>Bytes and connections over the selected window.</p></div>";
+    section.append(heading, monitoringTable(
+      ["Service", "Endpoint", "Bucket", "Direction", "Traffic", "Connections", "Confidence"],
+      network.slice(0, 20).map((row) => {
+        const bytes = Number(row.bytes) || 0;
+        const rate = Number(row.bytesPerSecond) || 0;
+        const endpoint = textCell(row.endpoint || "—");
+        endpoint.title = row.endpoint || "";
+        return [
+          textCell(row.service || "unknown", "monitoring-container-name"),
+          endpoint,
+          textCell(row.bucket || "—", row.bucket ? "" : "monitoring-muted"),
+          textCell(egressDirection(row.direction), "monitoring-muted"),
+          textCell(`${formatBytes(bytes)} · ${formatRate(rate)}`, "monitoring-muted"),
+          textCell(String(Math.round(Number(row.connections) || 0)), "monitoring-muted"),
+          textCell(row.confidence || "—", "monitoring-muted"),
+        ];
+      }),
+    ));
+    if (network.length > 20) {
+      appendMonitoringNote(section, `Showing the top 20 of ${network.length} endpoints by traffic.`);
+    }
+  }
+
+  if (mounts.length) {
+    const heading = document.createElement("div");
+    heading.className = "monitoring-section-heading";
+    heading.innerHTML = "<div><h4>Storage mounts</h4><p>NFS, EFS and S3 CSI volumes attached to this workspace.</p></div>";
+    section.append(heading, monitoringTable(
+      ["PVC", "Service", "Target", "Path", "Access", "Provisioner"],
+      mounts.map((row) => [
+        textCell(row.pvc || "—"),
+        textCell(row.service || "unknown", "monitoring-container-name"),
+        textCell(row.bucket || row.server || "—"),
+        textCell(row.path || "—", "monitoring-muted"),
+        textCell(row.accessMode || "—", "monitoring-muted"),
+        textCell(row.provisioner || "—", "monitoring-muted"),
+      ]),
+    ));
+  }
+  return section;
+}
+
+function monitoringTable(headers, rows) {
+  const wrap = document.createElement("div");
+  wrap.className = "monitoring-table-wrap";
+  const table = document.createElement("table");
+  table.className = "workspace-table monitoring-table compact";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const label of headers) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headRow.append(th);
+  }
+  thead.append(headRow);
+  const tbody = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.append(...row);
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  wrap.append(table);
+  return wrap;
+}
+
+function egressDirection(value) {
+  if (value === "egress") return "out";
+  if (value === "ingress") return "in";
+  return value || "—";
 }
 
 function renderContainerTable(containers) {

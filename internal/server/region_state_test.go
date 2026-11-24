@@ -103,6 +103,43 @@ func TestRegionControlPlaneAccessFlow(t *testing.T) {
 	if !granted.Granted {
 		t.Fatal("expected an active grant after approval")
 	}
+
+	rec = regionRequest(t, s, "region-key", http.MethodPost, "/api/internal/region/access/alice-ws/share", map[string]any{
+		"actor": "bob@example.com", "sharedBy": "alice@example.com",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("share = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = regionRequest(t, s, "region-key", http.MethodGet, "/api/internal/region/access", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("load shares = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var shared struct {
+		Shares map[string]map[string]any `json:"shares"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &shared); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := shared.Shares["alice-ws"]["bob@example.com"]; !ok {
+		t.Fatalf("shares = %+v", shared.Shares)
+	}
+	rec = regionRequest(t, s, "region-key", http.MethodPost, "/api/internal/region/access/alice-ws/unshare", map[string]any{
+		"actor": "bob@example.com",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unshare = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rec = regionRequest(t, s, "region-key", http.MethodGet, "/api/internal/region/access", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("load after unshare = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	shared.Shares = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &shared); err != nil {
+		t.Fatal(err)
+	}
+	if len(shared.Shares["alice-ws"]) != 0 {
+		t.Fatalf("shares after unshare = %+v", shared.Shares)
+	}
 }
 
 func TestRegionControlPlaneQuotas(t *testing.T) {

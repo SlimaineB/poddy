@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,76 @@ func TestMonitoringHistoryEndpoint(t *testing.T) {
 	}
 
 	rec = request(t, s, http.MethodGet, "/api/monitoring/history?range=0s", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid range status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkspaceEgressEndpoint(t *testing.T) {
+	prometheus := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		result := []any{}
+		switch {
+		case strings.Contains(query, "poddy_workspace_network_bytes_total"):
+			result = append(result, map[string]any{
+				"metric": map[string]string{
+					"remote_service": "s3", "remote_endpoint": "app.s3.eu-west-3.amazonaws.com", "bucket": "app",
+					"direction": "egress", "protocol": "tcp", "port": "443", "confidence": "high",
+				},
+				"value": []any{1700000000, "2048"},
+			})
+		case strings.Contains(query, "poddy_workspace_network_connections_total"):
+			result = append(result, map[string]any{
+				"metric": map[string]string{
+					"remote_service": "s3", "remote_endpoint": "app.s3.eu-west-3.amazonaws.com", "bucket": "app",
+					"protocol": "tcp", "port": "443", "confidence": "high",
+				},
+				"value": []any{1700000000, "2"},
+			})
+		case strings.Contains(query, "poddy_workspace_storage_mount_info"):
+			result = append(result, map[string]any{
+				"metric": map[string]string{
+					"pvc": "poddy-app", "volume": "pv-app", "storage_service": "efs",
+					"server": "fs-123.efs.eu-west-3.amazonaws.com", "path": "/", "fstype": "nfs4",
+				},
+				"value": []any{1700000000, "1"},
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   map[string]any{"resultType": "vector", "result": result},
+		})
+	}))
+	defer prometheus.Close()
+
+	client, err := monitoring.NewPrometheusClient(prometheus.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer("")
+	if rec := request(t, s, http.MethodPost, "/api/workspaces", map[string]string{"name": "app"}); rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	s.Monitoring = MonitoringConfig{Enabled: true, Egress: true}
+	s.Prometheus = client
+
+	rec := request(t, s, http.MethodGet, "/api/workspaces/app/monitoring/egress?range=1h", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var egress monitoring.Egress
+	if err := json.Unmarshal(rec.Body.Bytes(), &egress); err != nil {
+		t.Fatal(err)
+	}
+	if !egress.Available || len(egress.Network) != 1 || len(egress.Mounts) != 1 {
+		t.Fatalf("egress = %+v", egress)
+	}
+	if egress.Network[0].Bucket != "app" || egress.Network[0].Bytes != 2048 || egress.Network[0].Connections != 2 {
+		t.Fatalf("network = %+v", egress.Network[0])
+	}
+
+	rec = request(t, s, http.MethodGet, "/api/workspaces/app/monitoring/egress?range=0s", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid range status = %d, body = %s", rec.Code, rec.Body.String())
 	}

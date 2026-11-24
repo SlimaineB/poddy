@@ -1,0 +1,64 @@
+{{- $egress := .Values.monitoring.egress }}
+{{- if $egress.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  namespace: {{ include "poddy.workspaceNamespace" . }}
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "poddy.fullname" . }}-netmon
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "poddy.fullname" . }}-netmon
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "poddy.fullname" . }}-netmon
+  labels:
+    {{- include "poddy.netmonLabels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "poddy.fullname" . }}-netmon
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "poddy.fullname" . }}-netmon
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

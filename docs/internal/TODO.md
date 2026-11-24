@@ -70,9 +70,9 @@ dizaines de workspaces / sessions simultanées. À retravailler avant montée en
 ## Fiabilité SSH
 
 - [x] Rendre le process sshd plus fiable pendant les pics mémoire.
-- [x] L'isoler dans un cgroup dédié ou un sidecar.
-- [x] Le protéger de l'OOM killer (limites/réservations, priorité).
-- [x] Éviter les déconnexions des sessions actives.
+- [x] Isoler l'agent dans un sidecar.
+- [x] Retirer la protection OOM de sshd (plus de `SYS_RESOURCE`); accepter la reconnexion après un OOM.
+- [ ] Remplacer sshd par un serveur d'exécution dans le conteneur principal.
 
 ## Port forwarding
 

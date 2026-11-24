@@ -123,8 +123,8 @@ func TestCreateUsesAgentSidecar(t *testing.T) {
 	if got := envValue(pod, ContainerName, envAgentSidecar); got != "true" {
 		t.Fatalf("workspace agent sidecar marker = %q, want true", got)
 	}
-	if !hasCapability(workspace, "SYS_RESOURCE") {
-		t.Fatalf("workspace capabilities = %+v, want SYS_RESOURCE", workspace.SecurityContext.Capabilities)
+	if hasCapability(workspace, "SYS_RESOURCE") {
+		t.Fatalf("workspace capabilities = %+v, want no added capabilities", workspace.SecurityContext.Capabilities)
 	}
 
 	agent := containerByName(pod, AgentContainerName)
@@ -416,8 +416,8 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCapability(containerByName(pod, ContainerName), "SYS_RESOURCE") {
-		t.Fatal("custom template workspace container did not get SYS_RESOURCE")
+	if hasCapability(containerByName(pod, ContainerName), "SYS_RESOURCE") {
+		t.Fatal("custom template workspace container got SYS_RESOURCE")
 	}
 }
 

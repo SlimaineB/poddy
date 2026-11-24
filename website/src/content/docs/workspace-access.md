@@ -5,10 +5,12 @@ description: "Understand workspace presence, owner approval, and how admins ente
 
 Global admins can see and manage every workspace, but **entering** someone
 else's workspace is gated. The owner must approve an admin before the admin can
-open a terminal, an IDE, a port, or an SSH session. The portal also shows who is
-currently connected to each workspace.
+open a terminal, an IDE, a port, or an SSH session. Owners can also share a
+workspace durably with another user, without an expiry. The portal also shows
+who is currently connected to each workspace.
 
-This page covers the approval flow, what is gated, and where the state lives.
+This page covers the approval and sharing flows, what is gated, and where the
+state lives.
 
 ## What is gated
 
@@ -47,6 +49,24 @@ The owner and admins see pending requests and active grants in the Access panel.
 The same panel lists current presence, with one entry per actor and the kinds of
 session they have open.
 
+## Share a workspace with another user
+
+A workspace owner can share the workspace with a named user from the **Access**
+panel. Shared users see the workspace in their list and can open its terminal,
+IDE, ports, and SSH sessions. The share is durable until the owner removes it.
+
+Sharing is different from admin approval:
+
+- an approval is time-limited (30 minutes) and applies to an admin;
+- a share is durable and applies to any named user;
+- only the owner can share or unshare a workspace;
+- shared users cannot delete, stop, restart, or change the schedule, and cannot
+  manage public port links or workspace environment variables.
+
+The owner can remove a share at any time. Removing a share immediately blocks new
+interactive sessions; existing sessions end when they close or when their
+presence expires.
+
 ## Presence
 
 Presence combines two sources:
@@ -67,8 +87,9 @@ used as an audit record.
 
 ## State storage
 
-Requests, grants, and presence are stored in PostgreSQL (tables
-`poddy.access_requests`, `poddy.access_grants`, and `poddy.access_presence`).
+Requests, grants, shares, and presence are stored in PostgreSQL (tables
+`poddy.access_requests`, `poddy.access_grants`, `poddy.access_shares`, and
+`poddy.access_presence`).
 The hub portal shares the same database and namespace key for SSH and browser
 sessions, so an approval made in the browser also unlocks SSH. Region managers
 do not connect to PostgreSQL; they proxy these operations to the hub.
@@ -89,14 +110,17 @@ opportunistically. No Secret permissions are required for access state.
 | `POST` | `/api/workspaces/{name}/access/approve` | Owner approves `{"actor": "..."}` |
 | `POST` | `/api/workspaces/{name}/access/deny` | Owner denies `{"actor": "..."}` |
 | `POST` | `/api/workspaces/{name}/access/revoke` | Owner revokes `{"actor": "..."}` |
+| `POST` | `/api/workspaces/{name}/access/share` | Owner shares with `{"actor": "..."}` |
+| `POST` | `/api/workspaces/{name}/access/unshare` | Owner removes a share `{"actor": "..."}` |
 
 A blocked interactive request returns HTTP `403` with
 `X-Poddy-Access: required` and `{"code":"access_required", ...}`. A user who
 cannot see the workspace still receives `404`.
 
 The actions are recorded in the audit trail as `workspace.access.request`,
-`workspace.access.approve`, `workspace.access.deny`, and
-`workspace.access.revoke`.
+`workspace.access.approve`, `workspace.access.deny`,
+`workspace.access.revoke`, `workspace.access.share`, and
+`workspace.access.unshare`.
 
 ## Multi-region
 
@@ -108,8 +132,8 @@ need neither database credentials nor network access to PostgreSQL.
 
 The central portal still proxies user-facing access requests to the region that
 hosts the workspace, while the region itself forwards the state change to the
-hub. Region listings include the access summary so the hub can show presence
-and pending requests without extra calls.
+hub. Region listings include the access summary so the hub can show presence,
+pending requests, and shares without extra calls.
 
 ## SSH notes
 

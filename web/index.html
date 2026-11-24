@@ -289,11 +289,14 @@
 
     <div class="map-toolbar">
       <div class="map-legend">
-        <span><span class="map-legend-dot"></span>Workspaces in bubble</span>
-        <span>Users in label</span>
+        <span><span class="map-legend-line"></span>Primary region link</span>
+        <span><span class="map-legend-dot"></span>Healthy</span>
+        <span><span class="map-legend-dot warning"></span>Degraded</span>
+        <span><span class="map-legend-dot danger"></span>Unavailable</span>
       </div>
       <div class="topology-actions">
-        <button id="map-reset" class="button ghost small" type="button">Reset view</button>
+        <button id="map-fit" class="button ghost small" type="button">Fit regions</button>
+        <button id="map-reset" class="button ghost small" type="button">World view</button>
         <button id="map-zoom-out" class="icon-button" type="button" title="Zoom out" aria-label="Zoom out">−</button>
         <button id="map-zoom-in" class="icon-button" type="button" title="Zoom in" aria-label="Zoom in">+</button>
       </div>
@@ -311,12 +314,15 @@
           <svg id="world-map" class="world-map" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World map of Poddy regions">
             <g id="map-grid" class="map-grid"></g>
             <path id="map-land" class="map-land" fill-rule="evenodd"></path>
+            <g id="map-connections" class="map-connections" aria-hidden="true"></g>
             <g id="map-markers" class="map-markers"></g>
           </svg>
-          <p class="map-hint">Drag to pan · Scroll or use +/− to zoom</p>
+          <div id="map-hud" class="map-hud" aria-live="polite"></div>
+          <p class="map-hint">Drag to pan · Scroll to zoom · Double-click a region to focus</p>
         </div>
       </section>
       <aside class="map-side">
+        <section id="map-network" class="panel map-network" hidden></section>
         <section id="map-detail" class="panel map-detail" hidden></section>
         <section class="panel map-regions-panel">
           <div class="panel-header"><h2>Regions</h2></div>

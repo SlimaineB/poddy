@@ -132,15 +132,13 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 
 	current := ownerID(id.User)
 	admin := s.isAdmin(id, cfg)
-	var workspaces []k8s.Workspace
-	if admin {
-		workspaces, err = s.Workspaces.List(r.Context())
-	} else {
-		workspaces, err = s.Workspaces.ListByOwner(r.Context(), current)
-	}
+	workspaces, err := s.Workspaces.List(r.Context())
 	if err != nil {
 		writeK8sError(w, err, http.StatusInternalServerError)
 		return
+	}
+	if !admin {
+		workspaces = s.filterAccessibleWorkspaces(r.Context(), workspaces, current)
 	}
 
 	volumes, err := s.Workspaces.ListVolumes(r.Context())

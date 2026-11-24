@@ -93,7 +93,42 @@ func TestPostgresAccessStore(t *testing.T) {
 		t.Fatal("revoke left the grant in place")
 	}
 
+	if err := store.Share(ctx, "demo", "Bob@Example.com", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	share, ok := state.Share("demo", "bob@example.com")
+	if !ok {
+		t.Fatal("share was not stored")
+	}
+	if share.SharedBy != "alice@example.com" {
+		t.Fatalf("sharedBy = %q", share.SharedBy)
+	}
+	if err := store.Unshare(ctx, "demo", "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.IsShared("demo", "bob@example.com") {
+		t.Fatal("unshare left the share in place")
+	}
+
+	if err := store.Share(ctx, "demo", "bob@example.com", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.DeleteWorkspace(ctx, "demo"); err != nil {
 		t.Fatal(err)
+	}
+	state, err = store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Shares["demo"]) != 0 {
+		t.Fatalf("delete workspace left shares: %+v", state.Shares)
 	}
 }

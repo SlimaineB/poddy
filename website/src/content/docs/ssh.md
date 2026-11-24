@@ -103,23 +103,19 @@ repository's `docker/workspace/base/Dockerfile` builds and installs the agent, a
 the agent, set `ssh.requireAgent=false` to keep the Kubernetes port-forward
 fallback.
 
-## Memory pressure and OOM protection
+## Memory pressure
 
-A workspace memory spike used to share a cgroup with `sshd` and `poddy-agent`,
-so the OOM killer could terminate either process and disconnect active
-sessions. Poddy now:
+`sshd` shares the workspace container's cgroup, so a memory spike can OOM-kill
+it and disconnect active sessions. Poddy does not grant the workspace extra
+capabilities or change OOM scores to prevent this. The agent sidecar has its own
+memory limit, so the tunnel survives a workspace OOM kill and reconnects; SSH
+sessions themselves are not resumable and must be reconnected after the
+workspace recovers.
 
-- Runs `poddy-agent` in its own container with a 64Mi request and 256Mi limit.
-- Grants the workspace container `SYS_RESOURCE` so `poddy-ssh-start` can set
-  `sshd`'s `oom_score_adj` to `-1000`.
-- Sets the `dev` user's shell to `/usr/local/bin/poddy-shell`, which resets the
-  OOM score to `0` before starting the real shell. User processes therefore
-  remain killable, while `sshd` and the agent are much less likely to be
-  killed.
-
-The workspace image must run `scripts/poddy-ssh-start` as its entrypoint for
-the OOM protection to take effect. A template that overrides the workspace
-command keeps the agent sidecar but must set the OOM score itself.
+Use workspace CPU/memory requests and limits, and avoid unbounded builds or
+processes in the workspace. The workspace image must still run
+`scripts/poddy-ssh-start` (or an equivalent entrypoint) to prepare
+`authorized_keys` and start `sshd`.
 
 ## Portal failures and reconnects
 
@@ -389,11 +385,9 @@ multi-region workspaces use the same `~/.ssh/config` block.
   `StrictHostKeyChecking accept-new` instead of disabling verification. The
   first connection pins the key; a later change is rejected. Custom templates
   without a persistent `/home/dev` lose that pin across pod recreation.
-- The workspace container is granted `SYS_RESOURCE` so `poddy-ssh-start` can
-  lower `sshd`'s OOM score. The container already runs as root for `sshd`, and
-  `dev` has passwordless sudo. If the portal image is private, add its pull
-  Secret to `workspace.imagePullSecrets` so workspace nodes can start the
-  agent sidecar.
+- The workspace container already runs as root for `sshd`, and `dev` has
+  passwordless sudo. If the portal image is private, add its pull Secret to
+  `workspace.imagePullSecrets` so workspace nodes can start the agent sidecar.
 - `ssh.requireAgent=true` removes the Kubernetes port-forward fallback. Keep it
   enabled in production. The Helm chart only grants the portal
   `pods/portforward` when `ssh.requireAgent=false`.

@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"poddy/internal/k8s"
 	"poddy/internal/sshca"
 	"poddy/internal/sshkeys"
 )
@@ -126,5 +127,42 @@ func TestRegionKeyAuthorization(t *testing.T) {
 	}
 	if b.regionAuthorized(ctx, nil, fingerprint, "missing") {
 		t.Fatal("key was authorized for an unresolvable workspace")
+	}
+}
+
+func TestSharedCertificateAuthorization(t *testing.T) {
+	ca, err := sshca.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := sshkeys.Parse(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := k8s.NewMemoryAccessStore()
+	b := &Bastion{CA: ca, keys: keys, Access: store}
+
+	cert, err := ca.Sign(testCertKey(t), sshca.WorkspacePrincipal, "bob@example.com", "dev", false, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissions, err := b.publicKeyCallback(nil, cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.authorize(permissions, "", "alice@example.com", "dev") {
+		t.Fatal("shared user was authorized before the share")
+	}
+	if err := store.Share(context.Background(), "dev", "bob@example.com", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if !b.authorize(permissions, "", "alice@example.com", "dev") {
+		t.Fatal("shared user was not authorized")
+	}
+	if err := store.Unshare(context.Background(), "dev", "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if b.authorize(permissions, "", "alice@example.com", "dev") {
+		t.Fatal("shared user was authorized after the share was removed")
 	}
 }

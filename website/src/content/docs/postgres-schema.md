@@ -158,6 +158,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | `workspaces` | Workspace metadata and the rendered PodSpec. |
 | `access_requests` | Pending admin access requests awaiting owner approval. |
 | `access_grants` | Time-limited owner approvals for interactive access. |
+| `access_shares` | Durable owner shares with named users. |
 | `access_presence` | Active interactive sessions with a heartbeat and TTL. |
 | `external_auth_tokens` | AES-GCM encrypted OAuth2 access and refresh tokens per user/provider. |
 | `rbac_documents` | Authoritative RBAC YAML/JSON document per namespace. |
@@ -182,7 +183,7 @@ the new `poddy.rbac_documents` and `poddy.share_links` tables.
 | Dotfiles UI | `dotfiles`; workspace environment `PODDY_DOTFILES_*` | PostgreSQL authoritative; injected at create/start |
 | Audit stream | `audit_events` | Written by the portal |
 
-Workspace access state (`access_requests`, `access_grants`, `access_presence`)
+Workspace access state (`access_requests`, `access_grants`, `access_shares`, `access_presence`)
 and quotas (`user_quotas`, `team_quotas`) are owned by PostgreSQL rather than
 mirrored from Kubernetes. The hub portal reads and writes them
 directly; regions go through the hub control plane. There is no Kubernetes

@@ -311,3 +311,20 @@ into Dex when the in-chart identity provider is enabled.
 {{- printf "%s-headscale-oidc" (include "poddy.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "poddy.netmonName" -}}
+{{- printf "%s-netmon" (include "poddy.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "poddy.netmonSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "poddy.netmonName" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: netmon
+{{- end -}}
+
+{{- define "poddy.netmonLabels" -}}
+helm.sh/chart: {{ include "poddy.chart" . }}
+{{ include "poddy.netmonSelectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}

@@ -143,6 +143,56 @@ func (s *Server) regionAccessMutate(w http.ResponseWriter, r *http.Request, acti
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) regionAccessShare(w http.ResponseWriter, r *http.Request) {
+	if !s.regionControlPlane(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	store, ok := s.regionAccessStore(w)
+	if !ok {
+		return
+	}
+	var req struct {
+		Actor    string `json:"actor"`
+		SharedBy string `json:"sharedBy"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	actor := accessActor(req.Actor)
+	if actor == "" {
+		http.Error(w, "actor is required", http.StatusBadRequest)
+		return
+	}
+	if err := store.Share(r.Context(), r.PathValue("workspace"), actor, accessActor(req.SharedBy)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) regionAccessUnshare(w http.ResponseWriter, r *http.Request) {
+	if !s.regionControlPlane(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	store, ok := s.regionAccessStore(w)
+	if !ok {
+		return
+	}
+	actor, ok := decodeRegionActor(w, r)
+	if !ok {
+		return
+	}
+	if err := store.Unshare(r.Context(), r.PathValue("workspace"), actor); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) regionAccessPresence(w http.ResponseWriter, r *http.Request) {
 	if !s.regionControlPlane(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)

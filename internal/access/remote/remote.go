@@ -55,6 +55,15 @@ func (s *Store) Revoke(ctx context.Context, workspace, actor string) error {
 	return s.client.DoJSON(ctx, http.MethodPost, accessPath(workspace, "revoke"), s.identity, map[string]string{"actor": actor}, nil)
 }
 
+func (s *Store) Share(ctx context.Context, workspace, actor, sharedBy string) error {
+	body := map[string]string{"actor": actor, "sharedBy": sharedBy}
+	return s.client.DoJSON(ctx, http.MethodPost, accessPath(workspace, "share"), s.identity, body, nil)
+}
+
+func (s *Store) Unshare(ctx context.Context, workspace, actor string) error {
+	return s.client.DoJSON(ctx, http.MethodPost, accessPath(workspace, "unshare"), s.identity, map[string]string{"actor": actor}, nil)
+}
+
 func (s *Store) SetPresence(ctx context.Context, workspace, session string, presence access.Presence) error {
 	path := accessPath(workspace, "presence/"+url.PathEscape(session))
 	return s.client.DoJSON(ctx, http.MethodPut, path, s.identity, presence, nil)

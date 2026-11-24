@@ -13,7 +13,7 @@ Sign in to the portal. The main view lists the workspaces you can access:
 
 - **Your workspaces** are owned by your signed-in identity.
 - **Admins** can see every workspace, but entering someone else's workspace
-  requires owner approval. See [Workspace access](workspace-access.md).
+  requires owner approval. Owners can also share a workspace with another user from the **Access** panel. Shared users can open the workspace but cannot delete, stop, restart, or change its schedule. See [Workspace access](workspace-access.md).
 - **Regions** appear in the top bar and on workspace cards in a multi-region
   deployment.
 - **Search** filters by name, owner, template, or region.

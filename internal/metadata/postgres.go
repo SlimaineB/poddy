@@ -61,6 +61,7 @@ func (p *Postgres) PGFirstReady(ctx context.Context) bool {
 			AND to_regclass('poddy.team_quotas') IS NOT NULL
 			AND to_regclass('poddy.access_requests') IS NOT NULL
 			AND to_regclass('poddy.access_grants') IS NOT NULL
+			AND to_regclass('poddy.access_shares') IS NOT NULL
 			AND to_regclass('poddy.access_presence') IS NOT NULL
 			AND to_regclass('poddy.env_vars') IS NOT NULL
 			AND to_regclass('poddy.dotfiles') IS NOT NULL

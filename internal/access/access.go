@@ -39,6 +39,13 @@ type AccessGrant struct {
 	ExpiresAt  time.Time `json:"expiresAt"`
 }
 
+// AccessShare is a durable workspace share from the owner to another user.
+type AccessShare struct {
+	Actor    string    `json:"actor"`
+	SharedBy string    `json:"sharedBy"`
+	SharedAt time.Time `json:"sharedAt"`
+}
+
 // Presence is one active interactive session in a workspace.
 type Presence struct {
 	Actor    string    `json:"actor"`
@@ -51,6 +58,7 @@ type Presence struct {
 type AccessState struct {
 	Requests map[string]map[string]AccessRequest `json:"requests,omitempty"`
 	Grants   map[string]map[string]AccessGrant   `json:"grants,omitempty"`
+	Shares   map[string]map[string]AccessShare   `json:"shares,omitempty"`
 	Presence map[string]map[string]Presence      `json:"presence,omitempty"`
 }
 
@@ -66,12 +74,15 @@ type WorkspaceAccess struct {
 	Owner           string            `json:"owner,omitempty"`
 	IsOwner         bool              `json:"isOwner"`
 	IsAdmin         bool              `json:"isAdmin"`
+	IsShared        bool              `json:"isShared,omitempty"`
+	SharedBy        string            `json:"sharedBy,omitempty"`
 	Allowed         bool              `json:"allowed"`
 	Pending         bool              `json:"pending"`
 	GrantExpiresAt  *time.Time        `json:"grantExpiresAt,omitempty"`
 	Presence        []PresenceSummary `json:"presence,omitempty"`
 	PendingRequests []string          `json:"pendingRequests,omitempty"`
 	Grants          []AccessGrant     `json:"grants,omitempty"`
+	Shares          []AccessShare     `json:"shares,omitempty"`
 }
 
 // Store is the persistence contract for access state.
@@ -81,6 +92,8 @@ type Store interface {
 	Approve(ctx context.Context, workspace, actor, approver string, ttl time.Duration) error
 	Deny(ctx context.Context, workspace, actor string) error
 	Revoke(ctx context.Context, workspace, actor string) error
+	Share(ctx context.Context, workspace, actor, sharedBy string) error
+	Unshare(ctx context.Context, workspace, actor string) error
 	SetPresence(ctx context.Context, workspace, session string, presence Presence) error
 	ClearPresence(ctx context.Context, workspace, session string) error
 	DeleteWorkspace(ctx context.Context, workspace string) error
@@ -131,6 +144,26 @@ func (state AccessState) ActiveGrants(workspace string, now time.Time) []AccessG
 	}
 	sort.Slice(grants, func(i, j int) bool { return grants[i].Actor < grants[j].Actor })
 	return grants
+}
+
+func (state AccessState) Share(workspace, actor string) (AccessShare, bool) {
+	share, ok := state.Shares[workspace][normalizeActor(actor)]
+	return share, ok
+}
+
+func (state AccessState) IsShared(workspace, actor string) bool {
+	_, ok := state.Share(workspace, actor)
+	return ok
+}
+
+func (state AccessState) WorkspaceShares(workspace string) []AccessShare {
+	shares := state.Shares[workspace]
+	out := make([]AccessShare, 0, len(shares))
+	for _, share := range shares {
+		out = append(out, share)
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Actor) < strings.ToLower(out[j].Actor) })
+	return out
 }
 
 func (state AccessState) PresenceSummary(workspace string, now time.Time) []PresenceSummary {
@@ -218,6 +251,16 @@ func (state AccessState) clone() AccessState {
 				cp[actor] = grant
 			}
 			out.Grants[workspace] = cp
+		}
+	}
+	if state.Shares != nil {
+		out.Shares = make(map[string]map[string]AccessShare, len(state.Shares))
+		for workspace, shares := range state.Shares {
+			cp := make(map[string]AccessShare, len(shares))
+			for actor, share := range shares {
+				cp[actor] = share
+			}
+			out.Shares[workspace] = cp
 		}
 	}
 	if state.Presence != nil {
@@ -337,6 +380,39 @@ func (m *Memory) Revoke(_ context.Context, workspace, actor string) error {
 	})
 }
 
+func (m *Memory) Share(_ context.Context, workspace, actor, sharedBy string) error {
+	actor = normalizeActor(actor)
+	return m.update(func(state *AccessState) error {
+		if state.Shares == nil {
+			state.Shares = map[string]map[string]AccessShare{}
+		}
+		if state.Shares[workspace] == nil {
+			state.Shares[workspace] = map[string]AccessShare{}
+		}
+		state.Shares[workspace][actor] = AccessShare{
+			Actor:    actor,
+			SharedBy: normalizeActor(sharedBy),
+			SharedAt: time.Now(),
+		}
+		delete(state.Requests[workspace], actor)
+		if len(state.Requests[workspace]) == 0 {
+			delete(state.Requests, workspace)
+		}
+		return nil
+	})
+}
+
+func (m *Memory) Unshare(_ context.Context, workspace, actor string) error {
+	actor = normalizeActor(actor)
+	return m.update(func(state *AccessState) error {
+		delete(state.Shares[workspace], actor)
+		if len(state.Shares[workspace]) == 0 {
+			delete(state.Shares, workspace)
+		}
+		return nil
+	})
+}
+
 func (m *Memory) SetPresence(_ context.Context, workspace, session string, presence Presence) error {
 	if session == "" {
 		return fmt.Errorf("presence session is required")
@@ -371,6 +447,7 @@ func (m *Memory) DeleteWorkspace(_ context.Context, workspace string) error {
 	return m.update(func(state *AccessState) error {
 		delete(state.Requests, workspace)
 		delete(state.Grants, workspace)
+		delete(state.Shares, workspace)
 		delete(state.Presence, workspace)
 		return nil
 	})

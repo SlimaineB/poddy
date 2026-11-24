@@ -37,8 +37,8 @@ the same protection as other cluster configuration.
   protect it like any other path to cluster-admin.
 - Poddy rejects privileged containers, host networking/PID/IPC, hostPath,
   secret and projected volumes, service account tokens, host ports, sysctls,
-  unconfined seccomp profiles, and dangerous capabilities. The only added
-  capability allowed is `SYS_RESOURCE`.
+  unconfined seccomp profiles, and capabilities. Workspace containers may not
+  add capabilities.
 - PVC volumes must use the workspace's own claim (`poddy-<name>`). Ephemeral
   workspaces cannot declare PVC volumes. Other volumes are limited to
   `emptyDir` and `configMap`.
@@ -349,7 +349,7 @@ No portal restart or `helm upgrade` of the portal is required. If the workspace 
 - OpenSSH server on port 22
 - `dev` user (UID 1000), passwordless sudo
 - `/home/dev` home directory owned by `dev:dev`
-- `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys`, lowers `sshd`'s OOM score, installs the `/usr/local/bin/poddy-shell` wrapper, and starts `sshd`
+- `/usr/local/bin/poddy-ssh-start` — writes `SSH_AUTHORIZED_KEY` to `/home/dev/.ssh/authorized_keys` and starts `sshd`
 - `/usr/local/bin/poddy` and `/usr/local/bin/poddy-agent` — the workspace CLI helpers and outbound agent
 - `CMD ["/usr/sbin/sshd", "-D", "-e"]` (overridden by pod `command`)
 
@@ -358,8 +358,8 @@ template uses `/home/dev/go` only as `GOPATH`; the Go toolchain is installed in
 `/usr/local/go`.
 
 The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can override it.
-If you override the command, `sshd` no longer gets the OOM protection from
-`poddy-ssh-start`.
+If you override the command, you are responsible for preparing
+`authorized_keys` and starting `sshd`.
 
 The default Helm configuration runs `poddy-agent` as a sidecar, so custom
 workspace images do not need to include it. With `ssh.agent.sidecar=false`,

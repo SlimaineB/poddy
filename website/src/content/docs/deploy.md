@@ -399,7 +399,7 @@ no automatic failover of an existing workspace between regions.
   - Set `workspace.storageClass` when the cluster has no default StorageClass. The value is used only when the template's `storageClass` parameter is empty.
   - Set `workspace.imageRegistry` for a global mirror fallback and `workspace.imageRegistryMap` for per-host mirrors (`ghcr.io`, `docker.io`, `localhost:5000`, or `*`). Set `workspace.imagePullSecrets` to existing Secrets in `workspaceNamespace` for a private mirror.
   - `networkPolicy.enabled` (default `true`) creates a default-deny policy for workspace pods. It allows DNS, the portal control-plane ports, and public internet with RFC1918, CGNAT and link-local (cloud IMDS) ranges excluded. Add internal mirrors or databases to `networkPolicy.workspace.egress.allowedCIDRs` / `allowedNamespaces`. This requires a CNI that enforces NetworkPolicy.
-  - The chart labels a chart-created workspace namespace with Pod Security Admission `warn`/`audit` set to `baseline`. Enforcement is not enabled by default because workspace containers need `SYS_RESOURCE` for SSH OOM protection.
+  - The chart labels a chart-created workspace namespace with Pod Security Admission `warn`/`audit` set to `baseline`. Enforcement is not enabled by default; set `networkPolicy.workspace.psa.enforce` to `baseline` if your workspace templates comply.
 - **Multiple teams**: Deploy one release per team with different `workspaceNamespace` and `releaseName`. Install that team's `poddy-templates` release in the same workspace namespace. Or use a single portal with multiple namespaces (requires code changes — currently one namespace per portal).
 
 ## Volume backups
@@ -583,6 +583,53 @@ Users see their own workspace monitoring in the detail panel. Admins can open
 **Monitoring** in the top bar. The API enforces ownership/admin checks; hiding a
 button in the UI is not the security boundary.
 
+## Workspace egress and storage attribution
+
+The optional `monitoring.egress` collector is a privileged per-node DaemonSet
+that attributes outbound traffic to workspaces and identifies S3 buckets,
+NFS/EFS servers, and S3/EFS CSI mounts. It is disabled by default because it
+requires `hostNetwork`, root, and a privileged container with raw packet
+access.
+
+```yaml
+monitoring:
+  egress:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      labels:
+        release: kps
+```
+
+Set `labels` to match the Prometheus Operator's `serviceMonitorSelector`
+(for example `release: kps`). The collector exposes:
+
+- `poddy_workspace_network_bytes_total{workspace,region,direction,protocol,remote_service,remote_endpoint,port,bucket,confidence}`
+- `poddy_workspace_network_connections_total{workspace,region,protocol,remote_service,remote_endpoint,port,bucket,confidence}`
+- `poddy_workspace_storage_mount_info{workspace,region,pvc,volume,server,path,fstype,storage_service,bucket,access_mode,provisioner}`
+- `poddy_netmon_packets_total{result}`
+
+The `remote_service` and `remote_endpoint` metric labels avoid colliding with Prometheus target labels such as `service` and `endpoint`. The collector inspects DNS answers, TLS ClientHello SNI, and NFS port `2049` metadata. It
+does not store payloads, TLS secrets, S3 object names, or credentials. S3
+bucket labels are available in network metrics for virtual-hosted requests.
+S3 Mountpoint and S3/EFS CSI volumes appear in
+`poddy_workspace_storage_mount_info` even when their traffic stays in the CSI
+driver netns, but that traffic is not always attributable to a workspace in the
+network metrics. Path-style S3 requests expose only the S3 endpoint.
+
+The collector needs a ClusterRole for `persistentvolumes` and a Role for
+`pods`/`persistentvolumeclaims` in the workspace namespace. It is enabled per
+release; in a hub/region deployment, enable it in each region. The release
+namespace must allow privileged pods (for example Pod Security Admission
+`enforce=privileged` or an exempt namespace). Keep the metrics Service internal
+and scrape it through Prometheus.
+
+When `monitoring.egress.enabled` and `monitoring.prometheus.url` are set, the
+workspace detail panel also shows an **External access** section. It lists the
+top network endpoints and buckets seen in the selected window, plus NFS/EFS/S3
+mount metadata. The portal queries Prometheus server-side; it does not expose
+arbitrary PromQL to the browser.
+
 ## SSH configuration
 
 SSH runs inside the portal Deployment; `replicaCount` also scales SSH.
@@ -625,11 +672,10 @@ port-forward to pod port 22. Region workspaces use the outbound region tunnel.
 
 A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@example.com`; the channel is rejected with `not authorized for this workspace`. Admin keys (`admin` or `*`) can reach every workspace for break-glass access.
 
-The default agent sidecar has a 16Mi memory request and 128Mi limit, so a
-workspace memory spike cannot OOM-kill it. The workspace container is granted
-`SYS_RESOURCE` so `poddy-ssh-start` can lower `sshd`'s OOM score; the
-`poddy-shell` wrapper resets user sessions to the default score. See
-[SSH access](ssh.md#memory-pressure-and-oom-protection).
+The default agent sidecar has its own memory limit, so a workspace memory spike
+cannot OOM-kill it. `sshd` shares the workspace cgroup and may be OOM-killed;
+workspace containers are not granted extra capabilities. See
+[SSH access](ssh.md#memory-pressure).
 
 **Exposing SSH**:
 - The service defaults to `ClusterIP`. Opt in explicitly with `ssh.service.type: LoadBalancer` or `NodePort` when SSH must be reachable from outside the cluster, and restrict access with cloud firewall rules, `loadBalancerSourceRanges`, or Service annotations. The LB IP/DNS becomes `ssh.publicHost`. This is an L4 TCP load balancer, not an HTTP Ingress.

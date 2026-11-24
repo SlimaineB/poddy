@@ -15,8 +15,6 @@ import (
 )
 
 func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace, owner string) error {
-	applyOOMProtection(pod)
-
 	container := containerByName(pod, ContainerName)
 	if container == nil {
 		return nil
@@ -314,36 +312,6 @@ func agentSidecar(image, agentURL, workspace, secretName, meshControlURL, meshAu
 			},
 		},
 	}
-}
-
-// applyOOMProtection lets poddy-ssh-start lower sshd's OOM score. User shells
-// are reset to the default score by the poddy-shell wrapper, so workspace
-// workloads stay killable during memory spikes.
-func applyOOMProtection(pod *corev1.Pod) {
-	container := containerByName(pod, ContainerName)
-	if container == nil {
-		return
-	}
-	if container.SecurityContext == nil {
-		container.SecurityContext = &corev1.SecurityContext{}
-	}
-	if container.SecurityContext.Capabilities == nil {
-		container.SecurityContext.Capabilities = &corev1.Capabilities{}
-	}
-	caps := container.SecurityContext.Capabilities
-	kept := caps.Drop[:0]
-	for _, capability := range caps.Drop {
-		if capability != "SYS_RESOURCE" {
-			kept = append(kept, capability)
-		}
-	}
-	caps.Drop = kept
-	for _, capability := range caps.Add {
-		if capability == "SYS_RESOURCE" {
-			return
-		}
-	}
-	caps.Add = append(caps.Add, "SYS_RESOURCE")
 }
 
 func removeAgentEnv(pod *corev1.Pod) {
