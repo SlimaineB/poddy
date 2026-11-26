@@ -5,12 +5,12 @@ go 1.27.4
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/prometheus/client_golang v1.25.0
 	golang.org/x/crypto v0.59.0
-	golang.org/x/net v0.62.0
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/net v0.63.0
+	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sys v0.50.0
 	k8s.io/api v0.37.2
 	k8s.io/apimachinery v0.37.2
