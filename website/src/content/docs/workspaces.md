@@ -50,7 +50,7 @@ right default for real development.
 
 1. The portal validates the template, RBAC, and quota.
 2. It creates or updates the workspace StatefulSet and PVC.
-3. The Pod starts `sshd`, the poddy agent sidecar, and any template sidecars.
+3. The Pod starts `sshd`, the poddy agent, and any template sidecars.
 4. The phase moves from **Pending** to **Running**.
 5. The workspace card enables Terminal, IDE, SSH, Ports, and sharing actions.
 

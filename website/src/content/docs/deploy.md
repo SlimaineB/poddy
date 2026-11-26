@@ -647,8 +647,8 @@ SSH runs inside the portal Deployment; `replicaCount` also scales SSH.
 | `ssh.allowUnmappedKeys` | Allow keys without an owner comment to access every workspace (legacy, insecure; default `false`). |
 | `ssh.requireAgent` | Require the outbound workspace agent tunnel and disable the Kubernetes port-forward fallback (default `true`). Set `false` to keep the fallback. |
 | `ssh.agent.enabled` | Inject the agent URL/token and run the portal agent listener (default `true`). Region managers skip it. |
-| `ssh.agent.sidecar` | Run `poddy-agent` in a dedicated sidecar with its own memory limit (default `true`). Set `false` to use the legacy in-workspace agent; custom images must then include `poddy-agent`. |
-| `ssh.agent.image` | Agent sidecar image. Empty uses the portal image, which contains `/usr/local/bin/poddy-agent`. If private, add its pull Secret to `workspace.imagePullSecrets`. |
+| `ssh.agent.sidecar` | Run `poddy-agent` in a dedicated sidecar with its own memory limit (default `false`). The default keeps it in the workspace container; custom images must include `poddy-agent`. |
+| `ssh.agent.image` | Agent sidecar image when `ssh.agent.sidecar=true`. Empty uses the portal image, which contains `/usr/local/bin/poddy-agent`. If private, add its pull Secret to `workspace.imagePullSecrets`. |
 | `ssh.agent.port` | Private ClusterIP port for the agent listener (default `8091`). |
 | `ssh.agent.url` | Agent URL injected into workspaces. Empty derives `http://<fullname>-agent.<namespace>.svc:<port>`. |
 | `ssh.agent.tokenTtl` | Workspace agent token lifetime (default `1h`). Tokens renew over the tunnel, are refreshed in the workspace Secret for reconnects, and are scoped to one workspace. |
@@ -672,9 +672,10 @@ port-forward to pod port 22. Region workspaces use the outbound region tunnel.
 
 A key mapped to `alice@example.com` cannot reach a workspace owned by `bob@example.com`; the channel is rejected with `not authorized for this workspace`. Admin keys (`admin` or `*`) can reach every workspace for break-glass access.
 
-The default agent sidecar has its own memory limit, so a workspace memory spike
-cannot OOM-kill it. `sshd` shares the workspace cgroup and may be OOM-killed;
-workspace containers are not granted extra capabilities. See
+The agent runs in the workspace container by default and shares its cgroup with
+`sshd`, so a workspace memory spike can OOM-kill either process. Set
+`ssh.agent.sidecar=true` to give the agent its own memory limit. Workspace
+containers are not granted extra capabilities. See
 [SSH access](ssh.md#memory-pressure).
 
 **Exposing SSH**:

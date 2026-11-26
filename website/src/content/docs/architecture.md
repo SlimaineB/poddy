@@ -30,18 +30,18 @@ runtime source of truth for workspaces and PVCs.
                                       ▼
                           ┌───────────────────────┐
                           │ workspace pod         │
-                          │ agent sidecar → sshd  │
+                          │ poddy-agent → sshd    │
                           └───────────────────────┘
 ```
 
 The hub portal is one Deployment built from one container image. It serves the
 web UI, the API, a private agent listener on `:8091`, and SSH on `:2222`.
-Workspace pods run `poddy-agent` in a dedicated sidecar, which connects
-outbound to the portal and forwards only to the workspace's loopback SSH port.
-The sidecar has its own memory limit, so a workspace memory spike does not kill
-the tunnel. `sshd` remains in the workspace cgroup and may be OOM-killed; SSH
-sessions are not resumable and reconnect after the workspace recovers. The
-portal falls back to Kubernetes port-forward only when
+Workspace pods run `poddy-agent` inside the main workspace container by default.
+It connects outbound to the portal and forwards only to the workspace's loopback
+SSH port. The agent and `sshd` share the workspace cgroup and may be OOM-killed;
+SSH sessions are not resumable and reconnect after the workspace recovers. Set
+`ssh.agent.sidecar=true` for a dedicated agent sidecar with its own memory
+limit. The portal falls back to Kubernetes port-forward only when
 `ssh.requireAgent=false`. Region workspaces use the region manager's outbound
 tunnel instead.
 
@@ -76,7 +76,7 @@ internal region-authenticated endpoint.
 |-----------|----------------|---------------|
 | Portal | HTTP API, auth, RBAC, workspace lifecycle, embedded UI, terminal WebSocket | Deployment in the control namespace |
 | SSH listener | Accepts user SSH connections, verifies keys or short-lived certificates, and multiplexes streams to workspace agents or region tunnels | In-process in the portal Deployment, port `2222` |
-| Workspace agent | Outbound WebSocket client that forwards portal streams to `127.0.0.1:22` | Dedicated sidecar by default; legacy in-workspace process when `ssh.agent.sidecar=false` |
+| Workspace agent | Outbound WebSocket client that forwards portal streams to `127.0.0.1:22` | In the workspace container by default; dedicated sidecar when `ssh.agent.sidecar=true` |
 | Workspace StatefulSets | One StatefulSet per workspace, scaled 0/1; pod `poddy-<name>-0` runs `sshd`, a non-root `dev` user, tools, and the user's home volume | Workspace namespace |
 | Templates | YAML contract for pod spec, parameters, image, links, and external auth | ConfigMaps or a local directory |
 | RBAC store | Admins, teams, template access, and quotas | PostgreSQL; ConfigMap mirror |

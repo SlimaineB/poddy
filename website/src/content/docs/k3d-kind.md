@@ -115,8 +115,8 @@ admin, and creates a `base` workspace with `250m` CPU, `512Mi` memory, and a
 - SSH through the portal succeeds and lands in `/home/dev` as `dev`.
 
 It deliberately sets `ssh.agent.enabled=false` and `ssh.requireAgent=false`, so
-the test exercises the portal-to-workspace port-forward path. The agent
-sidecar path is covered separately.
+the test exercises the portal-to-workspace port-forward path. The agent path is
+covered separately.
 
 ```bash
 scripts/validate-k3d-kind.sh k3d /tmp/poddy-k3d.kubeconfig 18080 12222

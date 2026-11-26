@@ -106,6 +106,8 @@ name (without the leading `v`) is used.
 | `ssh.drainDelay` | `3s` | Reject new SSH connections immediately, then keep the listener open for this long so endpoints drain. |
 | `ssh.drainTimeout` | `20s` | Keep existing SSH sessions during graceful shutdown. |
 | `ssh.agent.enabled` | `true` | Run the portal agent listener and inject agent URL/token into hub workspaces. Region managers skip the agent and use the region tunnel. |
+| `ssh.agent.sidecar` | `false` | Run the SSH agent in a dedicated sidecar with its own memory limit. The default keeps it in the workspace container; custom images must include `/usr/local/bin/poddy-agent`. |
+| `ssh.agent.image` | `""` | Agent sidecar image when `ssh.agent.sidecar=true`. Empty uses the portal image, which contains `/usr/local/bin/poddy-agent`. If private, add its pull Secret to `workspace.imagePullSecrets`. |
 | `ssh.agent.port` | `8091` | Private ClusterIP port for the agent listener and peer forwarding. |
 | `ssh.agent.url` | `""` | Agent URL injected into workspaces. Empty derives the in-cluster Service URL. |
 | `ssh.agent.tokenTtl` | `1h` | Workspace agent token lifetime. Tokens renew over the tunnel, are refreshed in the workspace Secret for reconnects, and are scoped to one workspace. |

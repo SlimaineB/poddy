@@ -120,7 +120,7 @@ protect against different failures.
 2. Back up PostgreSQL and the critical Secrets.
 3. Confirm the new image and chart versions exist in your registry.
 4. Check the Kubernetes version and any changed values.
-5. Schedule a window if the upgrade changes the agent sidecar or SSH CA.
+5. Schedule a window if the upgrade changes the workspace agent or SSH CA.
 
 ### Upgrade the charts
 
@@ -166,8 +166,9 @@ Then verify:
 
 ### Workspace changes after upgrade
 
-- **Agent sidecar changes**: existing workspaces need a stop/start to receive
-  the new sidecar. Stop and start them during a maintenance window.
+- **Agent changes**: existing workspaces need a stop/start to receive the new
+  in-workspace agent settings or sidecar layout. Stop and start them during a
+  maintenance window.
 - **SSH CA or `ssh.requireAgent` changes**: the CA line and agent settings are
   applied when a workspace is created or restarted. Restart existing workspaces.
 - **Template changes**: stopped workspaces keep their preserved pod template.

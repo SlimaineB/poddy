@@ -361,10 +361,11 @@ The pod defaults run `command: [{{ .SSHCommand | quote }}]`; a template can over
 If you override the command, you are responsible for preparing
 `authorized_keys` and starting `sshd`.
 
-The default Helm configuration runs `poddy-agent` as a sidecar, so custom
-workspace images do not need to include it. With `ssh.agent.sidecar=false`,
-include `/usr/local/bin/poddy-agent` in the image; `poddy-ssh-start` starts it
-before `sshd`.
+The default Helm configuration runs `poddy-agent` in the workspace container,
+so custom workspace images must include `/usr/local/bin/poddy-agent`;
+`poddy-ssh-start` starts it before `sshd`. The bundled workspace images already
+include it. Set `ssh.agent.sidecar=true` to use the portal image as a dedicated
+sidecar instead and keep custom images agent-free.
 
 The persistent home volume is mounted at `/home/dev`. It shadows the image's
 home directory, so put shell defaults in `/etc/skel` (seeded on first start) or

@@ -29,7 +29,7 @@ Desktop VS Code / Cursor (Poddy extension → poddy-connect)
 ssh / JetBrains Gateway (when mesh is disabled)
   └─ portal :2222
        ├─ workspace agent tunnel ─► poddy-agent ─► 127.0.0.1:22
-       │  (outbound WebSocket)       sidecar         workspace sshd
+       │  (outbound WebSocket)      (workspace)      workspace sshd
        └─ Kubernetes port-forward ──────────────────► workspace pod :22
           (only when ssh.requireAgent=false)
 ```
@@ -50,12 +50,13 @@ to `/api/desktop/ssh`, and the portal opens the TCP stream. The portal mode work
 without a public SSH Service and is available when mesh is disabled or not
 configured.
 
-The workspace pod runs `poddy-agent` in a dedicated sidecar by default. It opens
-an outbound WebSocket to the portal and multiplexes TCP streams back to the
-workspace's loopback SSH port. The portal never accepts an inbound connection
+The workspace runs `poddy-agent` inside the main workspace container by default.
+It opens an outbound WebSocket to the portal and multiplexes TCP streams back to
+the workspace's loopback SSH port. The portal never accepts an inbound connection
 from the workspace, and the agent only permits `127.0.0.1:22`, `localhost:22`,
-or `[::1]:22`. The sidecar has its own memory limit, so a workspace memory spike
-cannot OOM-kill the agent and drop every SSH session.
+or `[::1]:22`. The agent shares the workspace cgroup; set
+`ssh.agent.sidecar=true` to run it in a dedicated sidecar with its own memory
+limit and keep the tunnel alive when the workspace OOMs.
 
 Desktop IDEs use the transport above: VS Code and Cursor through the Poddy
 extension, and PyCharm through JetBrains Gateway and the generated SSH config.
@@ -72,7 +73,7 @@ stores its state in `/home/dev/.openvscode-server` and runs as UID 1000, so it
 follows the same persistence rule.
 
 The portal signs a workspace-bound agent token and stores it in a per-workspace
-Secret. The agent sidecar receives it as `PODDY_AGENT_TOKEN` through a
+Secret. The agent receives it as `PODDY_AGENT_TOKEN` through a
 `SecretKeyRef`, not as a plaintext value in the pod spec, together with
 `PODDY_AGENT_URL`, `PODDY_WORKSPACE_NAME`, `PODDY_AGENT_TOKEN_FILE`, and
 `PODDY_AGENT_REFRESH_FILE`. The Secret is also mounted read-only at
@@ -89,28 +90,27 @@ the workspace name, so a token for one workspace cannot be replayed against
 another. The portal verifies the signature before accepting the tunnel.
 
 Existing workspace pods must be stopped and started after upgrading so they
-receive the agent sidecar. Custom workspace images do not need to include
-`poddy-agent` while `ssh.agent.sidecar=true` (the default): the sidecar uses
-the portal image, which contains `/usr/local/bin/poddy-agent`. Set
-`ssh.agent.image` to use a different image; it must contain
-`/usr/local/bin/poddy-agent`.
+receive the new agent configuration. Custom workspace images must include
+`/usr/local/bin/poddy-agent` and start it from the container entrypoint: the
+repository's `docker/workspace/base/Dockerfile` builds and installs the agent,
+and `scripts/poddy-ssh-start` launches it before `sshd`. The bundled workspace
+images already include it.
 
-With `ssh.agent.sidecar=false`, the agent runs inside the workspace container
-instead. In that mode, custom workspace images must include
-`/usr/local/bin/poddy-agent` and start it from the container entrypoint. The
-repository's `docker/workspace/base/Dockerfile` builds and installs the agent, and
-`scripts/poddy-ssh-start` launches it before `sshd`. If an image cannot include
-the agent, set `ssh.requireAgent=false` to keep the Kubernetes port-forward
-fallback.
+Set `ssh.agent.sidecar=true` to run the agent in a dedicated sidecar instead.
+The sidecar uses the portal image, so custom workspace images do not need the
+agent; set `ssh.agent.image` to use a different image, which must contain
+`/usr/local/bin/poddy-agent`. If an image cannot include the agent and you do
+not use the sidecar, set `ssh.requireAgent=false` to keep the Kubernetes
+port-forward fallback.
 
 ## Memory pressure
 
-`sshd` shares the workspace container's cgroup, so a memory spike can OOM-kill
-it and disconnect active sessions. Poddy does not grant the workspace extra
-capabilities or change OOM scores to prevent this. The agent sidecar has its own
-memory limit, so the tunnel survives a workspace OOM kill and reconnects; SSH
-sessions themselves are not resumable and must be reconnected after the
-workspace recovers.
+`sshd` and, by default, `poddy-agent` share the workspace container's cgroup, so
+a memory spike can OOM-kill either process and disconnect active sessions. Poddy
+does not grant the workspace extra capabilities or change OOM scores to prevent
+this. The agent reconnects when the workspace recovers; SSH sessions themselves
+are not resumable and must be reconnected. Set `ssh.agent.sidecar=true` to give
+the agent its own memory limit so the tunnel survives a workspace OOM kill.
 
 Use workspace CPU/memory requests and limits, and avoid unbounded builds or
 processes in the workspace. The workspace image must still run
@@ -316,9 +316,11 @@ ssh:
 
   agent:
     enabled: true
-    # Dedicated agent sidecar. Disable to keep the legacy in-workspace process.
-    sidecar: true
-    # Defaults to the portal image, which contains /usr/local/bin/poddy-agent.
+    # Agent runs in the workspace container by default. Set true for an
+    # isolated sidecar with its own memory limit.
+    sidecar: false
+    # Only used when sidecar=true. Defaults to the portal image, which contains
+    # /usr/local/bin/poddy-agent.
     image: ""
     port: 8091
     tokenTtl: 1h
@@ -386,8 +388,9 @@ multi-region workspaces use the same `~/.ssh/config` block.
   first connection pins the key; a later change is rejected. Custom templates
   without a persistent `/home/dev` lose that pin across pod recreation.
 - The workspace container already runs as root for `sshd`, and `dev` has
-  passwordless sudo. If the portal image is private, add its pull Secret to
-  `workspace.imagePullSecrets` so workspace nodes can start the agent sidecar.
+  passwordless sudo. If you use `ssh.agent.sidecar=true` with the portal image,
+  add its pull Secret to `workspace.imagePullSecrets` so workspace nodes can
+  start the sidecar.
 - `ssh.requireAgent=true` removes the Kubernetes port-forward fallback. Keep it
   enabled in production. The Helm chart only grants the portal
   `pods/portforward` when `ssh.requireAgent=false`.

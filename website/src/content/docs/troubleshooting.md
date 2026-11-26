@@ -189,8 +189,8 @@ kubectl -n poddy-workspaces describe pod poddy-<workspace>-0 | grep -A10 Events
   `workspace.imageRegistryMap`.
 - A custom template overrides only part of the image reference.
 
-The agent sidecar uses the portal image by default. If that image is private, add
-its pull Secret to `workspace.imagePullSecrets` too.
+With `ssh.agent.sidecar=true`, the sidecar uses the portal image by default. If
+that image is private, add its pull Secret to `workspace.imagePullSecrets` too.
 
 ### Workspace is `CrashLoopBackOff`
 
@@ -249,10 +249,11 @@ including stop/start. Recreate the workspace with a persistent storage size.
 - The Ingress does not support TCP/WebSocket for the tunnel path.
 - The workspace agent is not connected and `ssh.requireAgent=true`.
 
-Check the agent sidecar:
+Check the agent logs. It runs in the `workspace` container by default; use
+`-c poddy-agent` only when `ssh.agent.sidecar=true`:
 
 ```bash
-kubectl -n poddy-workspaces logs poddy-<workspace>-0 -c poddy-agent --tail=100
+kubectl -n poddy-workspaces logs poddy-<workspace>-0 -c workspace --tail=100
 kubectl -n poddy-system logs deploy/poddy --tail=100
 ```
 
@@ -488,7 +489,7 @@ the UI.
 - Increase ingress/proxy read timeouts.
 - Raise the portal replica count and resources.
 - Check node memory pressure and OOM kills of `sshd` or the agent.
-- Keep `ssh.agent.sidecar=true` so the agent has its own memory limit.
+- Set `ssh.agent.sidecar=true` so the agent has its own memory limit.
 
 ## Multi-region
 
