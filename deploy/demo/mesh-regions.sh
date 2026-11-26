@@ -200,6 +200,7 @@ defaultTemplate: base
 mesh:
   enabled: true
   controlUrl: http://${HOST}:${HEADSCALE_PORT}
+  controlNamespace: ${NS}
   loginUrl: https://${HEADSCALE_HOST}
   authKey: ${AUTH_KEY}
   caSecret: poddy-mesh-ca
