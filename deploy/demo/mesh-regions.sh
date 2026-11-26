@@ -7,7 +7,11 @@ export KUBECONFIG
 
 NS="${PODDY_NAMESPACE:-poddy-system}"
 HOST="${DEMO_HOST:-$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')}"
-IMAGE_TAG="${IMAGE_TAG:-dev}"
+HUB_IMAGE="${HUB_IMAGE:-$(kubectl -n "$NS" get deploy poddy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)}"
+if [[ -z "${IMAGE_TAG:-}" && -n "$HUB_IMAGE" && "$HUB_IMAGE" != *"@"* ]]; then
+  IMAGE_TAG="${HUB_IMAGE##*:}"
+fi
+IMAGE_TAG="${IMAGE_TAG:-demo-$(git -C "$ROOT" rev-parse --short HEAD)}"
 REGIONS="${DEMO_REGIONS:-eu us}"
 HEADSCALE_PORT="${HEADSCALE_PORT:-30090}"
 # sslip.io resolves to the node IP, so workspaces and laptops can reach
