@@ -51,6 +51,11 @@ kubectl -n "$NS" create secret generic poddy-headscale-tls \
   --from-file=tls.key="${TLS_DIR}/server.key" \
   --from-file=ca.crt="${TLS_DIR}/ca.crt" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+# Desktop clients and workspace agents need the demo CA to trust the
+# Headscale/DERP TLS certificate.
+kubectl -n "$NS" create secret generic poddy-mesh-ca \
+  --from-file=ca.crt="${TLS_DIR}/ca.crt" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 # The demo Dex is already deployed by demo.sh. Add Headscale as an OIDC client.
 python3 - "$ROOT/deploy/demo/dex.yaml" "$HOST" "$HEADSCALE_PORT" "$HEADSCALE_HOST" <<'PY' > /tmp/poddy-dex-mesh.yaml
@@ -136,6 +141,7 @@ helm upgrade --install poddy "$ROOT/deploy/helm/poddy" -n "$NS" \
   --set mesh.derp.service.stunNodePort="$STUN_PORT" \
   --set mesh.controlUrl="http://${HOST}:${HEADSCALE_PORT}" \
   --set mesh.loginUrl="https://${HEADSCALE_HOST}" \
+  --set mesh.caSecret=poddy-mesh-ca \
   --wait --timeout 10m >/dev/null
 
 kubectl -n "$NS" rollout status deploy/poddy-headscale --timeout=300s >/dev/null
@@ -162,6 +168,15 @@ for REGION in $REGIONS; do
   RNS="poddy-${REGION}"
   WNS="poddy-${REGION}-workspaces"
   copy_ssh_ca "$RNS"
+  kubectl -n "$RNS" create secret generic poddy-mesh-ca \
+    --from-file=ca.crt="${TLS_DIR}/ca.crt" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  # Region portals watch templates in their own workspace namespace. The hub's
+  # template ConfigMaps are not visible across namespaces.
+  helm upgrade --install "poddy-${REGION}-templates" "$ROOT/deploy/helm/poddy-templates" \
+    -n "$WNS" -f "$ROOT/deploy/demo/templates-values.yaml" \
+    --wait --timeout 5m >/dev/null
 
   cat > "${STATE_DIR}/poddy-${REGION}-mesh.yaml" <<YAML
 fullnameOverride: poddy-${REGION}
@@ -187,6 +202,7 @@ mesh:
   controlUrl: http://${HOST}:${HEADSCALE_PORT}
   loginUrl: https://${HEADSCALE_HOST}
   authKey: ${AUTH_KEY}
+  caSecret: poddy-mesh-ca
   headscale:
     enabled: false
 ssh:

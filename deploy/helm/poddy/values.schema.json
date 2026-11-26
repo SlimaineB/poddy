@@ -215,8 +215,23 @@
         "enabled": {
           "type": "boolean"
         },
+        "agent": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sidecar": {
+              "type": "boolean"
+            }
+          }
+        },
         "controlUrl": {
           "type": "string"
+        },
+        "controlNamespace": {
+          "type": "string"
+        },
+        "controlPort": {
+          "type": "integer"
         },
         "loginUrl": {
           "type": "string"

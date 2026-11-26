@@ -392,9 +392,19 @@ mesh:
   # When enabled, the portal does not expose an SSH listener or Service.
   # With no controlUrl the chart deploys and bootstraps Headscale for you.
   enabled: false
+  agent:
+    # Run poddy-agent in the workspace container (default) or in a dedicated
+    # sidecar. In-workspace mode requires /usr/local/bin/poddy-agent in the
+    # workspace image; the bundled workspace images include it.
+    sidecar: false
   # Control server URL. For Tailscale leave empty; for Headscale use the
   # public HTTPS URL. Defaults to mesh.headscale.serverUrl when deploying one.
   controlUrl: ""
+  # Namespace of a remote Headscale managed by another release (for example
+  # poddy-system in a region). Workspace egress needs this rule when the region
+  # does not deploy Headscale itself.
+  controlNamespace: ""
+  controlPort: 8080
   # Public login server shown in the UI. Defaults to controlUrl.
   loginUrl: ""
   # Reusable Headscale preauth key injected into workspace agents. Leave empty
@@ -429,7 +439,11 @@ mesh:
   # Writable tsnet state directory inside the portal pod.
   stateDir: /var/lib/poddy/tsnet
   # Optional external DERP map URLs. Empty by default so an air-gapped install
-  # never calls Tailscale's public DERP service.
+  # never calls Tailscale's public DERP service. To validate quickly with
+  # Tailscale's public relays, set mesh.derp.embedded=false and use:
+  #   derpUrls:
+  #     - https://controlplane.tailscale.com/derpmap/default
+  # Switch back to the embedded relay by restoring embedded=true and derpUrls=[].
   derpUrls: []
   # Self-hosted DERP. When mesh.headscale.enabled=true the Headscale embedded
   # DERP server is used and public DERP maps stay disabled.

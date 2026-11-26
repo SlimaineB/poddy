@@ -24,6 +24,7 @@ data:
     derp:
       server:
         enabled: {{ .Values.mesh.derp.embedded }}
+        {{- if .Values.mesh.derp.embedded }}
         region_id: {{ .Values.mesh.derp.regionId }}
         region_code: {{ .Values.mesh.derp.regionCode | quote }}
         region_name: {{ .Values.mesh.derp.regionName | quote }}
@@ -35,6 +36,7 @@ data:
         {{- end }}
         {{- with .Values.mesh.derp.ipv6 }}
         ipv6: {{ . | quote }}
+        {{- end }}
         {{- end }}
       urls: {{ toYaml .Values.mesh.derpUrls | nindent 8 }}
       paths: []

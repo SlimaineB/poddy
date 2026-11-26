@@ -1,0 +1,25 @@
+# Poddy workspace SSH policy.
+#
+# This file is installed as /etc/ssh/sshd_config.d/00-poddy.conf. OpenSSH reads
+# sshd_config.d from the Include at the top of the distribution config and keeps
+# the first value for each option, so these settings override the distro
+# defaults (notably UsePAM yes).
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+UsePAM no
+UseDNS no
+GSSAPIAuthentication no
+HostbasedAuthentication no
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+MaxAuthTries 3
+LoginGraceTime 30
+ClientAliveInterval 30
+ClientAliveCountMax 3
+AllowUsers dev
+LogLevel VERBOSE

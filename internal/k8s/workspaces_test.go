@@ -259,6 +259,59 @@ func TestCreateUsesMeshAgentSidecarWithoutToken(t *testing.T) {
 	}
 }
 
+func TestCreateUsesInWorkspaceMeshAgent(t *testing.T) {
+	m := newTestManager()
+	m.MeshControlURL = "https://mesh.example.com"
+	m.MeshAuthKey = "tskey-auth-test"
+	m.MeshCACert = "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, CreateRequest{Name: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := m.Get(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasContainer(pod, AgentContainerName) {
+		t.Fatal("mesh agent must run in the workspace container")
+	}
+	workspace := containerByName(pod, ContainerName)
+	if workspace == nil {
+		t.Fatal("workspace container missing")
+	}
+	wantEnv := map[string]string{
+		envWorkspaceName:  "app",
+		envMeshControlURL: m.MeshControlURL,
+		envMeshAuthKey:    m.MeshAuthKey,
+		envMeshCACert:     m.MeshCACert,
+		envMeshStateDir:   agentStateMountPath + "/tsnet",
+	}
+	for name, want := range wantEnv {
+		if got := envValue(pod, ContainerName, name); got != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
+	}
+	if got := envValue(pod, ContainerName, envAgentSidecar); got != "" {
+		t.Fatalf("workspace agent sidecar marker = %q, want empty", got)
+	}
+	if workspace.StartupProbe == nil || workspace.StartupProbe.HTTPGet == nil || workspace.StartupProbe.HTTPGet.Path != "/readyz" {
+		t.Fatalf("startup probe = %+v", workspace.StartupProbe)
+	}
+	if workspace.ReadinessProbe == nil || workspace.ReadinessProbe.HTTPGet == nil || workspace.ReadinessProbe.HTTPGet.Path != "/readyz" {
+		t.Fatalf("readiness probe = %+v", workspace.ReadinessProbe)
+	}
+	mounted := false
+	for _, mount := range workspace.VolumeMounts {
+		if mount.Name == agentStateVolumeName && mount.MountPath == agentStateMountPath {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Fatalf("workspace agent state volume not mounted: %+v", workspace.VolumeMounts)
+	}
+}
+
 func TestCreateFallsBackToInWorkspaceAgent(t *testing.T) {
 	m := newTestManager()
 	m.AgentURL = "http://poddy-agent.poddy.svc:8091"

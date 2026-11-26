@@ -143,8 +143,21 @@ helm upgrade poddy ./deploy/helm/poddy -n poddy-system \
   --set mesh.authKey=tskey-auth-...
 ```
 
-Existing workspaces must be stopped and started so their agent sidecar receives
-the new `PODDY_MESH_*` environment variables.
+By default `poddy-agent` runs in the workspace container. Set
+`mesh.agent.sidecar=true` to keep it isolated; custom workspace images must
+include `/usr/local/bin/poddy-agent` for the default mode.
+
+When a region uses the hub's Headscale, set `mesh.controlNamespace` to the hub
+namespace so workspace egress can reach the control plane:
+
+```bash
+helm upgrade poddy-eu ./deploy/helm/poddy -n poddy-eu \
+  --reuse-values \
+  --set mesh.controlNamespace=poddy-system
+```
+
+Existing workspaces must be stopped and started so their workspace container
+receives the new `PODDY_MESH_*` environment variables.
 
 ## Join users
 
@@ -256,5 +269,6 @@ DEMO_MESH=1 DEMO_REGIONS="eu us" deploy/demo/demo.sh
 
 The script installs Headscale and Dex in `poddy-system`, creates the workspace
 preauth key, enables mesh SSH on the hub, then installs `poddy-eu` and
-`poddy-us` with the same control URL and key. Workspaces in every region get
-the mesh sidecar and appear as `ws-<workspace>` on the tailnet.
+`poddy-us` with the same control URL and key. Workspaces in every region run
+the mesh agent in the workspace container and appear as `ws-<workspace>` on the
+tailnet.

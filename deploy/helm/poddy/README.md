@@ -115,7 +115,10 @@ name (without the leading `v`) is used.
 | `ssh.ca.keyKey` | `ssh-ca-key` | Key in the CA Secret. |
 | `ssh.ca.key` | `""` | Inline CA private key (PEM). Empty generates and preserves a random key. |
 | `mesh.enabled` | `false` | Run workspace agents on a Headscale/Tailscale tailnet and make mesh the preferred desktop transport. The chart skips the portal SSH Service and listener when enabled. |
+| `mesh.agent.sidecar` | `false` | Run the mesh agent in a dedicated sidecar. The default keeps it in the workspace container; custom images must include `/usr/local/bin/poddy-agent`. |
 | `mesh.controlUrl` | `""` | Mesh control server URL. Required when `mesh.enabled=true` unless `mesh.headscale.enabled=true`. |
+| `mesh.controlNamespace` | `""` | Namespace of a remote Headscale for workspace egress. Set to the hub namespace (for example `poddy-system`) in regions that do not deploy Headscale. |
+| `mesh.controlPort` | `8080` | Headscale Service port used by the remote control-plane egress rule. |
 | `mesh.authKey` / `mesh.existingSecret` | `""` | Reusable mesh preauth key for workspaces and desktop clients. Required when `mesh.enabled=true` unless `mesh.existingSecret` is set. |
 | `workspaceNamespace` | `""` (release ns) | Namespace for workspace pods/PVCs. Use a dedicated namespace in production. |
 | `createWorkspaceNamespace` | `false` | Create the workspace namespace. **Warning**: uninstall deletes it. |
@@ -504,6 +507,24 @@ Production requirements:
    STUN UDP port through the Service or a LoadBalancer. If you disable the
    embedded relay, set `mesh.derpUrls` to one or more reachable DERP map URLs.
    The chart fails rendering if both are empty.
+
+   To validate the mesh quickly with Tailscale's public DERP relays, start with
+   [`examples/values-public-derp.yaml`](examples/values-public-derp.yaml):
+
+   ```yaml
+   mesh:
+     derp:
+       embedded: false
+     derpUrls:
+       - https://controlplane.tailscale.com/derpmap/default
+   ```
+
+   Switch back to the private embedded relay by restoring `embedded: true` and
+   `derpUrls: []`. The Headscale Pod restarts because the rendered ConfigMap
+   changes, so expect a short mesh reconnect. Workspace egress already permits
+   TCP 443 and UDP 3478 when mesh is enabled; keep that egress open for the
+   public relays.
+
 5. **Backups.** Back up the PostgreSQL database and the RWX claim together.
    The claim contains the Headscale Noise key, private key, and DERP key.
 

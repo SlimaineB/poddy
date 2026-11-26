@@ -26,12 +26,17 @@ RUN apt-get update \
       openssh-server sudo git curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
  && useradd -m -s /bin/bash dev \
+ && usermod -p '*' dev \
  && printf 'dev ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/dev \
  && chmod 0440 /etc/sudoers.d/dev \
  && mkdir -p /run/sshd /home/dev/.ssh /workspace \
  && chown -R dev:dev /home/dev /workspace \
- && chmod 700 /home/dev/.ssh \
- && printf 'PasswordAuthentication no\nPermitRootLogin no\nUsePAM no\nAuthorizedKeysFile .ssh/authorized_keys\n' >> /etc/ssh/sshd_config
+ && chmod 700 /home/dev/.ssh
+
+COPY --chmod=0644 docker/workspace/base/sshd_config /etc/ssh/sshd_config.d/00-poddy.conf
+RUN ssh-keygen -q -t ed25519 -N '' -f /tmp/poddy-sshd-test-key \
+ && /usr/sbin/sshd -t -h /tmp/poddy-sshd-test-key \
+ && rm -f /tmp/poddy-sshd-test-key /tmp/poddy-sshd-test-key.pub
 
 COPY --from=build --chmod=0755 /out/poddy-agent /usr/local/bin/poddy-agent
 COPY --from=build --chmod=0755 /out/poddy /usr/local/bin/poddy

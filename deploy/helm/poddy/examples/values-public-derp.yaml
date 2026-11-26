@@ -1,0 +1,13 @@
+# Validation overlay: use Tailscale's public DERP relays before switching to a
+# private DERP deployment. Apply it after the normal values file:
+#
+#   helm upgrade poddy deploy/helm/poddy -n poddy-system \
+#     -f values.yaml -f examples/values-public-derp.yaml
+#
+# Remove this overlay (or restore mesh.derp.embedded=true and mesh.derpUrls=[])
+# to return to the embedded/private relay.
+mesh:
+  derp:
+    embedded: false
+  derpUrls:
+    - https://controlplane.tailscale.com/derpmap/default

@@ -52,13 +52,23 @@ fi
 chown -R dev:dev /home/dev/.ssh
 chmod 700 /home/dev/.ssh
 
-if [ "${PODDY_AGENT_SIDECAR:-}" != "true" ] && [ -x /usr/local/bin/poddy-agent ] && [ -n "${PODDY_AGENT_URL:-}" ] && [ -n "${PODDY_AGENT_TOKEN:-}" ]; then
-  (
-    while :; do
-      /usr/local/bin/poddy-agent -url "$PODDY_AGENT_URL" -token "$PODDY_AGENT_TOKEN" -workspace "${PODDY_WORKSPACE_NAME:-}" || true
-      sleep 2
-    done
-  ) &
+run_agent() {
+  while :; do
+    /usr/local/bin/poddy-agent "$@" || true
+    sleep 2
+  done
+}
+
+if [ "${PODDY_AGENT_SIDECAR:-}" != "true" ] && [ -x /usr/local/bin/poddy-agent ]; then
+  if [ -n "${PODDY_AGENT_URL:-}" ] && [ -n "${PODDY_AGENT_TOKEN:-}" ]; then
+    (
+      run_agent -url "$PODDY_AGENT_URL" -token "$PODDY_AGENT_TOKEN" -workspace "${PODDY_WORKSPACE_NAME:-}"
+    ) &
+  elif [ -n "${PODDY_MESH_AUTH_KEY:-}" ]; then
+    (
+      run_agent
+    ) &
+  fi
 fi
 
 # Keep the host key in the persistent home so clients can pin it across pod
@@ -74,5 +84,10 @@ if [ ! -s "$HOST_KEY" ]; then
   fi
 fi
 chmod 600 "$HOST_KEY"
+
+if ! /usr/sbin/sshd -t -h "$HOST_KEY"; then
+  echo "poddy-ssh-start: invalid sshd configuration" >&2
+  exit 1
+fi
 
 exec /usr/sbin/sshd -D -e -h "$HOST_KEY"

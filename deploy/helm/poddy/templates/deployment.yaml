@@ -524,7 +524,12 @@ spec:
             - name: PODDY_SSH_ALLOW_UNMAPPED_KEYS
               value: {{ .Values.ssh.allowUnmappedKeys | quote }}
             {{- end }}
-            {{- if or .Values.mesh.enabled (and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.ssh.agent.sidecar) }}
+            {{- if .Values.mesh.enabled }}
+            {{- if .Values.mesh.agent.sidecar }}
+            - name: PODDY_AGENT_IMAGE
+              value: {{ include "poddy.agentImage" . | quote }}
+            {{- end }}
+            {{- else if and .Values.ssh.enabled .Values.ssh.agent.enabled .Values.ssh.agent.sidecar }}
             - name: PODDY_AGENT_IMAGE
               value: {{ include "poddy.agentImage" . | quote }}
             {{- end }}

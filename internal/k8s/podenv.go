@@ -19,6 +19,8 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	if container == nil {
 		return nil
 	}
+	removeMeshEnv(container)
+	removeMeshProbes(container)
 	useWSS := m.AgentURL != "" && m.AgentToken != nil
 	useMesh := strings.TrimSpace(m.MeshAuthKey) != ""
 	if !useWSS && !useMesh {
@@ -33,7 +35,6 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 	removeEnv(container, envAgentToken)
 	removeEnv(container, envAgentTokenFile)
 	removeEnv(container, envAgentRefreshFile)
-	removeMeshEnv(container)
 	removeAgentTokenSecretMountFromContainer(container)
 
 	if m.AgentImage == "" {
@@ -61,7 +62,10 @@ func (m *Manager) applyAgentEnv(ctx context.Context, pod *corev1.Pod, workspace,
 			}
 		}
 		mountAgentTokenState(pod, container)
-		applyMeshEnv(container, m.MeshControlURL, m.MeshAuthKey)
+		if useMesh {
+			applyMeshEnv(container, m.MeshControlURL, m.MeshAuthKey, m.MeshCACert)
+			applyMeshProbes(container)
+		}
 		return nil
 	}
 
@@ -90,15 +94,71 @@ func removeMeshEnv(container *corev1.Container) {
 	removeEnv(container, envMeshControlURL)
 	removeEnv(container, envMeshAuthKey)
 	removeEnv(container, envMeshStateDir)
+	removeEnv(container, envMeshCACert)
 }
 
-func applyMeshEnv(container *corev1.Container, controlURL, authKey string) {
+func applyMeshEnv(container *corev1.Container, controlURL, authKey, caCert string) {
 	if container == nil || strings.TrimSpace(authKey) == "" {
 		return
 	}
 	setEnv(container, envMeshControlURL, strings.TrimSpace(controlURL))
 	setEnv(container, envMeshAuthKey, strings.TrimSpace(authKey))
 	setEnv(container, envMeshStateDir, agentStateMountPath+"/tsnet")
+	if ca := strings.TrimSpace(caCert); ca != "" {
+		setEnv(container, envMeshCACert, ca)
+	}
+}
+
+const meshAgentHealthPort = 8081
+
+// applyMeshProbes keeps the pod's readiness tied to the mesh backend when the
+// agent runs in the workspace container. The sidecar mode gets the same probes
+// on the agent container; moving the agent must not make an unreachable
+// workspace look ready.
+func applyMeshProbes(container *corev1.Container) {
+	if container == nil {
+		return
+	}
+	handler := corev1.ProbeHandler{
+		HTTPGet: &corev1.HTTPGetAction{
+			Path: "/readyz",
+			Port: intstr.FromInt(meshAgentHealthPort),
+		},
+	}
+	if container.StartupProbe == nil {
+		container.StartupProbe = &corev1.Probe{
+			ProbeHandler:     handler,
+			PeriodSeconds:    10,
+			TimeoutSeconds:   2,
+			FailureThreshold: 36,
+		}
+	}
+	if container.ReadinessProbe == nil {
+		container.ReadinessProbe = &corev1.Probe{
+			ProbeHandler:     handler,
+			PeriodSeconds:    5,
+			TimeoutSeconds:   2,
+			FailureThreshold: 3,
+		}
+	}
+}
+
+func removeMeshProbes(container *corev1.Container) {
+	if container == nil {
+		return
+	}
+	if isMeshAgentProbe(container.StartupProbe) {
+		container.StartupProbe = nil
+	}
+	if isMeshAgentProbe(container.ReadinessProbe) {
+		container.ReadinessProbe = nil
+	}
+}
+
+func isMeshAgentProbe(probe *corev1.Probe) bool {
+	return probe != nil && probe.HTTPGet != nil &&
+		probe.HTTPGet.Path == "/readyz" &&
+		probe.HTTPGet.Port.IntValue() == meshAgentHealthPort
 }
 
 func (m *Manager) agentSidecarImage() string {

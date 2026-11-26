@@ -27,6 +27,8 @@ spec:
       labels:
         {{- include "poddy.labels" . | nindent 8 }}
         poddy.io/component: headscale
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/headscale-config.yaml") . | sha256sum }}
     spec:
       terminationGracePeriodSeconds: 30
       {{- if include "poddy.meshBootstrapEnabled" . }}

@@ -66,6 +66,18 @@ spec:
         - protocol: TCP
           port: 8080
     {{- end }}
+    {{- if .Values.mesh.controlNamespace }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.mesh.controlNamespace }}
+          podSelector:
+            matchLabels:
+              poddy.io/component: headscale
+      ports:
+        - protocol: TCP
+          port: {{ .Values.mesh.controlPort | default 8080 }}
+    {{- end }}
     {{- end }}
     {{- if .Values.networkPolicy.workspace.egress.allowDNS }}
     - to:
