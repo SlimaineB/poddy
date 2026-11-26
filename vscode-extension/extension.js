@@ -1,7 +1,6 @@
 "use strict";
 
 const vscode = require("vscode");
-const { execFile } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -9,11 +8,16 @@ const http = require("http");
 const https = require("https");
 const crypto = require("crypto");
 
+const { run } = require("./runner");
+
 const SSH_KEY_PREFIX = "poddy";
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
 // SSH must outlive the mesh join; otherwise ProxyCommand is killed mid-banner.
 const MESH_JOIN_TIMEOUT_SECONDS = 30;
 const SSH_CONNECT_TIMEOUT = MESH_JOIN_TIMEOUT_SECONDS + 60;
+// Bound each probe so a wedged ssh/ProxyCommand cannot leave the progress
+// notification spinning forever. The mesh join gets 30s, then the handshake.
+const SSH_PROBE_TIMEOUT_MS = (MESH_JOIN_TIMEOUT_SECONDS + 30) * 1000;
 const SSH_WAIT_TIMEOUT_MS = 240000;
 
 function activate(context) {
@@ -65,10 +69,15 @@ async function handleUri(context, uri) {
     console.log(`[poddy] enroll parse error: ${err && err.message}`);
   }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Poddy: connecting to ${payload.workspace}` },
-    () => waitForSSH(alias)
-  );
+  try {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Poddy: connecting to ${payload.workspace}` },
+      (_progress, token) => waitForSSH(alias, token)
+    );
+  } catch (err) {
+    if (err && err.cancelled) return;
+    throw err;
+  }
   await pinRemotePlatform(alias);
 
   const remote = vscode.Uri.parse(`vscode-remote://ssh-remote+${alias}/home/dev`);
@@ -172,20 +181,7 @@ async function readPublicKey(priv) {
   throw new Error(`cannot read the SSH public key: ${lastError ? lastError.message : "ssh-keygen not found"}`);
 }
 
-function run(bin, args) {
-  return new Promise((resolve, reject) => {
-    execFile(bin, args, { windowsHide: true }, (err, stdout, stderr) => {
-      if (err) {
-        err.message = (stderr || stdout || err.message || "").trim();
-        reject(err);
-        return;
-      }
-      resolve(stdout || "");
-    });
-  });
-}
-
-async function waitForSSH(alias) {
+async function waitForSSH(alias, token) {
   const candidates = ["ssh"];
   if (process.platform === "win32") {
     candidates.push("C:\\Windows\\System32\\OpenSSH\\ssh.exe");
@@ -194,8 +190,14 @@ async function waitForSSH(alias) {
   let lastError;
   let fastFailures = 0;
   while (Date.now() < deadline) {
+    if (token && token.isCancellationRequested) throw cancelledError();
     for (const bin of candidates) {
+      if (token && token.isCancellationRequested) throw cancelledError();
       const started = Date.now();
+      const controller = new AbortController();
+      const subscription = token
+        ? token.onCancellationRequested(() => controller.abort())
+        : null;
       try {
         await run(bin, [
           "-o", "BatchMode=yes",
@@ -204,14 +206,20 @@ async function waitForSSH(alias) {
           "-o", `UserKnownHostsFile=${NULL_DEVICE}`,
           alias,
           "true",
-        ]);
+        ], {
+          timeoutMs: SSH_PROBE_TIMEOUT_MS,
+          signal: controller.signal,
+        });
         return;
       } catch (err) {
+        if (err && err.name === "AbortError") throw cancelledError();
         lastError = err;
         const message = String(err && err.message || err);
         const retryableKeySync = /permission denied|maxstartups|exceeded maxstartups/i.test(message);
         const retryableMesh = /mesh: workspace peer .* is offline|mesh: workspace peer .* not found|mesh: dial workspace .*context deadline exceeded/i.test(message);
         if (!retryableKeySync && !retryableMesh && Date.now() - started < 10000) fastFailures += 1; else fastFailures = 0;
+      } finally {
+        if (subscription) subscription.dispose();
       }
     }
     if (fastFailures >= 3) {
@@ -220,6 +228,12 @@ async function waitForSSH(alias) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(`workspace SSH is not ready after ${SSH_WAIT_TIMEOUT_MS / 1000}s: ${lastError ? lastError.message : "timed out"}`);
+}
+
+function cancelledError() {
+  const err = new Error("connection cancelled");
+  err.cancelled = true;
+  return err;
 }
 
 async function pinRemotePlatform(alias) {

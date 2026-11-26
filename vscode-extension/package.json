@@ -3,7 +3,7 @@
   "displayName": "Poddy Remote",
   "description": "Open Poddy workspaces in VS Code or Cursor Remote-SSH without editing your SSH config.",
   "publisher": "slimaineb",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,8 +24,9 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js",
-    "vscode:prepublish": "npm run check",
+    "check": "node --check extension.js && node --check runner.js",
+    "test": "node --test runner.test.js",
+    "vscode:prepublish": "npm run check && npm test",
     "package": "vsce package"
   },
   "devDependencies": {
