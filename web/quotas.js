@@ -323,21 +323,28 @@ async function loadUserQuotas() {
 }
 
 function openUserQuota(user, entry) {
-  if (!els.quotaDialog) return;
+  if (!els.userDetailView) return;
   state.quotaUser = user;
   state.quotaIdentity = entry?.identity || user;
   state.quotaDetails = null;
-  els.quotaIdentity.textContent = `Override for ${user}.`;
+  if (els.userDetailTitle) els.userDetailTitle.textContent = user;
+  els.quotaIdentity.textContent = state.me.isAdmin
+    ? "Quota override and Poddy team memberships."
+    : "Poddy team memberships.";
   if (els.quotaAvatar) els.quotaAvatar.textContent = String(user).replace(/^(user|email):/i, "").trim().slice(0, 1).toUpperCase() || "?";
+  if (els.quotaForm) els.quotaForm.hidden = !state.me.isAdmin;
+  if (els.quotaMode) els.quotaMode.hidden = !state.me.isAdmin;
+  renderUserDetailMeta(user, entry);
   setQuotaInputs("user", entry?.quota || null);
   updateUserQuotaMode();
   setFormError(els.quotaError, "");
   if (els.quotaStatus) els.quotaStatus.hidden = true;
   if (els.quotaMeters) els.quotaMeters.replaceChildren();
   if (els.quotaClear) els.quotaClear.hidden = !entry;
-  els.quotaDialog.showModal();
+  showView("user-detail");
+  if (!state.me.isAdmin) return;
   els.quotaWorkspaces.focus();
-  loadUserQuotaDetails(state.quotaUser);
+  loadUserQuotaDetails(state.quotaIdentity);
 }
 
 function usageSummary(usage) {
@@ -370,7 +377,7 @@ async function loadUserQuotaDetails(identity) {
   if (!els.quotaStatus) return;
   try {
     const data = await api(`/api/user-quotas/${encodeURIComponent(identity)}`);
-    if (state.quotaUser !== identity) return;
+    if (state.quotaIdentity !== identity) return;
     state.quotaDetails = data;
     renderUserQuotaMeters();
     updateUserQuotaMode();
@@ -393,9 +400,9 @@ async function clearUserQuota() {
   try {
     await api(`/api/user-quotas/${encodeURIComponent(identity)}`, { method: "DELETE" });
     toast(`Quota override for ${user} removed.`, "success");
-    els.quotaDialog.close();
     await loadUserQuotas();
     renderUsers();
+    openUserQuota(user, userQuotaEntry(user));
   } catch (err) {
     setFormError(els.quotaError, err.message || "Failed to remove quota.");
   } finally {
@@ -428,9 +435,9 @@ async function saveUserQuota(event) {
       body: JSON.stringify(quota),
     });
     toast(Object.keys(quota).length ? `Quota for ${user} saved.` : `Quota override for ${user} removed.`, "success");
-    els.quotaDialog.close();
     await loadUserQuotas();
     renderUsers();
+    openUserQuota(user, userQuotaEntry(user));
   } catch (err) {
     setFormError(els.quotaError, err.message || "Failed to save quota.");
   } finally {

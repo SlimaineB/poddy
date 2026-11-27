@@ -54,6 +54,7 @@ function renderMonitoringConfig() {
   if (els.detailMonitoring) {
     els.detailMonitoring.hidden = !canSeeWorkspaceMonitoring();
   }
+  if (typeof syncDetailTabs === "function") syncDetailTabs();
   if (els.detailMonitoringNote) {
     const surfaces = [];
     if (monitoringLiveEnabled()) surfaces.push("live usage from metrics-server");

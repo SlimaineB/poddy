@@ -140,8 +140,13 @@ function renderDirectoryList(container, values, memberships, kind, query) {
 
     const nameRow = document.createElement("span");
     nameRow.className = "directory-name-row";
-    const name = document.createElement("span");
+    const name = document.createElement(kind === "user" ? "button" : "span");
     name.className = "directory-name";
+    if (kind === "user") {
+      name.classList.add("directory-name-button");
+      name.type = "button";
+      name.addEventListener("click", () => openUserQuota(value, state.me.isAdmin ? userQuotaEntry(value) : null));
+    }
     name.textContent = value;
     nameRow.append(name);
     if (kind === "group") {
@@ -208,6 +213,39 @@ function renderDirectoryList(container, values, memberships, kind, query) {
     container.append(item);
   }
 }
+function renderUserDetailMeta(user, entry) {
+  if (els.userDetailTeams) {
+    const teams = teamMemberships().users.get(String(user).toLowerCase()) || [];
+    els.userDetailTeams.replaceChildren();
+    if (!teams.length) {
+      const none = document.createElement("span");
+      none.textContent = "Not a member of any Poddy team.";
+      els.userDetailTeams.append(none);
+    } else {
+      for (const team of teams) {
+        const badge = document.createElement("span");
+        badge.className = "badge owner";
+        badge.textContent = team;
+        els.userDetailTeams.append(badge);
+      }
+    }
+  }
+  if (!els.userDetailQuota) return;
+  if (!state.me.isAdmin) {
+    els.userDetailQuota.textContent = "Only admins can view or edit quota overrides.";
+    return;
+  }
+  const teams = teamMemberships().users.get(String(user).toLowerCase()) || [];
+  const inherited = inheritedQuotaTeams(teams);
+  if (entry) {
+    els.userDetailQuota.textContent = `Quota override: ${quotaSummary(entry.quota) || "custom limits"}.`;
+  } else if (inherited.length) {
+    els.userDetailQuota.textContent = `No override. Inherits the most permissive team quota from ${inherited.join(", ")}.`;
+  } else {
+    els.userDetailQuota.textContent = "No quota override and no inherited team quota.";
+  }
+}
+
 async function openUsers() {
   try {
     state.userPage = 1;

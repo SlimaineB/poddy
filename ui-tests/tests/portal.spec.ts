@@ -57,6 +57,44 @@ test("shows administration navigation for admins", async ({ page }) => {
   await expect(page.locator("#manage-audit")).toBeVisible();
 });
 
+test("opens a team in a dedicated page", async ({ page }) => {
+  await mockPortal(page);
+  await page.goto("/");
+
+  await page.locator("#manage-menu summary").click();
+  await page.locator("#manage-teams").click();
+
+  await expect(page.locator("#teams-view")).toBeVisible();
+  await page.getByRole("button", { name: "backend" }).click();
+
+  await expect(page.locator("#team-detail-view")).toBeVisible();
+  await expect(page.locator("#team-form-title")).toHaveText("Edit backend");
+  await expect(page.locator("#team-members")).toContainText("alice@example.com");
+
+  await page.locator("#team-detail-back").click();
+  await expect(page.locator("#teams-view")).toBeVisible();
+});
+
+test("opens a user detail page with memberships and quota", async ({ page }) => {
+  await mockPortal(page);
+  await page.goto("/");
+
+  await page.locator("#manage-menu summary").click();
+  await page.locator("#manage-users").click();
+
+  await expect(page.locator("#users-view")).toBeVisible();
+  await page.getByRole("button", { name: "alice@example.com" }).click();
+
+  await expect(page.locator("#user-detail-view")).toBeVisible();
+  await expect(page.locator("#user-detail-title")).toHaveText("alice@example.com");
+  await expect(page.locator("#user-detail-teams")).toContainText("backend");
+  await expect(page.locator("#user-quota-form")).toBeVisible();
+  await expect(page.locator("#user-quota-workspaces")).toHaveValue("1");
+
+  await page.locator("#user-detail-back").click();
+  await expect(page.locator("#users-view")).toBeVisible();
+});
+
 test("hides administration navigation for regular users", async ({ page }) => {
   await mockPortal(page, { me: regularUser });
   await page.goto("/");
@@ -83,6 +121,21 @@ test("toggles the theme and persists it", async ({ page }) => {
   expect(after).not.toBe(before);
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", after!);
+});
+
+test("keeps volume summary cards readable in dark mode", async ({ page }) => {
+  await mockPortal(page);
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  await page.locator("#theme-toggle").click();
+
+  await page.locator("#manage-menu summary").click();
+  await page.locator("#manage-volumes").click();
+
+  const card = page.locator(".volume-summary-card").first();
+  await expect(card).toBeVisible();
+  const background = await card.evaluate((element) => getComputedStyle(element).backgroundImage);
+  expect(background).not.toContain("255, 255, 255");
 });
 
 test("submits the create workspace form", async ({ page }) => {

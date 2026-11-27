@@ -64,6 +64,7 @@ const state = {
   accessRequestsLoading: false,
   detailWorkspace: null,
   detailRequest: 0,
+  detailTab: "overview",
   manifests: null,
   manifestTab: "pod",
   detailPortsRequest: 0,
@@ -176,6 +177,7 @@ const els = {
   detailSubtitle: document.getElementById("detail-subtitle"),
   detailStatus: document.getElementById("detail-status"),
   detailActions: document.getElementById("detail-actions"),
+  detailTabs: document.getElementById("detail-tabs"),
   detailList: document.getElementById("detail-list"),
   detailEnvironmentBody: document.getElementById("detail-environment-body"),
   detailQuotaBody: document.getElementById("detail-quota-body"),
@@ -365,6 +367,12 @@ const els = {
   mapZoomIn: document.getElementById("map-zoom-in"),
   mapZoomOut: document.getElementById("map-zoom-out"),
   usersView: document.getElementById("users-view"),
+  userDetailView: document.getElementById("user-detail-view"),
+  userDetailBack: document.getElementById("user-detail-back"),
+  userDetailTitle: document.getElementById("user-detail-title"),
+  userDetailTeams: document.getElementById("user-detail-teams"),
+  userDetailQuota: document.getElementById("user-detail-quota"),
+  userQuotaBack: document.getElementById("user-quota-back"),
   usersBack: document.getElementById("users-back"),
   usersSearch: document.getElementById("users-search"),
   usersCount: document.getElementById("users-count"),
@@ -394,6 +402,10 @@ const els = {
   dotfilesSave: document.getElementById("dotfiles-save"),
   dotfilesClear: document.getElementById("dotfiles-clear"),
   teamsView: document.getElementById("teams-view"),
+  teamDetailView: document.getElementById("team-detail-view"),
+  teamDetailBack: document.getElementById("team-detail-back"),
+  teamDetailCancel: document.getElementById("team-detail-cancel"),
+  teamDetailDelete: document.getElementById("team-detail-delete"),
   teamsBack: document.getElementById("teams-back"),
   teamsCount: document.getElementById("teams-count"),
   teamsSearch: document.getElementById("teams-search"),
@@ -412,7 +424,6 @@ const els = {
   accessTeams: document.getElementById("access-teams"),
   accessSave: document.getElementById("access-save"),
   teamsList: document.getElementById("teams-list"),
-  teamDialog: document.getElementById("team-dialog"),
   teamForm: document.getElementById("team-form"),
   teamFormTitle: document.getElementById("team-form-title"),
   teamName: document.getElementById("team-name"),
@@ -430,7 +441,6 @@ const els = {
   teamQuotaStorageUnit: document.getElementById("team-quota-storage-unit"),
   teamQuotaHint: document.getElementById("team-quota-hint"),
   teamQuotaPreview: document.getElementById("team-quota-preview"),
-  quotaDialog: document.getElementById("user-quota-dialog"),
   quotaForm: document.getElementById("user-quota-form"),
   quotaIdentity: document.getElementById("user-quota-identity"),
   quotaAvatar: document.getElementById("user-quota-avatar"),
@@ -1710,7 +1720,9 @@ function showView(name) {
   els.connectionsView.hidden = name !== "connections";
   els.sshKeysView.hidden = name !== "ssh-keys";
   els.usersView.hidden = name !== "users";
+  els.userDetailView.hidden = name !== "user-detail";
   els.teamsView.hidden = name !== "teams";
+  els.teamDetailView.hidden = name !== "team-detail";
   els.templatesView.hidden = name !== "templates";
   els.environmentView.hidden = name !== "environment";
   els.templateDetailView.hidden = name !== "template";
@@ -1720,8 +1732,8 @@ function showView(name) {
     : name === "finops" ? els.manageFinops
     : name === "monitoring" ? els.manageMonitoring
     : name === "connections" ? els.manageConnections
-    : name === "users" ? els.manageUsers
-    : name === "teams" ? els.manageTeams
+    : (name === "users" || name === "user-detail") ? els.manageUsers
+    : (name === "teams" || name === "team-detail") ? els.manageTeams
     : (name === "templates" || name === "template") ? els.manageTemplates
     : name === "environment" ? els.manageEnv
     : name === "audit" ? els.manageAudit

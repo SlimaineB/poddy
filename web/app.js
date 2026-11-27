@@ -232,6 +232,11 @@ els.envSecret.addEventListener("change", () => {
 els.envRefresh.addEventListener("click", loadEnvironment);
 els.teamNew.addEventListener("click", newTeam);
 els.teamForm.addEventListener("submit", saveTeam);
+els.teamDetailBack.addEventListener("click", () => showView("teams"));
+els.teamDetailCancel.addEventListener("click", () => showView("teams"));
+els.teamDetailDelete.addEventListener("click", () => {
+  if (state.editingTeam) deleteTeam({ name: state.editingTeam });
+});
 let teamSearchTimer = 0;
 els.teamsSearch.addEventListener("input", () => {
   state.teamQuery = els.teamsSearch.value;
@@ -246,6 +251,8 @@ for (const input of Object.values(quotaInputs("user"))) input.addEventListener("
 els.quotaForm.addEventListener("submit", saveUserQuota);
 if (els.quotaClear) els.quotaClear.addEventListener("click", clearUserQuota);
 els.usersBack.addEventListener("click", () => showView("workspaces"));
+els.userDetailBack.addEventListener("click", () => showView("users"));
+els.userQuotaBack.addEventListener("click", () => showView("users"));
 els.teamsBack.addEventListener("click", () => showView("workspaces"));
 let userSearchTimer = 0;
 els.usersSearch.addEventListener("input", () => {
@@ -279,6 +286,24 @@ els.templatesSearch.addEventListener("input", () => {
 });
 
 els.copySSH.addEventListener("click", copySSHConfig);
+if (els.detailTabs) {
+  els.detailTabs.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-detail-tab-button]");
+    if (!button) return;
+    setDetailTab(button.dataset.detailTabButton, { focus: true });
+  });
+  els.detailTabs.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const buttons = [...els.detailTabs.querySelectorAll("[data-detail-tab-button]")].filter((button) => !button.hidden);
+    const index = buttons.indexOf(document.activeElement);
+    if (index === -1) return;
+    event.preventDefault();
+    const next = event.key === "ArrowRight"
+      ? (index + 1) % buttons.length
+      : (index - 1 + buttons.length) % buttons.length;
+    setDetailTab(buttons[next].dataset.detailTabButton, { focus: true });
+  });
+}
 els.detailLogsRefresh.addEventListener("click", refreshDetails);
 els.detailManifestsRefresh.addEventListener("click", refreshDetails);
 els.detailManifestsCopy.addEventListener("click", copyManifests);

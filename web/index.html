@@ -846,18 +846,19 @@
     <div id="connections-list" class="connections-list"></div>
   </section>
 
-  <dialog id="team-dialog" class="dialog dialog-wide team-dialog">
-    <form id="team-form" class="team-form">
-      <header class="dialog-header">
-        <div>
-          <h2 id="team-form-title">New team</h2>
-          <p>A Poddy team is not an OIDC group: it groups identities for quotas and template access.</p>
-        </div>
-        <button class="icon-button" type="button" data-close aria-label="Close">
-          <svg class="icon"><use href="#icon-x"></use></svg>
-        </button>
-      </header>
-      <div class="dialog-body">
+  <section id="team-detail-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="team-detail-back" class="button ghost small" type="button">← Teams</button>
+        <h1 id="team-form-title">New team</h1>
+        <p>A Poddy team is not an OIDC group: it groups identities for quotas and template access.</p>
+      </div>
+      <div class="view-actions">
+        <button id="team-detail-delete" class="button danger small" type="button" hidden>Delete team</button>
+      </div>
+    </header>
+    <form id="team-form" class="panel team-form team-page-form">
+      <div class="team-page-body">
         <section class="form-section">
           <div class="form-section-header">
             <h3>Team details</h3>
@@ -935,12 +936,12 @@
           <p id="team-quota-hint" class="hint">Leave a field empty for unlimited.</p>
         </section>
       </div>
-      <footer class="dialog-footer">
-        <button class="button ghost" type="button" data-close>Cancel</button>
+      <footer class="form-actions team-page-actions">
+        <button id="team-detail-cancel" class="button ghost" type="button">Cancel</button>
         <button id="team-save" class="button primary" type="submit">Create team</button>
       </footer>
     </form>
-  </dialog>
+  </section>
 
   <dialog id="create-dialog" class="dialog">
     <form id="create-form">
@@ -1075,7 +1076,30 @@
         <div id="detail-actions" class="detail-actions"></div>
       </div>
     </header>
+    <nav id="detail-tabs" class="detail-tabs" role="tablist" aria-label="Workspace detail sections">
+      <button id="detail-tab-overview" class="detail-tab active" type="button" role="tab" aria-selected="true" aria-controls="detail-panel-overview" data-detail-tab-button="overview">
+        <svg class="icon"><use href="#icon-grid"></use></svg>
+        <span>Overview</span>
+      </button>
+      <button id="detail-tab-access" class="detail-tab" type="button" role="tab" aria-selected="false" aria-controls="detail-panel-access" data-detail-tab-button="access">
+        <svg class="icon"><use href="#icon-users"></use></svg>
+        <span>Access</span>
+      </button>
+      <button id="detail-tab-config" class="detail-tab" type="button" role="tab" aria-selected="false" aria-controls="detail-panel-config" data-detail-tab-button="config">
+        <svg class="icon"><use href="#icon-layers"></use></svg>
+        <span>Configuration</span>
+      </button>
+      <button id="detail-tab-monitoring" class="detail-tab" type="button" role="tab" aria-selected="false" aria-controls="detail-panel-monitoring" data-detail-tab-button="monitoring">
+        <svg class="icon"><use href="#icon-activity"></use></svg>
+        <span>Monitoring</span>
+      </button>
+      <button id="detail-tab-logs" class="detail-tab" type="button" role="tab" aria-selected="false" aria-controls="detail-panel-logs" data-detail-tab-button="logs">
+        <svg class="icon"><use href="#icon-terminal"></use></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
     <div class="detail-body">
+      <div id="detail-panel-overview" class="detail-tab-panel" data-detail-tab="overview" role="tabpanel" aria-labelledby="detail-tab-overview">
       <section class="detail-panel workspace-ports">
         <header class="workspace-logs-header">
           <div>
@@ -1087,10 +1111,10 @@
         <div id="detail-ports-body" class="workspace-ports-body"></div>
         <form id="detail-port-form" class="port-form">
           <div class="field">
-            <label for="detail-port-input">Ouvrir un autre port</label>
+            <label for="detail-port-input">Open another port</label>
             <input id="detail-port-input" type="number" min="1" max="65535" placeholder="3000" inputmode="numeric">
           </div>
-          <button class="button primary small" type="submit">Ouvrir</button>
+          <button class="button primary small" type="submit">Open</button>
         </form>
         <p class="hint">Apps bound to 127.0.0.1 work. Absolute asset URLs may need a base path. Internal share links require a portal login; public links do not.</p>
       </section>
@@ -1103,6 +1127,8 @@
         </header>
         <dl id="detail-list" class="detail-list"></dl>
       </section>
+      </div>
+      <div id="detail-panel-config" class="detail-tab-panel" data-detail-tab="config" role="tabpanel" aria-labelledby="detail-tab-config">
       <section id="detail-environment" class="detail-panel workspace-environment">
         <header class="workspace-logs-header">
           <div>
@@ -1121,6 +1147,8 @@
         </header>
         <div id="detail-quota-body" class="workspace-quota-body"></div>
       </section>
+      </div>
+      <div id="detail-panel-monitoring" class="detail-tab-panel" data-detail-tab="monitoring" role="tabpanel" aria-labelledby="detail-tab-monitoring">
       <section id="detail-monitoring" class="detail-panel workspace-monitoring" hidden>
         <header class="workspace-logs-header">
           <div>
@@ -1138,7 +1166,9 @@
         </header>
         <div id="detail-monitoring-body" class="monitoring-body"></div>
       </section>
-      <section class="detail-panel">
+      </div>
+      <div id="detail-panel-access" class="detail-tab-panel" data-detail-tab="access" role="tabpanel" aria-labelledby="detail-tab-access">
+      <section class="detail-panel workspace-access">
         <header class="workspace-logs-header">
           <div>
             <h3>Who is in this workspace</h3>
@@ -1187,6 +1217,8 @@
           </div>
         </form>
       </section>
+      </div>
+      <div id="detail-panel-logs" class="detail-tab-panel" data-detail-tab="logs" role="tabpanel" aria-labelledby="detail-tab-logs">
       <section id="detail-manifests" class="detail-panel workspace-manifests" hidden>
         <header class="workspace-logs-header">
           <div>
@@ -1214,6 +1246,7 @@
         </header>
         <div id="detail-logs-body" class="workspace-logs-body"></div>
       </section>
+      </div>
     </div>
   </section>
 
@@ -1399,28 +1432,35 @@
     </footer>
   </dialog>
 
-  <dialog id="user-quota-dialog" class="dialog dialog-small quota-dialog">
-    <form id="user-quota-form">
-      <header class="dialog-header">
-        <div class="quota-dialog-title">
+  <section id="user-detail-view" class="page" hidden>
+    <header class="view-header">
+      <div>
+        <button id="user-detail-back" class="button ghost small" type="button">← Users</button>
+        <div class="user-detail-heading">
           <span id="user-quota-avatar" class="directory-avatar quota-avatar">?</span>
           <div>
-            <h2>User quota</h2>
+            <h1 id="user-detail-title">User</h1>
             <p id="user-quota-identity"></p>
           </div>
         </div>
-        <button class="icon-button" type="button" data-close aria-label="Close">
-          <svg class="icon"><use href="#icon-x"></use></svg>
-        </button>
-      </header>
-      <div class="dialog-body">
-        <section class="quota-dialog-section">
+      </div>
+      <div class="view-actions">
+        <span id="user-quota-mode" class="badge neutral">Inherited</span>
+      </div>
+    </header>
+    <div class="user-detail-layout">
+      <section class="panel user-detail-panel">
+        <div class="panel-header"><h2>Team memberships</h2></div>
+        <div id="user-detail-teams" class="directory-meta user-detail-teams"></div>
+        <div id="user-detail-quota" class="user-detail-quota"></div>
+      </section>
+      <form id="user-quota-form" class="panel user-quota-form">
+        <section id="user-quota-editor" class="quota-dialog-section">
           <div class="quota-section-head">
             <div>
               <h3>Override limits</h3>
               <p>Leave a field empty to inherit the team default.</p>
             </div>
-            <span id="user-quota-mode" class="badge neutral">Inherited</span>
           </div>
           <div class="quota-grid">
             <label class="quota-field">
@@ -1477,14 +1517,14 @@
           <div id="user-quota-meters" class="quota-meter-grid"></div>
         </section>
         <p id="user-quota-error" class="form-error" hidden></p>
-      </div>
-      <footer class="dialog-footer">
-        <button id="user-quota-clear" class="button ghost quota-footer-clear" type="button" hidden>Remove override</button>
-        <button class="button ghost" type="button" data-close>Cancel</button>
-        <button id="user-quota-save" class="button primary" type="submit">Save quota</button>
-      </footer>
-    </form>
-  </dialog>
+        <footer class="form-actions user-detail-actions">
+          <button id="user-quota-clear" class="button ghost quota-footer-clear" type="button" hidden>Remove override</button>
+          <button id="user-quota-back" class="button ghost" type="button">Back to users</button>
+          <button id="user-quota-save" class="button primary" type="submit">Save quota</button>
+        </footer>
+      </form>
+    </div>
+  </section>
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 

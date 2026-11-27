@@ -162,7 +162,8 @@ async function editTeam(team) {
     setQuotaInputs("team", detail.quota || null);
     setTeamQuotaEnabled(true);
     els.teamSave.textContent = "Save team";
-    els.teamDialog.showModal();
+    els.teamDetailDelete.hidden = false;
+    showView("team-detail");
   } catch (err) {
     toast(err.message || "Failed to load team.");
   }
@@ -178,7 +179,8 @@ function newTeam() {
   setTeamQuotaEnabled(true);
   els.teamName.readOnly = false;
   els.teamSave.textContent = "Create team";
-  els.teamDialog.showModal();
+  els.teamDetailDelete.hidden = true;
+  showView("team-detail");
   requestAnimationFrame(() => els.teamName.focus());
 }
 async function saveTeam(event) {
@@ -207,10 +209,10 @@ async function saveTeam(event) {
     });
     toast(`Team ${name} saved.`, "success");
     state.editingTeam = name;
-    els.teamDialog.close();
     const page = wasEditing ? state.teamPage : 1;
     await refreshTeams({ paginated: true, page, summary: true });
     renderTeamsPagination();
+    showView("teams");
   } catch (err) {
     toast(err.message || "Failed to save team.");
   } finally {
@@ -228,12 +230,11 @@ async function deleteTeam(team) {
   try {
     await api(`/api/teams/${encodeURIComponent(team.name)}`, { method: "DELETE" });
     toast(`Team ${team.name} deleted.`, "success");
-    if (state.editingTeam === team.name) {
-      state.editingTeam = null;
-      els.teamDialog.close();
-    }
+    const wasDetail = state.editingTeam === team.name && !els.teamDetailView.hidden;
+    if (state.editingTeam === team.name) state.editingTeam = null;
     await refreshTeams({ paginated: true, page: state.teamPage, summary: true });
     renderTeamsPagination();
+    if (wasDetail) showView("teams");
     await loadTemplates();
   } catch (err) {
     toast(err.message || "Failed to delete team.");

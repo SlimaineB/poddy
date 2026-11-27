@@ -1087,6 +1087,48 @@ function resolveLink(link, workspace) {
     return value === "" ? match : value;
   });
 }
+function detailTabPanels() {
+  if (!els.workspaceDetailView) return [];
+  return [...els.workspaceDetailView.querySelectorAll(".detail-tab-panel[data-detail-tab]")];
+}
+
+function applyDetailTab(tab) {
+  state.detailTab = tab;
+  for (const panel of detailTabPanels()) {
+    panel.hidden = panel.dataset.detailTab !== tab;
+  }
+  if (!els.detailTabs) return;
+  for (const button of els.detailTabs.querySelectorAll("[data-detail-tab-button]")) {
+    const active = button.dataset.detailTabButton === tab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+}
+
+function setDetailTab(tab, { focus = false } = {}) {
+  if (!detailTabPanels().some((panel) => panel.dataset.detailTab === tab)) return;
+  if (tab === "monitoring" && els.detailMonitoring && els.detailMonitoring.hidden) tab = "overview";
+  applyDetailTab(tab);
+  if (focus && els.detailTabs) {
+    const button = els.detailTabs.querySelector(`[data-detail-tab-button="${tab}"]`);
+    if (button) button.focus();
+  }
+}
+
+function syncDetailTabs() {
+  if (!els.detailTabs) return;
+  for (const button of els.detailTabs.querySelectorAll("[data-detail-tab-button]")) {
+    const tab = button.dataset.detailTabButton;
+    button.hidden = tab === "monitoring" && Boolean(els.detailMonitoring && els.detailMonitoring.hidden);
+  }
+  if (state.detailTab === "monitoring" && els.detailMonitoring && els.detailMonitoring.hidden) {
+    setDetailTab("overview");
+    return;
+  }
+  applyDetailTab(state.detailTab || "overview");
+}
+
 async function showDetails(workspace) {
   state.detailWorkspace = workspace;
   state.manifests = null;
@@ -1100,6 +1142,9 @@ async function showDetails(workspace) {
   els.detailLogsBody.replaceChildren();
   els.detailManifests.hidden = !(state.me && state.me.isAdmin);
   if (!els.detailManifests.hidden) setManifestsMessage("Loading manifests...");
+  state.detailTab = "overview";
+  syncDetailTabs();
+  setDetailTab("overview");
   els.detailPortsBody.replaceChildren();
   els.detailPortInput.value = "";
   if (typeof resetWorkspaceMonitoring === "function") resetWorkspaceMonitoring();
@@ -1175,6 +1220,7 @@ async function refreshDetails() {
   if (portsRequest === state.detailPortsRequest) {
     els.detailPortsRefresh.disabled = false;
   }
+  if (request === state.detailRequest) syncDetailTabs();
 }
 
 async function refreshDetailPorts() {
